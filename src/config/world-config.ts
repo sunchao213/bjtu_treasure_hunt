@@ -1,4 +1,5 @@
 import type { Rect } from '../shared/types/game';
+import { assertKnownItemId } from './game-config';
 
 export const WORLD = {
   width: 1280,
@@ -25,3 +26,7 @@ export const WORLD = {
     { id: 'garden-east', x: 1060, y: 740, itemId: 'school-badge' },
   ],
 };
+
+for (const point of WORLD.searchPoints) {
+  assertKnownItemId(point.itemId);
+}

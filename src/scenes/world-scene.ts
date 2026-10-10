@@ -200,6 +200,10 @@ export class WorldScene extends Phaser.Scene {
         const result = this.search.finish(item, (entry) => this.services.inventory.addLoot(entry));
         if (result.ok) {
           this.chestObjects.get(chest.id)?.setAlpha(0.23);
+          this.services.events.emit('LocationInteracted', {
+            raidId: view.raidId,
+            locationId: chest.id,
+          });
         }
         this.services.notify(
           result.ok ? '搜索完成，物资进入本局背包。' : '背包已满，搜索点已保留，腾出空间后重试。',

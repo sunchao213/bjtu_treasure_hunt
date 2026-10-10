@@ -1,9 +1,9 @@
 import './style.css';
 import { createGame } from './app/create-game';
-import { ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
+import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
-import { ReferenceSave, SAVE_KEY } from './modules/save/reference-save';
+import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
 import { WorldScene } from './scenes/world-scene';
@@ -42,9 +42,9 @@ async function bootstrap(): Promise<void> {
   if (!unlock) {
     throw new Error('另一个标签页正在使用这个存档，请关闭它后刷新本页。');
   }
-  let save: ReferenceSave;
+  let save: PersistentSave;
   try {
-    save = new ReferenceSave(localStorage);
+    save = new PersistentSave(localStorage);
   } catch (error) {
     unlock();
     element<HTMLButtonElement>('reset-save').disabled = true;
@@ -58,7 +58,7 @@ async function bootstrap(): Promise<void> {
       }
       try {
         if (confirm('建议先导出原始存档。确定清空本框架的损坏存档吗？')) {
-          localStorage.removeItem(SAVE_KEY);
+          localStorage.removeItem(FORMAL_SAVE_KEY);
           location.reload();
         }
       } finally {
@@ -196,12 +196,16 @@ async function bootstrap(): Promise<void> {
           if (state.phase !== 'active' && state.phase !== 'extracting') {
             return;
           }
-          if (inventory.remove(item.instanceId).ok) {
-            controller.heal(25);
-            if (state.raidId) {
-              events.emit('ItemConsumed', { raidId: state.raidId, instanceId: item.instanceId });
-            }
+          const amount = HEALING_AMOUNTS[item.itemId];
+          if (amount === undefined) {
+            notify('该恢复物尚未配置效果，物品没有消耗。');
+            return;
+          }
+          const consumed = inventory.consumeHealing(item.instanceId, () => controller.heal(amount));
+          if (consumed.ok) {
             notify('恢复物已消耗，当前携带价值已重算。');
+          } else if (consumed.error === 'INVALID_STATE') {
+            notify('当前无法使用恢复物，物品没有消耗。');
           }
         };
         li.append(use);
@@ -265,6 +269,15 @@ async function bootstrap(): Promise<void> {
       }
     }
   };
+  element('export-save').onclick = () => {
+    const blob = new Blob([save.exportRaw()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bjtu-treasure-hunt-save-v2.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   if (import.meta.env.DEV) {
     element('debug-panel').hidden = false;
     element('damage').onclick = () => {
@@ -285,16 +298,6 @@ async function bootstrap(): Promise<void> {
     });
   }
 }
-
-element('export-save').onclick = () => {
-  const blob = new Blob([localStorage.getItem(SAVE_KEY) ?? '{}'], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'bjtu-framework-save.json';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
 void bootstrap().catch((error: unknown) => {
   notify(error instanceof Error ? error.message : '启动失败，请查看开发控制台。');
   element('interaction-label').textContent = '启动尚未完成';
