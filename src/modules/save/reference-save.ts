@@ -57,7 +57,8 @@ function validResult(value: unknown): value is RaidResult {
     value.items.every(validItem) &&
     typeof value.value === 'number' &&
     Number.isSafeInteger(value.value) &&
-    value.value >= 0
+    value.value >= 0 &&
+    (value.questComplete === undefined || typeof value.questComplete === 'boolean')
   );
 }
 
@@ -224,8 +225,18 @@ export class ReferenceSave implements SavePort {
           next.codexIds.push(item.itemId);
         }
       }
+      const hasEvidence = ['torn-notebook', 'anomalous-feather'].every((id) =>
+        result.items.some(
+          (item) =>
+            item.itemId === id &&
+            item.origin.kind === 'raid-loot' &&
+            item.origin.obtainedInRaidId === result.raidId,
+        ),
+      );
+      if (result.questComplete && hasEvidence && !next.unlockedChapterIds.includes('siyuan-code')) {
+        next.unlockedChapterIds.push('siyuan-code');
+      }
     }
-    // D owns chapter conditions: no automatic unlock merely because a demo chest contains evidence.
     next.activeRaid = null;
     next.settledRaidIds.push(result.raidId);
     next.lastResult = structuredClone(result);

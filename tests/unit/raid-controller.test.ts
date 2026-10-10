@@ -58,6 +58,35 @@ async function setup(durationMs = 600_000) {
 }
 
 describe('A extraction lifecycle', () => {
+  it('pauses the raid clock for rules and requires a new extraction after resuming', async () => {
+    const s = await setup();
+    s.fill();
+    s.controller.setExtractionPresence(true);
+    s.controller.startExtraction();
+    s.advance(4_000);
+    s.controller.pause();
+    s.controller.pause();
+    const remaining = s.controller.getView().remainingMs;
+    s.advance(700_000);
+    expect(s.controller.getView().remainingMs).toBe(remaining);
+    expect(s.controller.getView().phase).toBe('active');
+    expect(s.controller.startExtraction().ok).toBe(false);
+    s.controller.applyDamage(100);
+    expect(s.controller.getView().health).toBe(100);
+    expect(s.results).toHaveLength(0);
+    s.controller.resume();
+    s.controller.resume();
+    expect(s.controller.getView().remainingMs).toBe(remaining);
+    s.controller.startExtraction();
+    s.advance(4_999);
+    expect(s.results).toHaveLength(0);
+    s.advance(1);
+    await flush();
+    expect(s.controller.getView().phase).toBe('success');
+    expect(s.controller.prepareNext()).toBe(true);
+    expect(s.controller.isPaused()).toBe(false);
+  });
+
   it('rejects 95, rejects outside zone, and allows exactly 100', async () => {
     const s = await setup();
     s.inventory.addLoot(loot('epic', 'gpa-charm'));
