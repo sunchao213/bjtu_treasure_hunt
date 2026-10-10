@@ -6,9 +6,11 @@ import { RaidController } from './modules/raid/raid-controller';
 import { ReferenceSave, SAVE_KEY } from './modules/save/reference-save';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
+import { bindGameRules } from './modules/ui/game-rules';
 import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
+import { TouchControls } from './modules/world/touch-controls';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -79,11 +81,13 @@ async function bootstrap(): Promise<void> {
   let renderedAt = 0;
   let interacted = '';
   let searchProgress = 0;
+  const touch = new TouchControls(element('touch-controls'));
   const scene = new WorldScene({
     controller,
     inventory,
     events,
     notify,
+    touch,
     onFrame: (interaction, progress) => {
       interacted = interaction;
       searchProgress = progress;
@@ -94,10 +98,44 @@ async function bootstrap(): Promise<void> {
     },
   });
   const game = createGame(scene);
+  bindGameRules(
+    () => {
+      controller.pause();
+      scene.clearInteractions();
+      render();
+    },
+    () => {
+      scene.clearInteractions();
+      controller.resume();
+      render();
+    },
+  );
 
   function render(): void {
     const view = controller.getView();
-    const playable = view.phase === 'active' || view.phase === 'extracting';
+    const lighting = scene.getLightingStatus();
+    const playable =
+      !controller.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
+    touch.setEnabled(playable);
+    app.dataset.phase = view.phase;
+    const lightButton =
+      element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="L"]');
+    lightButton?.setAttribute('aria-pressed', String(lighting.enabled));
+    const interactButton =
+      element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="E"]');
+    if (interactButton) {
+      interactButton.textContent = interacted.includes('搜索')
+        ? '搜索'
+        : interacted.includes('抱抱')
+          ? '抱抱'
+          : interacted.includes('充电')
+            ? '充电'
+            : view.inExtractionZone
+              ? '撤离'
+              : interacted.includes('拾')
+                ? '拾取'
+                : '交互';
+    }
     element('phase-label').textContent = phaseNames[view.phase];
     element('health').textContent = String(view.health);
     const seconds = Math.ceil(view.remainingMs / 1000);
@@ -105,6 +143,10 @@ async function bootstrap(): Promise<void> {
       `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     element('loot-value').textContent = String(view.value);
     element<HTMLProgressElement>('value-progress').value = view.value;
+    element('battery').textContent = `${lighting.battery}% · ${lighting.enabled ? '开启' : '关闭'}`;
+    element('light-reserves').textContent =
+      `备用电池 ${lighting.spareBatteries} · 照明棒 ${lighting.flares}`;
+    element<HTMLProgressElement>('battery-progress').value = lighting.battery;
     element('gate-label').textContent = view.value >= view.threshold ? '可以撤离' : '继续搜集';
     element('value-hint').textContent =
       view.value >= view.threshold
@@ -141,6 +183,16 @@ async function bootstrap(): Promise<void> {
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = inventory.getCarriedItems();
+    const evidence = carried
+      .filter(
+        (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === view.raidId,
+      )
+      .map((item) => item.itemId);
+    element('quest-status').textContent = evidence.includes('torn-notebook')
+      ? evidence.includes('anomalous-feather')
+        ? '线索齐备 · 带回南门'
+        : '下一线索：明湖石碑'
+      : '线索：图书馆外残缺手记';
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
       renderInventory(carried);
@@ -149,9 +201,11 @@ async function bootstrap(): Promise<void> {
     const archive = save.view();
     const warehouseSignature = JSON.stringify(archive.warehouse);
     element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
-    element('archive-detail').textContent = archive.codexIds.length
-      ? `已点亮 ${archive.codexIds.length} 种图鉴；剧情待 D 接入。`
-      : '成功撤离后，物品和图鉴会保存在此浏览器。';
+    element('archive-detail').textContent = archive.unlockedChapterIds.length
+      ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
+      : archive.codexIds.length
+        ? `已点亮 ${archive.codexIds.length} 种图鉴；带手记和异常羽毛成功撤离可解锁章节。`
+        : '成功撤离后，物品和图鉴会保存在此浏览器。';
     if (lastWarehouse !== warehouseSignature) {
       const select = element<HTMLSelectElement>('loadout');
       select.replaceChildren(new Option('轻装出发 · 不带入物品', ''));
@@ -196,6 +250,10 @@ async function bootstrap(): Promise<void> {
           if (state.phase !== 'active' && state.phase !== 'extracting') {
             return;
           }
+          if (state.health >= RAID_RULES.maxHealth) {
+            notify('生命已满。');
+            return;
+          }
           if (inventory.remove(item.instanceId).ok) {
             controller.heal(25);
             if (state.raidId) {
@@ -233,6 +291,11 @@ async function bootstrap(): Promise<void> {
         : '无法保存开局，请检查浏览器存储或刷新后重试。',
     );
     render();
+    if (result.ok && matchMedia('(max-width: 950px)').matches) {
+      element('game-canvas')
+        .closest('.map-panel')
+        ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
   };
   element('extract').onclick = () => {
     controller.startExtraction();
@@ -280,6 +343,7 @@ async function bootstrap(): Promise<void> {
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       controller.dispose();
+      touch.dispose();
       game.destroy(true);
       unlock();
     });

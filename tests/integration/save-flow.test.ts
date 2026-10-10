@@ -6,6 +6,7 @@ import { EventBus } from '../../src/shared/events/game-events';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../../src/config/game-config';
 import type { StoragePort } from '../../src/modules/save/reference-save';
 import type { ItemInstance, RaidResult } from '../../src/shared/types/game';
+import { SearchInteraction } from '../../src/modules/world/search-interaction';
 
 class MemoryStorage implements StoragePort {
   private data = new Map<string, string>();
@@ -30,6 +31,94 @@ function result(raidId: string): RaidResult {
 }
 
 describe('A to B reference persistence integration', () => {
+  it('runs the notebook/lake/extraction chain and saves chapter atomically with retry', async () => {
+    let now = 0;
+    const storage = new MemoryStorage();
+    const save = new ReferenceSave(storage);
+    const bus = new EventBus();
+    const inventory = new ReferenceInventory(bus, 6, ITEM_DEFINITIONS);
+    const controller = new RaidController(
+      inventory,
+      save,
+      bus,
+      RAID_RULES,
+      ITEM_DEFINITIONS,
+      () => now,
+      () => 'story',
+    );
+    const search = new SearchInteraction(2000, () => now);
+    await controller.start();
+    for (const [index, itemId] of [
+      'torn-notebook',
+      'anomalous-feather',
+      'school-badge',
+    ].entries()) {
+      search.begin(`chest-${index}`);
+      now += 2000;
+      expect(
+        search.finish(
+          {
+            instanceId: `story-${index}`,
+            itemId,
+            origin: { kind: 'raid-loot', obtainedInRaidId: 'story' },
+          },
+          (item) => inventory.addLoot(item),
+        ).ok,
+      ).toBe(true);
+    }
+    controller.setQuestComplete(true);
+    expect(controller.getView().value).toBe(110);
+    controller.setExtractionPresence(true);
+    controller.startExtraction();
+    storage.fail = true;
+    now += 5000;
+    controller.tick();
+    await Promise.resolve();
+    expect(controller.getView().saveError).toBe(true);
+    expect(save.view().warehouse).toEqual([]);
+    expect(save.view().unlockedChapterIds).toEqual([]);
+    storage.fail = false;
+    await controller.retrySettlement();
+    expect(new ReferenceSave(storage).view().unlockedChapterIds).toEqual(['siyuan-code']);
+    expect(new ReferenceSave(storage).view().warehouse).toHaveLength(3);
+    await controller.retrySettlement();
+    expect(save.view().warehouse).toHaveLength(3);
+  });
+
+  it('does not unlock a chapter when a required evidence item was dropped', async () => {
+    let now = 0;
+    const storage = new MemoryStorage();
+    const save = new ReferenceSave(storage);
+    const bus = new EventBus();
+    const inventory = new ReferenceInventory(bus, 6, ITEM_DEFINITIONS);
+    const controller = new RaidController(
+      inventory,
+      save,
+      bus,
+      RAID_RULES,
+      ITEM_DEFINITIONS,
+      () => now,
+      () => 'drop',
+    );
+    await controller.start();
+    for (const [index, itemId] of ['torn-notebook', 'anomalous-feather', 'siyuan-key'].entries()) {
+      inventory.addLoot({
+        instanceId: `drop-${index}`,
+        itemId,
+        origin: { kind: 'raid-loot', obtainedInRaidId: 'drop' },
+      });
+    }
+    controller.setQuestComplete(true);
+    inventory.remove('drop-0');
+    controller.setExtractionPresence(true);
+    controller.startExtraction();
+    now += 5000;
+    controller.tick();
+    await Promise.resolve();
+    expect(controller.getView().phase).toBe('success');
+    expect(save.view().unlockedChapterIds).toEqual([]);
+    expect(save.view().lastResult?.questComplete).toBe(false);
+  });
   it('persists success across reload; duplicate settlement cannot duplicate items', async () => {
     const storage = new MemoryStorage();
     const save = new ReferenceSave(storage);

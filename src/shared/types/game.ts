@@ -45,6 +45,7 @@ export interface RaidResult {
   readonly reason: FailureReason | null;
   readonly items: readonly ItemInstance[];
   readonly value: number;
+  readonly questComplete?: boolean;
 }
 
 export interface RaidView {
