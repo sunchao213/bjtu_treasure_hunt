@@ -35,10 +35,10 @@ export const WORLD = {
     { x: 950, y: 375, width: 245, height: 40 },
   ] satisfies Rect[],
   gates: [
-    { x: 625, y: 837, name: '南门 · 撤离点' },
-    { x: 85, y: 375, name: '西门' },
-    { x: 1130, y: 285, name: '东门' },
-    { x: 1165, y: 395, name: '东南门' },
+    { x: 625, y: 837, name: '南门 · 撤离点', role: 'extraction' as const },
+    { x: 85, y: 375, name: '西门 · 地标', role: 'landmark' as const },
+    { x: 1130, y: 285, name: '东门 · 地标', role: 'landmark' as const },
+    { x: 1165, y: 395, name: '东南门 · 地标', role: 'landmark' as const },
   ],
   lamps: [
     { x: 625, y: 710, radius: 165 },

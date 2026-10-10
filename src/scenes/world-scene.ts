@@ -674,15 +674,20 @@ export class WorldScene extends Phaser.Scene {
     g.fillStyle(0x9fa89b).fillRect(clue.x - 7, clue.y - 26, 14, 21);
     this.add.text(clue.x - 30, clue.y + 19, '明湖石碑', { fontSize: '13px', color: '#d2decf' });
     for (const gate of WORLD.gates) {
+      const isExtraction = gate.role === 'extraction';
+      this.add
+        .circle(gate.x, gate.y, isExtraction ? 13 : 8, isExtraction ? 0x8cdeb2 : 0xd3c08d, 0.9)
+        .setStrokeStyle(2, 0x17251e, 0.95)
+        .setDepth(8);
       this.add
         .text(gate.x, gate.y, gate.name, {
           fontSize: '16px',
-          color: '#e0d8b9',
-          backgroundColor: '#29352f',
+          color: isExtraction ? '#baf4d4' : '#e0d8b9',
+          backgroundColor: isExtraction ? '#173f32' : '#29352f',
           padding: { x: 6, y: 4 },
         })
         .setOrigin(0.5)
-        .setDepth(42);
+        .setDepth(43);
     }
     this.add.text(45, 869, '海淀主校区 · 依据小组提供地图简化，非 1:1 复刻', {
       fontFamily: 'Microsoft YaHei',

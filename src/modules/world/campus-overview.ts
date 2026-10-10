@@ -14,33 +14,53 @@ export function drawCampusOverview(canvas: HTMLCanvasElement, player: Point): vo
   ctx.lineWidth = 5;
   ctx.strokeRect(45, 50, WORLD.width - 90, WORLD.height - 90);
   ctx.fillStyle = '#5c6860';
-  for (const road of WORLD.roads) {
-    ctx.fillRect(road.x, road.y, road.width, road.height);
-  }
+  for (const road of WORLD.roads) ctx.fillRect(road.x, road.y, road.width, road.height);
   ctx.fillStyle = '#a6b3a5';
-  for (const building of WORLD.buildings) {
+  for (const building of WORLD.buildings)
     ctx.fillRect(building.x, building.y, building.width, building.height);
-  }
   ctx.fillStyle = '#428d9c';
   ctx.fillRect(WORLD.lake.x, WORLD.lake.y, WORLD.lake.width, WORLD.lake.height);
   ctx.fillStyle = '#58754e';
   ctx.fillRect(WORLD.sports.x, WORLD.sports.y, WORLD.sports.width, WORLD.sports.height);
-  ctx.font = '64px Microsoft YaHei, sans-serif';
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 30px Microsoft YaHei, sans-serif';
   ctx.fillStyle = '#f0eee0';
-  ctx.fillText('图书馆', 475, 270);
-  ctx.fillText('明湖', 775, 380);
-  ctx.fillText('思源楼', 805, 615);
-  ctx.fillStyle = '#8cdeb2';
-  const zone = WORLD.extraction;
-  ctx.fillRect(zone.x, zone.y, zone.width, zone.height);
-  ctx.fillText('南门', 625, 895);
+  ctx.fillText('图书馆', 480, 350);
+  ctx.fillText('明湖', WORLD.lake.x + WORLD.lake.width / 2, WORLD.lake.y + WORLD.lake.height / 2);
+  ctx.fillText('思源楼', 810, 690);
+  ctx.fillText(
+    '西侧运动场',
+    WORLD.sports.x + WORLD.sports.width / 2,
+    WORLD.sports.y + WORLD.sports.height / 2,
+  );
+  ctx.font = 'bold 20px Microsoft YaHei, sans-serif';
+  ctx.fillStyle = '#d8dfd1';
+  ctx.fillText('教学楼群', 205, 492);
+  ctx.fillText('教学楼群', 395, 650);
+  ctx.fillText('实验楼群', 960, 215);
+  ctx.fillText('教学楼群', 1105, 495);
+  for (const gate of WORLD.gates) {
+    const isExtraction = gate.role === 'extraction';
+    ctx.beginPath();
+    ctx.arc(gate.x, gate.y, isExtraction ? 22 : 14, 0, Math.PI * 2);
+    ctx.fillStyle = isExtraction ? '#8cdeb2' : '#d3c08d';
+    ctx.fill();
+    ctx.strokeStyle = '#18211b';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.font = isExtraction
+      ? 'bold 26px Microsoft YaHei, sans-serif'
+      : 'bold 20px Microsoft YaHei, sans-serif';
+    ctx.fillStyle = '#f0eee0';
+    ctx.fillText(gate.name.replace(' · 地标', '').replace(' · 撤离点', ''), gate.x, gate.y - 34);
+  }
   ctx.beginPath();
-  ctx.arc(player.x, player.y, 22, 0, Math.PI * 2);
+  ctx.arc(player.x, player.y, 16, 0, Math.PI * 2);
   ctx.fillStyle = '#ffc767';
   ctx.fill();
   ctx.strokeStyle = '#111714';
-  ctx.lineWidth = 7;
+  ctx.lineWidth = 6;
   ctx.stroke();
   ctx.restore();
 }
