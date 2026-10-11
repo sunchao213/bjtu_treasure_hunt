@@ -1,0 +1,26 @@
+sequenceDiagram
+  actor P as 玩家
+  participant S as WorldScene
+  participant I as SearchInteraction
+  participant V as InventoryPort
+  participant E as EventBus
+  P->>S: 在搜索点按住 E
+  S->>S: 校验范围、视线、光照、前置证据
+  alt 条件不满足或松键/移动/受伤
+    S->>I: cancel()
+    S-->>P: 显示取消原因
+  else 条件满足
+    S->>I: begin(pointId)
+    loop 持续按键
+      S->>I: progress()
+    end
+    S->>I: finish(item, V.addLoot)
+    alt 背包满或来源无效
+      I-->>S: { ok: false }
+      S-->>P: 保留搜索点，提示腾挪空间
+    else 成功拾取
+      I-->>S: { ok: true }
+      S->>E: emit(LocationInteracted)
+      S-->>P: 物资进入本局背包
+    end
+  end
