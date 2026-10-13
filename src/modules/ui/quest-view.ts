@@ -1,5 +1,5 @@
 import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS } from '../../config/game-config';
-import { QUEST_CHAPTER_ID } from '../quests/quest-service';
+import { EVIDENCE_FEATHER, EVIDENCE_NOTEBOOK, QUEST_CHAPTER_ID } from '../quests/quest-service';
 import type { QuestProgressView } from '../quests/quest-service';
 
 /**
@@ -14,6 +14,28 @@ const STORY_BODY =
 const STORY_LOCKED = '未解锁：携带残缺手记与异常羽毛并成功撤离后，可回看本章剧情。';
 const UNLOCK_NOTICE = '思源密码 · 第一章已解锁，图鉴与剧情档案可回看。';
 
+type StepState = 'done' | 'active' | 'locked';
+
+const STEP_STATE_TEXT: Readonly<Record<StepState, string>> = {
+  done: '已完成',
+  active: '可进行',
+  locked: '未开始：需先取得残缺手记',
+};
+
+/** 第一步无前置；第二步必须先持有本局的残缺手记才可进行。 */
+function stepState(evidenceId: string | undefined, progress: QuestProgressView): StepState {
+  if (evidenceId === EVIDENCE_NOTEBOOK) {
+    return progress.notebook ? 'done' : 'active';
+  }
+  if (evidenceId === EVIDENCE_FEATHER) {
+    if (progress.feather) {
+      return 'done';
+    }
+    return progress.notebook ? 'active' : 'locked';
+  }
+  return 'locked';
+}
+
 export function renderQuestPanel(progress: QuestProgressView): void {
   const count = document.getElementById('quest-count');
   if (count) {
@@ -22,13 +44,10 @@ export function renderQuestPanel(progress: QuestProgressView): void {
   const steps = document.getElementById('quest-steps');
   if (steps) {
     for (const li of Array.from(steps.querySelectorAll('li'))) {
-      const done =
-        li.dataset.evidence === 'torn-notebook'
-          ? progress.notebook
-          : li.dataset.evidence === 'anomalous-feather'
-            ? progress.feather
-            : false;
-      li.classList.toggle('done', done);
+      const state = stepState(li.dataset.evidence, progress);
+      li.classList.toggle('done', state === 'done');
+      li.classList.toggle('active', state === 'active');
+      li.setAttribute('title', STEP_STATE_TEXT[state]);
     }
   }
   const status = document.getElementById('quest-status');

@@ -150,6 +150,7 @@ async function bootstrap(): Promise<void> {
     element('light-reserves').textContent =
       `备用电池 ${lighting.spareBatteries} · 照明棒 ${lighting.flares}`;
     element<HTMLProgressElement>('battery-progress').value = lighting.battery;
+    app.dataset.valueReady = String(view.value >= view.threshold);
     element('gate-label').textContent = view.value >= view.threshold ? '可以撤离' : '继续搜集';
     element('value-hint').textContent =
       view.value >= view.threshold
