@@ -17,6 +17,11 @@ import type { RaidController } from '../modules/raid/raid-controller';
 import type { EventBus } from '../shared/events/game-events';
 import type { InventoryPort, ItemInstance, Point } from '../shared/types/game';
 import type { TouchControls } from '../modules/world/touch-controls';
+import {
+  isQuestComplete,
+  prerequisiteHint,
+  QUEST_COMPLETE_HINT,
+} from '../modules/quests/quest-service';
 
 interface SceneServices {
   controller: RaidController;
@@ -482,17 +487,14 @@ export class WorldScene extends Phaser.Scene {
         lineOfSight(this.position, point, WORLD.obstacles),
     );
     if (chest) {
-      const hasNotebook = this.services.inventory
-        .getCarriedItems()
-        .some(
-          (item) =>
-            item.itemId === 'torn-notebook' &&
-            item.origin.kind === 'raid-loot' &&
-            item.origin.obtainedInRaidId === view.raidId,
-        );
-      if (chest.itemId === 'anomalous-feather' && !hasNotebook) {
+      const prerequisite = prerequisiteHint(
+        chest.itemId,
+        this.services.inventory.getCarriedItems(),
+        view.raidId,
+      );
+      if (prerequisite !== null) {
         this.search.cancel();
-        this.interaction = '湖畔线索 · 缺少本局残缺手记';
+        this.interaction = prerequisite;
         return;
       }
       if (!this.lighting.illuminated(chest, this.position, this.aim, WORLD.obstacles)) {
@@ -519,16 +521,9 @@ export class WorldScene extends Phaser.Scene {
             raidId: view.raidId,
             locationId: chest.id,
           });
-          const questItems = this.services.inventory
-            .getCarriedItems()
-            .filter(
-              (item) =>
-                item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === view.raidId,
-            )
-            .map((item) => item.itemId);
-          if (questItems.includes('torn-notebook') && questItems.includes('anomalous-feather')) {
+          if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)) {
             this.services.controller.setQuestComplete(true);
-            this.services.notify('手记与异常羽毛已凑齐；带着它们成功撤离可解锁思源密码。');
+            this.services.notify(QUEST_COMPLETE_HINT);
           }
         }
         this.services.notify(

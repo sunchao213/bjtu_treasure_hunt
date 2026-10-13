@@ -7,6 +7,8 @@ import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save'
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
 import { bindGameRules } from './modules/ui/game-rules';
+import { renderChapterUnlock, renderCodexPanel, renderQuestPanel } from './modules/ui/quest-view';
+import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
 import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
@@ -78,6 +80,7 @@ async function bootstrap(): Promise<void> {
   const controller = new RaidController(inventory, save, events, RAID_RULES, ITEM_DEFINITIONS);
   let lastInventory = '';
   let lastWarehouse = '';
+  let lastCodex = '';
   let renderedAt = 0;
   let interacted = '';
   let searchProgress = 0;
@@ -183,16 +186,7 @@ async function bootstrap(): Promise<void> {
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = inventory.getCarriedItems();
-    const evidence = carried
-      .filter(
-        (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === view.raidId,
-      )
-      .map((item) => item.itemId);
-    element('quest-status').textContent = evidence.includes('torn-notebook')
-      ? evidence.includes('anomalous-feather')
-        ? '线索齐备 · 带回南门'
-        : '下一线索：明湖石碑'
-      : '线索：图书馆外残缺手记';
+    renderQuestPanel(questProgress(carried, view.raidId));
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
       renderInventory(carried);
@@ -213,6 +207,15 @@ async function bootstrap(): Promise<void> {
         select.add(new Option(ITEM_DEFINITIONS[item.itemId]?.name ?? item.itemId, item.instanceId));
       }
       lastWarehouse = warehouseSignature;
+    }
+    renderChapterUnlock(
+      element('quest-unlock'),
+      view.result !== null && chapterUnlockGranted(view.result),
+    );
+    const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
+    if (codexSignature !== lastCodex) {
+      renderCodexPanel(element('codex-list'), element('story-archive'), archive);
+      lastCodex = codexSignature;
     }
   }
 
