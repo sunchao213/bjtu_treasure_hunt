@@ -822,6 +822,20 @@ footer {
   font-weight: 650;
   color: #e5e7e6;
 }
+.story-subtitle {
+  margin: 0 0 10px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #8d9b83;
+}
+.story-act-title {
+  margin: 12px 0 4px;
+  padding-left: 8px;
+  border-left: 3px solid #e6ac48;
+  font-size: 12px;
+  font-weight: 650;
+  color: #e8dcc0;
+}
 .story-body {
   margin: 0;
   padding-left: 10px;

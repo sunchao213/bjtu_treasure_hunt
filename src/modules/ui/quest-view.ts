@@ -1,5 +1,6 @@
 import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS } from '../../config/game-config';
-import { EVIDENCE_FEATHER, EVIDENCE_NOTEBOOK, QUEST_CHAPTER_ID } from '../quests/quest-service';
+import { CODEX_ENTRIES, FIRST_CHAPTER } from '../quests/chapter-content';
+import { EVIDENCE_FEATHER, EVIDENCE_NOTEBOOK } from '../quests/quest-service';
 import type { QuestProgressView } from '../quests/quest-service';
 
 /**
@@ -7,11 +8,6 @@ import type { QuestProgressView } from '../quests/quest-service';
  * 只消费外部传入的快照并更新 DOM，不发起任何业务写入。
  */
 
-const STORY_TITLE = '第一章 · 明湖边的异常羽毛';
-const STORY_BODY =
-  '你从图书馆外的旧书架夹层里抽出一本残缺手记，按记号擦拭明湖石碑，一枚泛着微光的异常羽毛落进掌心。' +
-  '带着它们离开异常区域的那一刻，「思源密码」正式向你敞开。';
-const STORY_LOCKED = '未解锁：携带残缺手记与异常羽毛并成功撤离后，可回看本章剧情。';
 const UNLOCK_NOTICE = '思源密码 · 第一章已解锁，图鉴与剧情档案可回看。';
 
 type StepState = 'done' | 'active' | 'locked';
@@ -61,6 +57,14 @@ export interface CodexArchive {
   readonly unlockedChapterIds: readonly string[];
 }
 
+function itemName(itemId: string): string {
+  return ITEM_DEFINITIONS[itemId]?.name ?? itemId;
+}
+
+function evidenceNames(evidenceIds: readonly string[]): string {
+  return evidenceIds.map(itemName).join('与');
+}
+
 export function renderCodexPanel(
   list: HTMLElement,
   story: HTMLElement,
@@ -71,18 +75,48 @@ export function renderCodexPanel(
     const lit = archive.codexIds.includes(itemId);
     const li = document.createElement('li');
     li.className = lit ? 'lit' : 'unlit';
-    li.textContent = `${lit ? '◆' : '◇'} ${ITEM_DEFINITIONS[itemId]?.name ?? itemId}`;
+    li.textContent = `${lit ? '◆' : '◇'} ${itemName(itemId)}`;
+    const entry = CODEX_ENTRIES[itemId];
+    if (entry !== undefined) {
+      li.title = entry;
+    }
     list.append(li);
   }
+
   story.replaceChildren();
+  const unlocked = archive.unlockedChapterIds.includes(FIRST_CHAPTER.chapterId);
   const heading = document.createElement('p');
   heading.className = 'story-title';
-  heading.textContent = STORY_TITLE;
-  const unlocked = archive.unlockedChapterIds.includes(QUEST_CHAPTER_ID);
-  const text = document.createElement('p');
-  text.className = unlocked ? 'story-body' : 'muted';
-  text.textContent = unlocked ? STORY_BODY : STORY_LOCKED;
-  story.append(heading, text);
+  heading.textContent = FIRST_CHAPTER.title;
+  const subtitle = document.createElement('p');
+  subtitle.className = 'story-subtitle';
+  subtitle.textContent = FIRST_CHAPTER.subtitle;
+  story.append(heading, subtitle);
+
+  if (!unlocked) {
+    const hint = document.createElement('p');
+    hint.className = 'muted';
+    hint.textContent = FIRST_CHAPTER.unlockHint;
+    story.append(hint);
+  }
+
+  for (const act of FIRST_CHAPTER.acts) {
+    const actTitle = document.createElement('p');
+    actTitle.className = 'story-act-title';
+    actTitle.textContent = act.title;
+    story.append(actTitle);
+    const body = document.createElement('p');
+    if (unlocked) {
+      body.className = 'story-body';
+      body.textContent = act.body;
+    } else {
+      body.className = 'muted';
+      body.textContent = act.requiresEvidence.length
+        ? `未解锁：需先取得${evidenceNames(act.requiresEvidence)}并成功带出。`
+        : '未解锁：成功带出本章证据后开启。';
+    }
+    story.append(body);
+  }
 }
 
 export function renderChapterUnlock(target: HTMLElement, granted: boolean): void {

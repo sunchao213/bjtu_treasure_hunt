@@ -22,6 +22,7 @@ import {
   prerequisiteHint,
   QUEST_COMPLETE_HINT,
 } from '../modules/quests/quest-service';
+import { evidenceStoryBeat } from '../modules/quests/chapter-content';
 
 interface SceneServices {
   controller: RaidController;
@@ -523,12 +524,17 @@ export class WorldScene extends Phaser.Scene {
           });
           if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)) {
             this.services.controller.setQuestComplete(true);
-            this.services.notify(QUEST_COMPLETE_HINT);
           }
         }
-        this.services.notify(
-          result.ok ? '搜索完成，物资进入本局背包。' : '背包已满，搜索点已保留，腾出空间后重试。',
-        );
+        let message = result.ok
+          ? '搜索完成，物资进入本局背包。'
+          : '背包已满，搜索点已保留，腾出空间后重试。';
+        if (result.ok) {
+          message = isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)
+            ? QUEST_COMPLETE_HINT
+            : (evidenceStoryBeat(chest.itemId) ?? message);
+        }
+        this.services.notify(message);
       }
       return;
     }
