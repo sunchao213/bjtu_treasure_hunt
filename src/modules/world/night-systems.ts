@@ -111,6 +111,15 @@ export class NightLighting {
     }
     return this.illuminated(target, player, aim, walls);
   }
+  flashlightReveals(target: Point, player: Point, aim: number, walls: readonly Rect[]): boolean {
+    return (
+      this.enabled &&
+      this.battery > 0 &&
+      distance(target, player) <= 310 &&
+      Math.abs(angleDifference(angleBetween(player, target), aim)) <= Math.PI / 5 &&
+      lineOfSight(player, target, walls)
+    );
+  }
   illuminated(target: Point, player: Point, aim: number, walls: readonly Rect[]): boolean {
     if (
       this.enabled &&

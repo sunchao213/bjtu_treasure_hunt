@@ -10,10 +10,13 @@ export function renderDarkness(
   player: Point,
   aim: number,
   walls: readonly Rect[],
+  origin: Point = { x: 0, y: 0 },
 ): void {
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = 'rgba(3, 5, 8, 0.92)';
   ctx.fillRect(0, 0, width, height);
+  ctx.save();
+  ctx.translate(-origin.x, -origin.y);
   const illuminate = (
     source: Point,
     radius: number,
@@ -21,6 +24,13 @@ export function renderDarkness(
     sweep: number,
     strength: number,
   ) => {
+    if (
+      source.x + radius < origin.x ||
+      source.x - radius > origin.x + width ||
+      source.y + radius < origin.y ||
+      source.y - radius > origin.y + height
+    )
+      return;
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(source.x, source.y);
@@ -48,4 +58,5 @@ export function renderDarkness(
   if (lighting.enabled && lighting.battery > 0) {
     illuminate(player, 310, aim - Math.PI / 5, (Math.PI * 2) / 5, 1);
   }
+  ctx.restore();
 }

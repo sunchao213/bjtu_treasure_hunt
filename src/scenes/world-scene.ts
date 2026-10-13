@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { generateLootSpawns, type LootSpawn } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
@@ -31,6 +32,8 @@ export class WorldScene extends Phaser.Scene {
   private position: Point = { ...WORLD.spawn };
   private player?: Phaser.GameObjects.Container;
   private aura?: Phaser.GameObjects.Arc;
+  private searchPoints: LootSpawn[] = [];
+  private darknessImage?: Phaser.GameObjects.Image;
   private darkness?: Phaser.Textures.CanvasTexture;
   private flashlight?: Phaser.GameObjects.Graphics;
   private extraction?: Phaser.GameObjects.Rectangle;
@@ -87,9 +90,8 @@ export class WorldScene extends Phaser.Scene {
   create(): void {
     this.drawCampus();
     this.textures.remove('night-mask');
-    this.darkness =
-      this.textures.createCanvas('night-mask', WORLD.width, WORLD.height) ?? undefined;
-    this.add.image(0, 0, 'night-mask').setOrigin(0).setDepth(40);
+    this.darkness = this.textures.createCanvas('night-mask', 1, 1) ?? undefined;
+    this.darknessImage = this.add.image(0, 0, 'night-mask').setOrigin(0).setDepth(40);
     this.flashlight = this.add.graphics().setDepth(41);
     for (const lamp of LAMPS) {
       this.add.rectangle(lamp.x, lamp.y, 10, 18, 0xffd27b).setDepth(42);
@@ -133,15 +135,6 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(25);
       this.enemyObjects.set(enemy.id, object);
     }
-    for (const point of WORLD.searchPoints) {
-      const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
-      const chest = this.add.rectangle(0, 0, 24, 18, 0xc99f60).setStrokeStyle(2, 0xffdc96);
-      const seam = this.add.rectangle(0, 0, 3, 18, 0x594523);
-      this.chestObjects.set(
-        point.id,
-        this.add.container(point.x, point.y, [halo, chest, seam]).setDepth(10),
-      );
-    }
     const keyboard = this.input.keyboard;
     if (keyboard) {
       for (const key of [
@@ -165,7 +158,9 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     const resizeCamera = () => {
-      this.cameras.main.setZoom(this.scale.width < 600 ? 0.72 : 1);
+      this.cameras.main.setZoom(
+        matchMedia('(pointer: coarse), (max-width: 950px)').matches ? 0.85 : 1,
+      );
     };
     resizeCamera();
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeCamera);
@@ -239,7 +234,9 @@ export class WorldScene extends Phaser.Scene {
       this.player?.setPosition(this.position.x, this.position.y);
       const pointer = this.input.activePointer;
       const touchLayout = matchMedia('(pointer: coarse), (max-width: 950px)').matches;
-      if (touchLayout && (movement.x || movement.y)) {
+      if (touchLayout && this.services.touch.aim) {
+        this.aim = Math.atan2(this.services.touch.aim.y, this.services.touch.aim.x);
+      } else if (touchLayout && (movement.x || movement.y)) {
         this.aim = Math.atan2(movement.y, movement.x);
       } else if (pointer && !touchLayout) {
         const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -317,7 +314,7 @@ export class WorldScene extends Phaser.Scene {
     } else {
       this.search.cancel();
       this.interaction = this.services.controller.isPaused()
-        ? '已暂停 · 关闭规则后继续'
+        ? '已暂停 · 横屏并关闭规则 / 校园图 / 图鉴后继续'
         : view.phase === 'preparing'
           ? '准备好后，开始本次校园探索'
           : '本次探索已结束，请查看结算';
@@ -337,20 +334,31 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     if (this.time.now - this.lastNightDraw >= 32) {
+      const camera = this.cameras.main;
+      const origin = { x: camera.worldView.x - 128, y: camera.worldView.y - 128 };
+      const width = Math.ceil(camera.width / camera.zoom) + 256;
+      const height = Math.ceil(camera.height / camera.zoom) + 256;
+      if (this.darkness.width !== width || this.darkness.height !== height)
+        this.darkness.setSize(width, height);
+      this.darknessImage?.setPosition(origin.x, origin.y);
       renderDarkness(
         this.darkness.context,
-        WORLD.width,
-        WORLD.height,
+        width,
+        height,
         this.lighting,
         this.position,
         this.aim,
         WORLD.obstacles,
+        origin,
       );
       this.darkness.refresh();
       const overview = document.querySelector<HTMLCanvasElement>('#campus-overview');
       if (overview) {
         drawCampusOverview(overview, this.position);
       }
+      const mapDialog = document.querySelector<HTMLDialogElement>('#campus-map-dialog');
+      const expanded = document.querySelector<HTMLCanvasElement>('#campus-map-expanded');
+      if (mapDialog?.open && expanded) drawCampusOverview(expanded, this.position, true);
       this.lastNightDraw = this.time.now;
     }
     this.flashlight.clear();
@@ -398,10 +406,12 @@ export class WorldScene extends Phaser.Scene {
         }
       }
     }
-    for (const point of WORLD.searchPoints) {
+    for (const point of this.searchPoints) {
       this.chestObjects
         .get(point.id)
-        ?.setVisible(this.lighting.visible(point, this.position, this.aim, WORLD.obstacles));
+        ?.setVisible(
+          this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
+        );
     }
     for (const drop of this.ground.values()) {
       drop.sprite.setVisible(
@@ -475,11 +485,11 @@ export class WorldScene extends Phaser.Scene {
       }
       return;
     }
-    const chest = WORLD.searchPoints.find(
+    const chest = this.searchPoints.find(
       (point) =>
         !this.search.isOpened(point.id) &&
         distance(point, this.position) < 60 &&
-        lineOfSight(this.position, point, WORLD.obstacles),
+        this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
     );
     if (chest) {
       const hasNotebook = this.services.inventory
@@ -493,11 +503,6 @@ export class WorldScene extends Phaser.Scene {
       if (chest.itemId === 'anomalous-feather' && !hasNotebook) {
         this.search.cancel();
         this.interaction = '湖畔线索 · 缺少本局残缺手记';
-        return;
-      }
-      if (!this.lighting.illuminated(chest, this.position, this.aim, WORLD.obstacles)) {
-        this.search.cancel();
-        this.interaction = '光线不足';
         return;
       }
       this.interaction = `长按 E 搜索 · ${ITEM_DEFINITIONS[chest.itemId]?.name ?? '物资'}`;
@@ -578,7 +583,22 @@ export class WorldScene extends Phaser.Scene {
     this.lastNightDraw = -Infinity;
     this.player?.setPosition(this.position.x, this.position.y);
     for (const object of this.chestObjects.values()) {
-      object.setAlpha(1);
+      object.destroy();
+    }
+    this.chestObjects.clear();
+    this.searchPoints = raidId ? generateLootSpawns() : [];
+    for (const point of this.searchPoints) {
+      const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
+      const chest = this.add.rectangle(0, 0, 24, 18, 0xc99f60).setStrokeStyle(2, 0xffdc96);
+      const seam = this.add.rectangle(0, 0, 3, 18, 0x594523);
+      this.chestObjects.set(
+        point.id,
+        this.add
+          .container(point.x, point.y, [halo, chest, seam])
+          .setName(`chest-${point.id}`)
+          .setDepth(10)
+          .setVisible(false),
+      );
     }
     for (const drop of this.ground.values()) {
       drop.sprite.destroy();
@@ -591,6 +611,30 @@ export class WorldScene extends Phaser.Scene {
     this.services.touch.reset();
   }
 
+  private addLandmarkLabel(
+    x: number,
+    y: number,
+    name: string,
+    width: number,
+    primary = false,
+  ): void {
+    this.add
+      .text(x, y, name, {
+        fontFamily: 'Microsoft YaHei, sans-serif',
+        fontSize: primary ? '30px' : '24px',
+        fontStyle: 'bold',
+        color: primary ? '#ffe3a0' : '#f2f6ef',
+        backgroundColor: '#14221e',
+        stroke: '#14221e',
+        strokeThickness: 2,
+        padding: { x: 10, y: 6 },
+        align: 'center',
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5)
+      .setDepth(44);
+  }
+
   private drawCampus(): void {
     const g = this.add.graphics();
     g.fillStyle(0x263c32);
@@ -600,33 +644,46 @@ export class WorldScene extends Phaser.Scene {
     for (const road of WORLD.roads) {
       g.fillRect(road.x, road.y, road.width, road.height);
     }
-    const sports = WORLD.sports;
-    g.fillStyle(0x75685d).fillRoundedRect(sports.x, sports.y, sports.width, sports.height, 75);
-    g.fillStyle(0x345844).fillRoundedRect(
-      sports.x + 25,
-      sports.y + 20,
-      sports.width - 50,
-      sports.height - 40,
-      50,
+    for (const sports of WORLD.sportsFields) {
+      g.fillStyle(0x75685d).fillRoundedRect(sports.x, sports.y, sports.width, sports.height, 75);
+      g.fillStyle(0x345844).fillRoundedRect(
+        sports.x + 25,
+        sports.y + 20,
+        sports.width - 50,
+        sports.height - 40,
+        50,
+      );
+      g.lineStyle(2, 0xb3c0a5, 0.8).strokeRect(
+        sports.x + 45,
+        sports.y + 55,
+        sports.width - 90,
+        sports.height - 110,
+      );
+      g.lineBetween(
+        sports.x + 45,
+        sports.y + sports.height / 2,
+        sports.x + sports.width - 45,
+        sports.y + sports.height / 2,
+      );
+      g.strokeCircle(sports.x + sports.width / 2, sports.y + sports.height / 2, 22);
+      this.addLandmarkLabel(
+        sports.x + sports.width / 2,
+        sports.y + sports.height / 2,
+        sports.name,
+        sports.width,
+        true,
+      );
+    }
+    const garden = WORLD.garden;
+    g.fillStyle(0x3e6148).fillRoundedRect(garden.x, garden.y, garden.width, garden.height, 40);
+    this.addLandmarkLabel(
+      garden.x + garden.width / 2,
+      garden.y + garden.height / 2,
+      garden.name,
+      garden.width,
+      true,
     );
-    g.lineStyle(2, 0xb3c0a5, 0.8).strokeRect(
-      sports.x + 45,
-      sports.y + 55,
-      sports.width - 90,
-      sports.height - 110,
-    );
-    g.lineBetween(
-      sports.x + 45,
-      sports.y + sports.height / 2,
-      sports.x + sports.width - 45,
-      sports.y + sports.height / 2,
-    );
-    g.strokeCircle(sports.x + sports.width / 2, sports.y + sports.height / 2, 22);
-    this.add.text(sports.x + 55, sports.y + sports.height + 9, '西侧运动场', {
-      fontSize: '16px',
-      color: '#d5decf',
-    });
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 40; i++) {
       const x = 70 + i * 82;
       g.fillStyle(0x335a4c);
       g.fillCircle(x, 50, 17);
@@ -640,16 +697,13 @@ export class WorldScene extends Phaser.Scene {
       g.fillRoundedRect(building.x, building.y, building.width, building.height, 5);
       g.fillStyle(0xb9bf9b);
       g.fillRect(building.x + 9, building.y + 9, building.width - 18, 10);
-      this.add.text(building.x + 16, building.y + 28, building.name, {
-        fontFamily: 'Microsoft YaHei',
-        fontSize: '20px',
-        color: '#153b38',
-      });
-      this.add.text(building.x + 16, building.y + 57, building.sub, {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#36564a',
-      });
+      this.addLandmarkLabel(
+        building.x + building.width / 2,
+        building.y + building.height / 2,
+        building.name,
+        building.width,
+        ['思源楼', '图书馆'].includes(building.name),
+      );
     }
     const lake = WORLD.lake;
     g.fillStyle(0x365b57);
@@ -660,19 +714,16 @@ export class WorldScene extends Phaser.Scene {
     for (let y = lake.y + 25; y < lake.y + lake.height - 10; y += 25) {
       g.lineBetween(lake.x + 20, y, lake.x + lake.width - 20, y);
     }
-    this.add.text(lake.x + 40, lake.y + 40, '明湖', {
-      fontFamily: 'Microsoft YaHei',
-      fontSize: '25px',
-      color: '#d2e8cf',
-    });
-    this.add.text(lake.x + 35, lake.y + 74, 'MINGHU', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#acc9b9',
-    });
-    const clue = WORLD.searchPoints.find((point) => point.id === 'lake-clue')!;
+    this.addLandmarkLabel(
+      lake.x + lake.width / 2,
+      lake.y + lake.height / 2,
+      '明湖',
+      lake.width,
+      true,
+    );
+    const clue = WORLD.stone;
     g.fillStyle(0x9fa89b).fillRect(clue.x - 7, clue.y - 26, 14, 21);
-    this.add.text(clue.x - 30, clue.y + 19, '明湖石碑', { fontSize: '13px', color: '#d2decf' });
+    this.addLandmarkLabel(clue.x, clue.y + 19, '明湖石碑', 190);
     for (const gate of WORLD.gates) {
       const isExtraction = gate.role === 'extraction';
       this.add
@@ -681,7 +732,9 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(8);
       this.add
         .text(gate.x, gate.y, gate.name, {
-          fontSize: '16px',
+          fontFamily: 'Microsoft YaHei, sans-serif',
+          fontSize: '24px',
+          fontStyle: 'bold',
           color: isExtraction ? '#baf4d4' : '#e0d8b9',
           backgroundColor: isExtraction ? '#173f32' : '#29352f',
           padding: { x: 6, y: 4 },
@@ -689,7 +742,7 @@ export class WorldScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(43);
     }
-    this.add.text(45, 869, '海淀主校区 · 依据小组提供地图简化，非 1:1 复刻', {
+    this.add.text(45, WORLD.height - 31, '依据小组提供的海淀主校区地图简化制作，非 1:1 测绘', {
       fontFamily: 'Microsoft YaHei',
       fontSize: '13px',
       color: '#97b1a1',
