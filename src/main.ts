@@ -11,6 +11,7 @@ import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
+import { SoundManager } from './modules/ui/sound-manager';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -21,6 +22,11 @@ function element<T extends HTMLElement>(id: string): T {
 }
 const app = element('app');
 mountShell(app);
+const settings = document.createElement('section');
+settings.className = 'side-card settings';
+settings.innerHTML =
+  '<h2>设置</h2><label>音效音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label>';
+document.querySelector('aside')?.append(settings);
 const notify = (message: string) => {
   element('notice').textContent = message;
 };
@@ -82,12 +88,25 @@ async function bootstrap(): Promise<void> {
   let interacted = '';
   let searchProgress = 0;
   const touch = new TouchControls(element('touch-controls'));
+  const sound = new SoundManager();
+  const volume = element<HTMLInputElement>('sound-volume');
+  const brightness = element<HTMLInputElement>('screen-brightness');
+  const applySettings = () => {
+    sound.setSettings({ volume: Number(volume.value), brightness: Number(brightness.value) });
+    document.documentElement.style.setProperty('--screen-brightness', brightness.value);
+  };
+  volume.value = String(sound.getSettings().volume);
+  brightness.value = String(sound.getSettings().brightness);
+  volume.oninput = applySettings;
+  brightness.oninput = applySettings;
+  applySettings();
   const scene = new WorldScene({
     controller,
     inventory,
     events,
     notify,
     touch,
+    sound,
     onFrame: (interaction, progress) => {
       interacted = interaction;
       searchProgress = progress;
@@ -298,7 +317,10 @@ async function bootstrap(): Promise<void> {
     }
   };
   element('extract').onclick = () => {
-    controller.startExtraction();
+    const result = controller.startExtraction();
+    if (result.ok) {
+      sound.play('home');
+    }
     render();
   };
   element('abandon').onclick = () => {

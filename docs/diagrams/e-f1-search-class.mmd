@@ -1,6 +1,7 @@
 classDiagram
   class WorldScene {
     -SearchInteraction search
+    -TouchControls touch
     -interact(held: boolean)
     +clearInteractions()
   }
@@ -21,12 +22,18 @@ classDiagram
   class EventBus {
     +emit(type, payload) void
   }
+  class TouchControls {
+    +held(action: string) boolean
+    +reset() void
+    +finishFrame() void
+  }
   class ItemInstance {
     +instanceId: string
     +itemId: string
     +origin: ItemOrigin
   }
   WorldScene *-- SearchInteraction
+  WorldScene --> TouchControls : reads E input
   WorldScene --> InventoryPort : inserts loot
   WorldScene --> EventBus : LocationInteracted
   SearchInteraction ..> ItemInstance : completes with
