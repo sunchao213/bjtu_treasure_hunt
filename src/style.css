@@ -5,9 +5,17 @@
   background: #111313;
   font-synthesis: none;
 }
-body { filter: brightness(var(--screen-brightness)); }
-.settings label { display: block; font-size: 12px; margin: 10px 0; }
-.settings input { width: 100%; }
+body {
+  filter: brightness(var(--screen-brightness));
+}
+.settings label {
+  display: block;
+  font-size: 12px;
+  margin: 10px 0;
+}
+.settings input {
+  width: 100%;
+}
 * {
   box-sizing: border-box;
 }
