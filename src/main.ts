@@ -284,7 +284,8 @@ async function bootstrap(): Promise<void> {
       return;
     }
     const selected = element<HTMLSelectElement>('loadout').value;
-    const result = await controller.start(selected ? [selected] : []);
+    const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
+    const result = await controller.start(selected ? [selected] : [], starterWeapon || undefined);
     notify(
       result.ok
         ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'

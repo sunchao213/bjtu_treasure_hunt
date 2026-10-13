@@ -41,6 +41,7 @@ export function mountShell(root: HTMLElement): void {
             <p id="quest-status" class="muted">线索：图书馆外残缺手记</p>
           </section>
           <section class="side-card" id="preparation"><h2>行前准备</h2>
+            <label class="field-label" for="starter-weapon">初始武器</label><select id="starter-weapon"><option value="">不携带武器</option><option value="training-bat">训练棍 · 伤害 35</option><option value="stun-baton">电击器 · 伤害 15 · 可使用 15 次</option></select>
             <label class="field-label" for="loadout">从仓库带入一件物品（不计本局价值）</label><select id="loadout"><option value="">轻装出发 · 不带入物品</option></select>
             <label class="consent"><input id="risk-consent" type="checkbox" />我已了解：失败或刷新会损失本局携带物，未带入的仓库物品保留。</label>
             <button id="start" class="primary" disabled>开始探索 <span>↗</span></button>

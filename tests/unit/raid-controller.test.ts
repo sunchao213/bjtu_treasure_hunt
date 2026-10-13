@@ -12,7 +12,7 @@ const loot = (id: string, itemId = 'school-badge'): ItemInstance => ({
 });
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
-async function setup(durationMs = 600_000) {
+async function setup(durationMs = 600_000, starterWeaponId?: string) {
   let now = 0;
   let rejectSave = false;
   const results: RaidResult[] = [];
@@ -36,7 +36,7 @@ async function setup(durationMs = 600_000) {
     () => now,
     () => 'raid-1',
   );
-  await controller.start();
+  await controller.start([], starterWeaponId);
   return {
     controller,
     inventory,
@@ -85,6 +85,23 @@ describe('A extraction lifecycle', () => {
     expect(s.controller.getView().phase).toBe('success');
     expect(s.controller.prepareNext()).toBe(true);
     expect(s.controller.isPaused()).toBe(false);
+  });
+
+  it('adds a selected starter weapon to the raid inventory without requiring warehouse stock', async () => {
+    const s = await setup(600_000, 'training-bat');
+    expect(s.inventory.getCarriedItems()).toEqual([
+      {
+        instanceId: 'raid-1:starter:training-bat',
+        itemId: 'training-bat',
+        origin: { kind: 'carry-in' },
+      },
+    ]);
+    s.fill();
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(5_000);
+    await flush();
+    expect(s.results[0]?.items.some((item) => item.itemId === 'training-bat')).toBe(false);
   });
 
   it('rejects 95, rejects outside zone, and allows exactly 100', async () => {

@@ -23,7 +23,7 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible'],
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],
     ['training-bat', '训练棍', 'common', 'weapon'],
-    ['reinforced-bat', '强化训练棍', 'uncommon', 'weapon'],
+    ['stun-baton', '电击器', 'uncommon', 'weapon'],
   ].map(([itemId, name, rarity, kind]) => {
     // Static configuration; the satisfies check belongs on the typed object below.
     const definition: ItemDefinition = {
