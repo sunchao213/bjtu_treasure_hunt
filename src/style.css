@@ -320,20 +320,83 @@ h1 span {
 .map-viewport {
   position: relative;
 }
-.campus-overview {
+.campus-map-button {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 190px;
-  height: auto;
-  aspect-ratio: 1280 / 900;
+  width: 220px;
+  padding: 0;
   border: 1px solid #84917e;
+  border-radius: 4px;
+  background: #14221e;
+  color: #f4f1df;
+  overflow: hidden;
+}
+.campus-map-button:focus-visible {
+  outline: 2px solid #ffe3a0;
+  outline-offset: 3px;
+}
+.campus-overview {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
   pointer-events: none;
-  opacity: 0.94;
+}
+.campus-map-button span {
+  display: block;
+  padding: 3px;
+  font-size: 11px;
+}
+.campus-map-dialog {
+  width: min(900px, calc(100vw - 24px));
+  max-height: calc(100svh - 16px);
+  padding: 0;
+  border: 1px solid #84917e;
+  border-radius: 6px;
+  background: #14221e;
+  color: #f4f1df;
+}
+.campus-map-dialog::backdrop {
+  background: #000b;
+}
+.campus-map-dialog header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+}
+.campus-map-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.campus-map-dialog button {
+  width: 40px;
+  height: 36px;
+  padding: 0;
+  font-size: 24px;
+}
+.campus-map-scroll {
+  max-height: calc(100svh - 125px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.campus-map-dialog canvas {
+  display: block;
+  width: 100%;
+  min-width: 760px;
+  height: auto;
+}
+.campus-map-dialog p {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  line-height: 1.5;
 }
 @media (max-width: 580px) {
-  .campus-overview {
-    width: 136px;
+  .campus-map-button {
+    width: 180px;
     top: 8px;
     right: 8px;
   }
@@ -749,5 +812,367 @@ footer {
   }
   main {
     padding: 6px 12px;
+  }
+}
+
+/* ===== D：五类界面视觉规范（任务进度 / 图鉴 / 剧情档案 / 数值状态 / 双端排版） =====
+   沿用项目深色底：底 #111313 · 主文 #e5e7e6 · 次文 #aeb8af · 主色 #9bb967 · 强调 #e6ac48
+   状态色统一：未开始 #6f7d72 · 可进行 #e6ac48 · 已完成 #9bb967 */
+
+.quest-steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.quest-steps li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 9px;
+  border-left: 3px solid #3b403d;
+  border-radius: 0 5px 5px 0;
+  background: #1a1d1c;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6f7d72;
+}
+.quest-steps li::before {
+  content: '○';
+}
+.quest-steps li.done {
+  border-left-color: #9bb967;
+  background: #1d231c;
+  color: #cfe0c0;
+}
+.quest-steps li.done::before {
+  content: '●';
+  color: #9bb967;
+}
+.quest-steps li.active {
+  border-left-color: #e6ac48;
+  background: #221f19;
+  color: #e8dcc0;
+}
+.quest-steps li.active::before {
+  content: '◉';
+  color: #e6ac48;
+}
+
+.codex-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 12px;
+  font-size: 11px;
+  line-height: 1.9;
+}
+.codex-list .lit {
+  color: #dfe7dc;
+}
+.codex-list .unlit {
+  color: #55605a;
+}
+
+.story-archive {
+  margin-top: 12px;
+  border-top: 1px dashed #3b403d;
+  padding-top: 10px;
+}
+.story-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: #e5e7e6;
+}
+.story-subtitle {
+  margin: 0 0 10px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #8d9b83;
+}
+.story-step-title {
+  margin: 12px 0 4px;
+  padding-left: 8px;
+  border-left: 3px solid #e6ac48;
+  font-size: 12px;
+  font-weight: 650;
+  color: #e8dcc0;
+}
+.story-body {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 3px solid #9bb967;
+  font-size: 11px;
+  line-height: 1.8;
+  color: #c9d3c7;
+}
+
+.quest-unlock {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border-left: 3px solid #9bb967;
+  border-radius: 0 5px 5px 0;
+  background: rgba(155, 185, 103, 0.12);
+  font-size: 12px;
+  font-weight: 650;
+  color: #cfe0c0;
+}
+
+/* 价值达标时 HUD 数值转主色，未达标保持中性 */
+[data-value-ready='true'] .value b {
+  color: #9bb967;
+}
+[data-value-ready='true'] #value-hint {
+  color: #cfe0c0;
+}
+
+@media (max-width: 950px) {
+  .codex-list {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 580px) {
+  .quest-steps li,
+  .quest-unlock {
+    font-size: 11px;
+  }
+}
+/* Active mobile raids occupy the landscape viewport; inventory is an overlay. */
+.mobile-toolbar {
+  display: none;
+}
+.touch-aim {
+  width: 88px;
+  height: 88px;
+  flex-basis: 88px;
+  margin-left: auto;
+}
+.touch-aim .stick-knob {
+  top: 24px;
+  left: 24px;
+}
+.aim-label {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  right: 0;
+  color: #eed5a4;
+  font-size: 12px;
+}
+.rotate-phone {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0c1918f5;
+  color: #eed5a4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+.rotate-phone strong {
+  font-size: 24px;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .masthead,
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .notice {
+  display: none;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) main {
+  padding: 0;
+  max-width: none;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .map-panel {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  display: grid;
+  grid-template-rows: 30px 38px minmax(0, 1fr) 32px;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .map-top {
+  padding: 5px 12px;
+  font-size: 11px;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .mobile-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #16332c;
+  padding: 2px 12px;
+  font-size: 12px;
+}
+.mobile-toolbar span {
+  margin-right: auto;
+}
+.mobile-toolbar button {
+  min-height: 32px;
+  color: #eed5a4;
+  background: #29483d;
+  border: 1px solid #607768;
+  border-radius: 5px;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) #game-canvas {
+  height: 100%;
+  min-height: 0;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .interaction {
+  padding: 5px 12px;
+  font-size: 11px;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .campus-map-button {
+  width: min(190px, 24vw);
+  top: 6px;
+  right: 6px;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) aside {
+  display: none;
+}
+#app[data-mobile='true'][data-bag-open='true']:is([data-phase='active'], [data-phase='extracting'])
+  aside {
+  display: block;
+  position: absolute;
+  z-index: 60;
+  top: 68px;
+  bottom: 32px;
+  right: env(safe-area-inset-right);
+  width: min(320px, 48vw);
+  overflow-y: auto;
+  background: #17251ff5;
+  padding: 8px;
+}
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) aside .archive,
+#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) aside .debug {
+  display: none;
+}
+#app[data-mobile='true'][data-bag-open='true'] .touch-controls {
+  visibility: hidden;
+}
+@media (max-height: 420px) and (orientation: landscape) {
+  .touch-stick {
+    width: 88px;
+    height: 88px;
+    flex-basis: 88px;
+  }
+  .stick-knob {
+    top: 24px;
+    left: 24px;
+  }
+  .stick-arrows {
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .touch-actions {
+    gap: 6px;
+  }
+  .touch-actions button {
+    height: 40px;
+  }
+}
+
+.codex-dialog {
+  width: min(1000px, calc(100% - 24px));
+}
+.codex-dialog h1 small {
+  color: #a8b8ad;
+  font-size: 16px;
+  white-space: nowrap;
+}
+.codex-content {
+  padding: 16px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.codex-content > p {
+  margin: 0 0 12px;
+  color: #b4c4b9;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.codex-card {
+  padding: 16px;
+  border: 1px solid var(--codex-color);
+  border-radius: 6px;
+  background: #20332b;
+}
+.codex-visual {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--codex-color);
+}
+.codex-visual svg {
+  width: 64px;
+  height: 64px;
+}
+.codex-visual small {
+  font: 12px monospace;
+}
+.codex-card h2 {
+  margin: 12px 0 6px;
+  font-size: 17px;
+  color: #edf3ee;
+}
+.codex-card p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #c5d1c9;
+}
+.codex-card .codex-rarity {
+  color: var(--codex-color);
+}
+.codex-locked {
+  background: #192922;
+}
+.codex-locked h2,
+.codex-locked p {
+  color: #9baa9f;
+}
+.codex-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.codex-footer .primary {
+  width: auto;
+  flex-shrink: 0;
+}
+#codex-export-status {
+  color: #b4c4b9;
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .codex-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .codex-content {
+    padding: 12px;
+  }
+  .codex-card {
+    padding: 12px;
+  }
+  .codex-footer {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
