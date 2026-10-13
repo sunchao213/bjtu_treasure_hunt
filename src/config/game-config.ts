@@ -27,7 +27,7 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     // Product wording for L02 is pending team confirmation; keep its ID distinct from E01.
     ['anomalous-embrace-token', '抱抱机制关联传说物（待确认名称）', 'legendary', 'quest'],
     ['training-bat', '训练棍', 'common', 'weapon'],
-    ['reinforced-bat', '强化训练棍', 'uncommon', 'weapon'],
+    ['stun-baton', '电击器', 'uncommon', 'weapon'],
   ].map(([itemId, name, rarity, kind]) => {
     // Static configuration; the satisfies check belongs on the typed object below.
     const definition: ItemDefinition = {

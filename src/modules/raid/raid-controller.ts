@@ -53,16 +53,28 @@ export class RaidController {
     });
   }
 
-  async start(loadoutIds: readonly string[] = []): Promise<ActionResult> {
+  async start(loadoutIds: readonly string[] = [], starterWeaponId?: string): Promise<ActionResult> {
     if (this.phase !== 'preparing' || this.isBusy) {
       return { ok: false, error: 'INVALID_STATE' };
+    }
+    if (starterWeaponId && this.definitions[starterWeaponId]?.kind !== 'weapon') {
+      return { ok: false, error: 'INVALID_ITEM' };
     }
     this.isBusy = true;
     this.saveError = false;
     const raidId = this.newId();
     try {
       const loadout = await this.save.beginRaid(raidId, loadoutIds);
-      this.inventory.begin(raidId, loadout);
+      const starterWeapon = starterWeaponId
+        ? [
+            {
+              instanceId: `${raidId}:starter:${starterWeaponId}`,
+              itemId: starterWeaponId,
+              origin: { kind: 'carry-in' as const },
+            },
+          ]
+        : [];
+      this.inventory.begin(raidId, [...loadout, ...starterWeapon]);
       this.raidId = raidId;
       this.health = this.rules.maxHealth;
       this.startedAtMs = this.clock();
@@ -280,11 +292,14 @@ export class RaidController {
       return;
     }
     this.endedAtMs = this.clock();
+    const carriedItems = this.inventory.getCarriedItems();
     this.result = {
       raidId: this.raidId,
       outcome: reason ? 'failed' : 'success',
       reason,
-      items: reason ? [] : this.inventory.getCarriedItems(),
+      items: reason
+        ? []
+        : carriedItems.filter((item) => !item.instanceId.startsWith(`${this.raidId}:starter:`)),
       value: this.value(),
       questComplete:
         !reason &&
