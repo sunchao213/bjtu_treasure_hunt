@@ -89,9 +89,9 @@ export function questProgress(
   } else if (complete) {
     statusText = '线索齐备 · 带回南门撤离可解锁章节';
   } else if (evidence.notebook) {
-    statusText = '线索二 · 去明湖石碑（明湖东侧金色点）搜异常羽毛';
+    statusText = '线索二 · 去明湖石碑周边，用手电寻找异常羽毛';
   } else {
-    statusText = '线索一 · 去图书馆东侧金色点搜残缺手记';
+    statusText = '线索一 · 去图书馆周边，用手电寻找残缺手记';
   }
   return { ...evidence, complete, statusText };
 }

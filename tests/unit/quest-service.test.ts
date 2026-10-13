@@ -74,9 +74,9 @@ describe('本局任务进度', () => {
 
   it('任务卡文案按进度推进，并给出下一步方位指引', () => {
     expect(questProgress([], null).statusText).toBe('开始探索后，可按线索搜集任务证据。');
-    expect(questProgress([], RAID_ID).statusText).toBe('线索一 · 去图书馆东侧金色点搜残缺手记');
+    expect(questProgress([], RAID_ID).statusText).toBe('线索一 · 去图书馆周边，用手电寻找残缺手记');
     expect(questProgress([notebook], RAID_ID).statusText).toBe(
-      '线索二 · 去明湖石碑（明湖东侧金色点）搜异常羽毛',
+      '线索二 · 去明湖石碑周边，用手电寻找异常羽毛',
     );
     const done = questProgress([notebook, feather], RAID_ID);
     expect(done.statusText).toBe('线索齐备 · 带回南门撤离可解锁章节');

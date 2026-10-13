@@ -6,7 +6,7 @@ import {
   isCatalogItemId,
   isKnownItemId,
 } from '../../src/config/game-config';
-import { WORLD } from '../../src/config/world-config';
+import { generateLootSpawns } from '../../src/modules/world/loot-spawns';
 
 describe('product item catalog configuration', () => {
   it('contains 12 unique known codex definitions', () => {
@@ -28,7 +28,7 @@ describe('product item catalog configuration', () => {
 
   it('rejects unknown definitions and accepts every configured search-point item', () => {
     expect(() => assertKnownItemId('missing-item')).toThrow('Unknown item definition');
-    for (const point of WORLD.searchPoints) {
+    for (const point of generateLootSpawns(() => 0.5)) {
       expect(() => assertKnownItemId(point.itemId)).not.toThrow();
     }
   });
