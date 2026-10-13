@@ -24,6 +24,8 @@ export class RaidController {
   private isBusy = false;
   private saveError = false;
   private result: RaidResult | null = null;
+  private questComplete = false;
+  private pausedAtMs: number | null = null;
   private readonly unsubscribe: () => void;
   private readonly rules: RaidRules;
   private readonly definitions: Readonly<Record<string, ItemDefinition>>;
@@ -107,9 +109,30 @@ export class RaidController {
     }
   }
 
+  isPaused(): boolean {
+    return this.pausedAtMs !== null;
+  }
+
+  pause(): void {
+    this.tick();
+    if (!this.playable()) {
+      return;
+    }
+    this.cancelExtraction();
+    this.pausedAtMs = this.clock();
+  }
+
+  resume(): void {
+    if (this.pausedAtMs === null) {
+      return;
+    }
+    this.startedAtMs += Math.max(0, this.clock() - this.pausedAtMs);
+    this.pausedAtMs = null;
+  }
+
   startExtraction(): ActionResult {
     this.tick();
-    if (this.phase !== 'active') {
+    if (this.phase !== 'active' || this.isPaused()) {
       return { ok: false, error: 'INVALID_STATE' };
     }
     if (!this.inZone) {
@@ -145,9 +168,20 @@ export class RaidController {
     this.tick();
   }
 
-  heal(amount: number): void {
-    if (this.playable() && Number.isFinite(amount) && amount > 0) {
-      this.health = Math.min(this.rules.maxHealth, this.health + amount);
+  heal(amount: number): boolean {
+    if (!this.playable() || !Number.isFinite(amount) || amount <= 0) {
+      return false;
+    }
+    if (this.health >= this.rules.maxHealth) {
+      return false;
+    }
+    this.health = Math.min(this.rules.maxHealth, this.health + amount);
+    return true;
+  }
+
+  setQuestComplete(complete: boolean): void {
+    if (this.playable()) {
+      this.questComplete = complete;
     }
   }
 
@@ -209,6 +243,8 @@ export class RaidController {
     this.phase = 'preparing';
     this.raidId = null;
     this.result = null;
+    this.questComplete = false;
+    this.pausedAtMs = null;
     this.inZone = false;
     this.extractionStartedAtMs = null;
     this.health = this.rules.maxHealth;
@@ -220,12 +256,13 @@ export class RaidController {
     this.unsubscribe();
   }
   private playable(): boolean {
-    return this.phase === 'active' || this.phase === 'extracting';
+    return !this.isPaused() && (this.phase === 'active' || this.phase === 'extracting');
   }
   private remaining(): number {
     return Math.max(
       0,
-      this.rules.durationMs - ((this.endedAtMs ?? this.clock()) - this.startedAtMs),
+      this.rules.durationMs -
+        ((this.endedAtMs ?? this.pausedAtMs ?? this.clock()) - this.startedAtMs),
     );
   }
   private value(): number {
@@ -249,6 +286,19 @@ export class RaidController {
       reason,
       items: reason ? [] : this.inventory.getCarriedItems(),
       value: this.value(),
+      questComplete:
+        !reason &&
+        this.questComplete &&
+        ['torn-notebook', 'anomalous-feather'].every((id) =>
+          this.inventory
+            .getCarriedItems()
+            .some(
+              (item) =>
+                item.itemId === id &&
+                item.origin.kind === 'raid-loot' &&
+                item.origin.obtainedInRaidId === this.raidId,
+            ),
+        ),
     };
     this.phase = 'settling';
     this.extractionStartedAtMs = null;

@@ -1,14 +1,16 @@
 import './style.css';
 import { createGame } from './app/create-game';
-import { ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
+import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
-import { ReferenceSave, SAVE_KEY } from './modules/save/reference-save';
+import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
+import { bindGameRules } from './modules/ui/game-rules';
 import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
+import { TouchControls } from './modules/world/touch-controls';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -42,9 +44,9 @@ async function bootstrap(): Promise<void> {
   if (!unlock) {
     throw new Error('另一个标签页正在使用这个存档，请关闭它后刷新本页。');
   }
-  let save: ReferenceSave;
+  let save: PersistentSave;
   try {
-    save = new ReferenceSave(localStorage);
+    save = new PersistentSave(localStorage);
   } catch (error) {
     unlock();
     element<HTMLButtonElement>('reset-save').disabled = true;
@@ -58,7 +60,7 @@ async function bootstrap(): Promise<void> {
       }
       try {
         if (confirm('建议先导出原始存档。确定清空本框架的损坏存档吗？')) {
-          localStorage.removeItem(SAVE_KEY);
+          localStorage.removeItem(FORMAL_SAVE_KEY);
           location.reload();
         }
       } finally {
@@ -79,11 +81,13 @@ async function bootstrap(): Promise<void> {
   let renderedAt = 0;
   let interacted = '';
   let searchProgress = 0;
+  const touch = new TouchControls(element('touch-controls'));
   const scene = new WorldScene({
     controller,
     inventory,
     events,
     notify,
+    touch,
     onFrame: (interaction, progress) => {
       interacted = interaction;
       searchProgress = progress;
@@ -94,10 +98,44 @@ async function bootstrap(): Promise<void> {
     },
   });
   const game = createGame(scene);
+  bindGameRules(
+    () => {
+      controller.pause();
+      scene.clearInteractions();
+      render();
+    },
+    () => {
+      scene.clearInteractions();
+      controller.resume();
+      render();
+    },
+  );
 
   function render(): void {
     const view = controller.getView();
-    const playable = view.phase === 'active' || view.phase === 'extracting';
+    const lighting = scene.getLightingStatus();
+    const playable =
+      !controller.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
+    touch.setEnabled(playable);
+    app.dataset.phase = view.phase;
+    const lightButton =
+      element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="L"]');
+    lightButton?.setAttribute('aria-pressed', String(lighting.enabled));
+    const interactButton =
+      element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="E"]');
+    if (interactButton) {
+      interactButton.textContent = interacted.includes('搜索')
+        ? '搜索'
+        : interacted.includes('抱抱')
+          ? '抱抱'
+          : interacted.includes('充电')
+            ? '充电'
+            : view.inExtractionZone
+              ? '撤离'
+              : interacted.includes('拾')
+                ? '拾取'
+                : '交互';
+    }
     element('phase-label').textContent = phaseNames[view.phase];
     element('health').textContent = String(view.health);
     const seconds = Math.ceil(view.remainingMs / 1000);
@@ -105,6 +143,10 @@ async function bootstrap(): Promise<void> {
       `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     element('loot-value').textContent = String(view.value);
     element<HTMLProgressElement>('value-progress').value = view.value;
+    element('battery').textContent = `${lighting.battery}% · ${lighting.enabled ? '开启' : '关闭'}`;
+    element('light-reserves').textContent =
+      `备用电池 ${lighting.spareBatteries} · 照明棒 ${lighting.flares}`;
+    element<HTMLProgressElement>('battery-progress').value = lighting.battery;
     element('gate-label').textContent = view.value >= view.threshold ? '可以撤离' : '继续搜集';
     element('value-hint').textContent =
       view.value >= view.threshold
@@ -141,6 +183,16 @@ async function bootstrap(): Promise<void> {
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = inventory.getCarriedItems();
+    const evidence = carried
+      .filter(
+        (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === view.raidId,
+      )
+      .map((item) => item.itemId);
+    element('quest-status').textContent = evidence.includes('torn-notebook')
+      ? evidence.includes('anomalous-feather')
+        ? '线索齐备 · 带回南门'
+        : '下一线索：明湖石碑'
+      : '线索：图书馆外残缺手记';
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
       renderInventory(carried);
@@ -149,9 +201,11 @@ async function bootstrap(): Promise<void> {
     const archive = save.view();
     const warehouseSignature = JSON.stringify(archive.warehouse);
     element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
-    element('archive-detail').textContent = archive.codexIds.length
-      ? `已点亮 ${archive.codexIds.length} 种图鉴；剧情待 D 接入。`
-      : '成功撤离后，物品和图鉴会保存在此浏览器。';
+    element('archive-detail').textContent = archive.unlockedChapterIds.length
+      ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
+      : archive.codexIds.length
+        ? `已点亮 ${archive.codexIds.length} 种图鉴；带手记和异常羽毛成功撤离可解锁章节。`
+        : '成功撤离后，物品和图鉴会保存在此浏览器。';
     if (lastWarehouse !== warehouseSignature) {
       const select = element<HTMLSelectElement>('loadout');
       select.replaceChildren(new Option('轻装出发 · 不带入物品', ''));
@@ -196,12 +250,16 @@ async function bootstrap(): Promise<void> {
           if (state.phase !== 'active' && state.phase !== 'extracting') {
             return;
           }
-          if (inventory.remove(item.instanceId).ok) {
-            controller.heal(25);
-            if (state.raidId) {
-              events.emit('ItemConsumed', { raidId: state.raidId, instanceId: item.instanceId });
-            }
+          const amount = HEALING_AMOUNTS[item.itemId];
+          if (amount === undefined) {
+            notify('该恢复物尚未配置效果，物品没有消耗。');
+            return;
+          }
+          const consumed = inventory.consumeHealing(item.instanceId, () => controller.heal(amount));
+          if (consumed.ok) {
             notify('恢复物已消耗，当前携带价值已重算。');
+          } else if (consumed.error === 'INVALID_STATE') {
+            notify('当前无法使用恢复物，物品没有消耗。');
           }
         };
         li.append(use);
@@ -233,6 +291,11 @@ async function bootstrap(): Promise<void> {
         : '无法保存开局，请检查浏览器存储或刷新后重试。',
     );
     render();
+    if (result.ok && matchMedia('(max-width: 950px)').matches) {
+      element('game-canvas')
+        .closest('.map-panel')
+        ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
   };
   element('extract').onclick = () => {
     controller.startExtraction();
@@ -265,6 +328,15 @@ async function bootstrap(): Promise<void> {
       }
     }
   };
+  element('export-save').onclick = () => {
+    const blob = new Blob([save.exportRaw()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bjtu-treasure-hunt-save-v2.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   if (import.meta.env.DEV) {
     element('debug-panel').hidden = false;
     element('damage').onclick = () => {
@@ -280,21 +352,12 @@ async function bootstrap(): Promise<void> {
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       controller.dispose();
+      touch.dispose();
       game.destroy(true);
       unlock();
     });
   }
 }
-
-element('export-save').onclick = () => {
-  const blob = new Blob([localStorage.getItem(SAVE_KEY) ?? '{}'], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'bjtu-framework-save.json';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
 void bootstrap().catch((error: unknown) => {
   notify(error instanceof Error ? error.message : '启动失败，请查看开发控制台。');
   element('interaction-label').textContent = '启动尚未完成';

@@ -34,6 +34,10 @@ export type ErrorCode =
   | 'INVALID_STATE'
   | 'INVENTORY_FULL'
   | 'ITEM_NOT_FOUND'
+  | 'ITEM_NOT_USABLE'
+  | 'ITEM_ALREADY_EQUIPPED'
+  | 'EQUIPMENT_SLOT_OCCUPIED'
+  | 'BAG_FULL'
   | 'INVALID_ITEM'
   | 'SAVE_FAILED';
 export type ActionResult<T = undefined> =
@@ -45,6 +49,7 @@ export interface RaidResult {
   readonly reason: FailureReason | null;
   readonly items: readonly ItemInstance[];
   readonly value: number;
+  readonly questComplete?: boolean;
 }
 
 export interface RaidView {

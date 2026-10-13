@@ -1,5 +1,5 @@
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
-import { ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { assertKnownItemId, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 
 export interface StoragePort {
   getItem(key: string): string | null;
@@ -33,6 +33,11 @@ function validItem(value: unknown): value is ItemInstance {
   ) {
     return false;
   }
+  try {
+    assertKnownItemId(value.itemId);
+  } catch {
+    return false;
+  }
   return (
     value.origin.kind === 'carry-in' ||
     (value.origin.kind === 'raid-loot' && typeof value.origin.obtainedInRaidId === 'string')
@@ -52,7 +57,77 @@ function validResult(value: unknown): value is RaidResult {
     value.items.every(validItem) &&
     typeof value.value === 'number' &&
     Number.isSafeInteger(value.value) &&
-    value.value >= 0
+    value.value >= 0 &&
+    (value.questComplete === undefined || typeof value.questComplete === 'boolean')
+  );
+}
+
+function validUniqueStrings(value: unknown): value is string[] {
+  return strings(value) && new Set(value).size === value.length;
+}
+
+function validSaveInvariants(value: Record<string, unknown>): boolean {
+  const warehouse = value.warehouse;
+  const activeRaid = value.activeRaid;
+  const settledRaidIds = value.settledRaidIds;
+  const lastResult = value.lastResult;
+  if (
+    !Array.isArray(warehouse) ||
+    !validUniqueStrings(settledRaidIds) ||
+    (activeRaid !== null &&
+      (!record(activeRaid) ||
+        typeof activeRaid.raidId !== 'string' ||
+        !activeRaid.raidId ||
+        settledRaidIds.includes(activeRaid.raidId))) ||
+    (lastResult !== null &&
+      (!validResult(lastResult) || !settledRaidIds.includes(lastResult.raidId)))
+  ) {
+    return false;
+  }
+
+  if (!Array.isArray(warehouse) || !warehouse.every(validItem)) {
+    return false;
+  }
+  const warehouseIds = new Set(warehouse.map((item) => item.instanceId));
+  if (warehouseIds.size !== warehouse.length) {
+    return false;
+  }
+
+  if (lastResult !== null && validResult(lastResult)) {
+    const resultIds = new Set(lastResult.items.map((item) => item.instanceId));
+    if (resultIds.size !== lastResult.items.length) {
+      return false;
+    }
+    if (lastResult.outcome === 'failed' && lastResult.items.length > 0) {
+      return false;
+    }
+    if (
+      lastResult.outcome === 'success' &&
+      lastResult.items.some(
+        (item) =>
+          item.origin.kind !== 'raid-loot' || item.origin.obtainedInRaidId !== lastResult.raidId,
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function validSettlementResult(result: RaidResult): boolean {
+  if (!validResult(result)) {
+    return false;
+  }
+  const ids = new Set(result.items.map((item) => item.instanceId));
+  if (ids.size !== result.items.length) {
+    return false;
+  }
+  if (result.outcome === 'failed') {
+    return result.items.length === 0;
+  }
+  return result.items.every(
+    (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === result.raidId,
   );
 }
 
@@ -66,16 +141,10 @@ function decode(raw: string): SaveData {
     !strings(value.codexIds) ||
     !strings(value.unlockedChapterIds) ||
     !strings(value.settledRaidIds) ||
-    !(
-      value.activeRaid === null ||
-      (record(value.activeRaid) && typeof value.activeRaid.raidId === 'string')
-    ) ||
-    !(value.lastResult === null || validResult(value.lastResult))
+    !(value.lastResult === null || validResult(value.lastResult)) ||
+    !validSaveInvariants(value)
   ) {
     throw new Error('存档格式不受支持或已经损坏，请先备份，再确认重置。');
-  }
-  if (new Set(value.warehouse.map((item) => item.instanceId)).size !== value.warehouse.length) {
-    throw new Error('存档中存在重复物品实例。');
   }
   return value as unknown as SaveData;
 }
@@ -140,7 +209,7 @@ export class ReferenceSave implements SavePort {
     if (this.data.settledRaidIds.includes(result.raidId)) {
       return;
     }
-    if (this.data.activeRaid?.raidId !== result.raidId || !validResult(result)) {
+    if (this.data.activeRaid?.raidId !== result.raidId || !validSettlementResult(result)) {
       throw new Error('Invalid settlement');
     }
     const next = this.view();
@@ -156,8 +225,18 @@ export class ReferenceSave implements SavePort {
           next.codexIds.push(item.itemId);
         }
       }
+      const hasEvidence = ['torn-notebook', 'anomalous-feather'].every((id) =>
+        result.items.some(
+          (item) =>
+            item.itemId === id &&
+            item.origin.kind === 'raid-loot' &&
+            item.origin.obtainedInRaidId === result.raidId,
+        ),
+      );
+      if (result.questComplete && hasEvidence && !next.unlockedChapterIds.includes('siyuan-code')) {
+        next.unlockedChapterIds.push('siyuan-code');
+      }
     }
-    // D owns chapter conditions: no automatic unlock merely because a demo chest contains evidence.
     next.activeRaid = null;
     next.settledRaidIds.push(result.raidId);
     next.lastResult = structuredClone(result);
