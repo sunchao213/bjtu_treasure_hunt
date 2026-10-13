@@ -17,6 +17,12 @@ import type { RaidController } from '../modules/raid/raid-controller';
 import type { EventBus } from '../shared/events/game-events';
 import type { InventoryPort, ItemInstance, Point } from '../shared/types/game';
 import type { TouchControls } from '../modules/world/touch-controls';
+import {
+  isQuestComplete,
+  prerequisiteHint,
+  QUEST_COMPLETE_HINT,
+} from '../modules/quests/quest-service';
+import { evidenceStoryBeat } from '../modules/quests/chapter-content';
 
 interface SceneServices {
   controller: RaidController;
@@ -56,6 +62,8 @@ export class WorldScene extends Phaser.Scene {
   private readonly bounds = { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 };
   private interaction = '从右侧准备面板开始探索';
   private releaseDamage?: () => void;
+  /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
+  private banner: { text: string; untilMs: number } | null = null;
 
   constructor(private readonly services: SceneServices) {
     super('world');
@@ -327,7 +335,12 @@ export class WorldScene extends Phaser.Scene {
     this.extraction?.setFillStyle(current.value >= current.threshold ? 0x77d4a8 : 0x667a77, 0.24);
     this.extraction?.setStrokeStyle(2, current.value >= current.threshold ? 0x97ecc6 : 0x738984);
     const hug = this.combat.enemies.find((enemy) => enemy.state === 'request');
-    this.services.onFrame(this.interaction, hug ? hug.hugProgress / 1500 : this.search.progress());
+    const activeBanner =
+      this.banner !== null && this.time.now < this.banner.untilMs ? this.banner.text : null;
+    this.services.onFrame(
+      activeBanner ?? this.interaction,
+      hug ? hug.hugProgress / 1500 : this.search.progress(),
+    );
     this.drawNight();
     this.services.touch.finishFrame();
   }
@@ -450,26 +463,38 @@ export class WorldScene extends Phaser.Scene {
       this.search.cancel();
       return;
     }
+    const carried = this.services.inventory.getCarriedItems();
+    const bagFull = carried.length >= RAID_RULES.bagCapacity;
     const hug = this.combat.enemies.find((enemy) => enemy.state === 'request');
     if (hug) {
       this.search.cancel();
       this.interaction = `抱抱请求 · ${Math.ceil(hug.timer / 1000)} 秒`;
       return;
     }
-    const loot = [...this.ground.values()].find(
-      (drop) =>
-        distance(drop.position, this.position) < 55 &&
-        lineOfSight(this.position, drop.position, WORLD.obstacles),
-    );
+    const loot = [...this.ground.values()]
+      .filter(
+        (drop) =>
+          distance(drop.position, this.position) < 70 &&
+          lineOfSight(this.position, drop.position, WORLD.obstacles),
+      )
+      .sort((a, b) => distance(a.position, this.position) - distance(b.position, this.position))[0];
     if (loot) {
-      this.interaction = '按 E 拾取脚边物品';
       this.search.cancel();
+      if (bagFull) {
+        this.interaction = '背包已满 · 先丢弃或替换物品再拾取';
+        return;
+      }
+      this.interaction = '按 E 拾取脚边物品';
       if (held && !this.previousInteract) {
         // Carry-in drops retain provenance: only the inventory transfer method may reinsert them.
         const result = this.services.inventory.addLoot(loot.item);
         if (result.ok) {
           loot.sprite.destroy();
           this.ground.delete(loot.item.instanceId);
+          this.banner = {
+            text: `已拾回：${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}`,
+            untilMs: this.time.now + 2600,
+          };
         }
         this.services.notify(result.ok ? '已拾回物品。' : '背包已满或来源无效，请先腾出空间。');
       }
@@ -482,22 +507,24 @@ export class WorldScene extends Phaser.Scene {
         lineOfSight(this.position, point, WORLD.obstacles),
     );
     if (chest) {
-      const hasNotebook = this.services.inventory
-        .getCarriedItems()
-        .some(
-          (item) =>
-            item.itemId === 'torn-notebook' &&
-            item.origin.kind === 'raid-loot' &&
-            item.origin.obtainedInRaidId === view.raidId,
-        );
-      if (chest.itemId === 'anomalous-feather' && !hasNotebook) {
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId);
+      if (prerequisite !== null) {
         this.search.cancel();
-        this.interaction = '湖畔线索 · 缺少本局残缺手记';
+        this.interaction = prerequisite;
         return;
       }
       if (!this.lighting.illuminated(chest, this.position, this.aim, WORLD.obstacles)) {
         this.search.cancel();
         this.interaction = '光线不足';
+        return;
+      }
+      // 满包时不启动搜索进度：否则每次 2 秒读条失败重来，玩家只看得到进度条循环。
+      if (bagFull) {
+        this.search.cancel();
+        this.interaction = '背包已满 · 先丢弃或替换物品再搜索';
+        if (held && !this.previousInteract) {
+          this.services.notify('背包已满，搜索点保留在原地；丢弃或替换物品后可以重新搜索。');
+        }
         return;
       }
       this.interaction = `长按 E 搜索 · ${ITEM_DEFINITIONS[chest.itemId]?.name ?? '物资'}`;
@@ -519,21 +546,29 @@ export class WorldScene extends Phaser.Scene {
             raidId: view.raidId,
             locationId: chest.id,
           });
-          const questItems = this.services.inventory
-            .getCarriedItems()
-            .filter(
-              (item) =>
-                item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === view.raidId,
-            )
-            .map((item) => item.itemId);
-          if (questItems.includes('torn-notebook') && questItems.includes('anomalous-feather')) {
+          if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)) {
             this.services.controller.setQuestComplete(true);
-            this.services.notify('手记与异常羽毛已凑齐；带着它们成功撤离可解锁思源密码。');
           }
         }
-        this.services.notify(
-          result.ok ? '搜索完成，物资进入本局背包。' : '背包已满，搜索点已保留，腾出空间后重试。',
-        );
+        if (result.ok) {
+          const definition = ITEM_DEFINITIONS[chest.itemId];
+          const beat = isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)
+            ? QUEST_COMPLETE_HINT
+            : evidenceStoryBeat(chest.itemId);
+          const pickup =
+            beat ??
+            `已拾取：${definition?.name ?? chest.itemId}${
+              definition ? `（本局价值 ${RAID_RULES.values[definition.rarity]}）` : ''
+            }`;
+          this.banner = { text: pickup, untilMs: this.time.now + (beat === null ? 3200 : 6000) };
+          this.services.notify('搜索完成，物资进入本局背包。');
+        } else {
+          this.banner = {
+            text: '背包已满 · 先丢弃或替换物品再搜索',
+            untilMs: this.time.now + 3200,
+          };
+          this.services.notify('背包已满，搜索点已保留；丢弃或替换物品后可以重新搜索。');
+        }
       }
       return;
     }
@@ -574,6 +609,7 @@ export class WorldScene extends Phaser.Scene {
 
   private resetRaid(raidId: string | null): void {
     this.lastRaidId = raidId;
+    this.banner = null;
     this.position = { ...WORLD.spawn };
     this.search.reset();
     this.lighting.reset();

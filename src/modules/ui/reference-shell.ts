@@ -38,6 +38,12 @@ export function mountShell(root: HTMLElement): void {
             <div class="meter-line"><span>手电电量</span><b id="battery">100%</b></div>
             <progress id="battery-progress" max="100" value="100" aria-label="手电电量"></progress>
             <p class="muted" id="light-reserves">备用电池 2 · 照明棒 2</p>
+          </section>
+          <section class="side-card quest-card" id="quest-panel"><div class="section-kicker">思源密码 · 任务进度 <span id="quest-count">0 / 2</span></div>
+            <ul id="quest-steps" class="quest-steps">
+              <li data-evidence="torn-notebook">残缺手记 · 图书馆外</li>
+              <li data-evidence="anomalous-feather">异常羽毛 · 明湖石碑</li>
+            </ul>
             <p id="quest-status" class="muted">线索：图书馆外残缺手记</p>
           </section>
           <section class="side-card" id="preparation"><h2>行前准备</h2>
@@ -51,10 +57,15 @@ export function mountShell(root: HTMLElement): void {
             <details class="danger-area"><summary>结束当前对局</summary><p>放弃会损失本局携带物。</p><button id="abandon" class="secondary">确认放弃</button></details>
           </section>
           <section class="side-card result-card" id="result-panel" hidden><h2 id="result-title">本次结算</h2><p id="result-detail"></p>
+            <p id="quest-unlock" class="quest-unlock" hidden></p>
             <button id="retry-save" class="primary" hidden>重试保存</button><button id="next" class="primary" hidden>返回准备</button>
           </section>
           <section class="side-card archive"><div class="section-kicker">永久仓库 <span id="warehouse-count">0 件</span></div>
             <p id="archive-detail">成功撤离后，物品和图鉴会保存在此浏览器。</p>
+            <details class="codex-panel"><summary>图鉴与剧情档案</summary>
+              <ul id="codex-list" class="codex-list"></ul>
+              <div id="story-archive" class="story-archive"></div>
+            </details>
             <details><summary>存档管理</summary>
               <button id="export-save" class="secondary">导出存档备份</button><button id="reset-save" class="text-button">重置存档</button></details>
           </section>
