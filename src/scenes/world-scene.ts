@@ -6,6 +6,7 @@ import {
   monsterAnimationFor,
   monsterScaleFor,
 } from '../config/monster-sprites';
+import { generateLootSpawns, type LootSpawn } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
@@ -28,6 +29,12 @@ import type { RaidController } from '../modules/raid/raid-controller';
 import type { EventBus } from '../shared/events/game-events';
 import type { InventoryPort, ItemInstance, Point } from '../shared/types/game';
 import type { TouchControls } from '../modules/world/touch-controls';
+import {
+  isQuestComplete,
+  prerequisiteHint,
+  QUEST_COMPLETE_HINT,
+} from '../modules/quests/quest-service';
+import { evidenceStoryBeat } from '../modules/quests/chapter-content';
 
 interface SceneServices {
   controller: RaidController;
@@ -42,6 +49,8 @@ export class WorldScene extends Phaser.Scene {
   private position: Point = { ...WORLD.spawn };
   private player?: Phaser.GameObjects.Container;
   private aura?: Phaser.GameObjects.Arc;
+  private searchPoints: LootSpawn[] = [];
+  private darknessImage?: Phaser.GameObjects.Image;
   private darkness?: Phaser.Textures.CanvasTexture;
   private flashlight?: Phaser.GameObjects.Graphics;
   private extraction?: Phaser.GameObjects.Rectangle;
@@ -77,6 +86,8 @@ export class WorldScene extends Phaser.Scene {
   private interaction = '从右侧准备面板开始探索';
   private releaseDamage?: () => void;
   private cryAudioContext?: AudioContext;
+  /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
+  private banner: { text: string; untilMs: number } | null = null;
 
   constructor(private readonly services: SceneServices) {
     super('world');
@@ -118,9 +129,8 @@ export class WorldScene extends Phaser.Scene {
     this.createEnemyAnimations();
     this.drawCampus();
     this.textures.remove('night-mask');
-    this.darkness =
-      this.textures.createCanvas('night-mask', WORLD.width, WORLD.height) ?? undefined;
-    this.add.image(0, 0, 'night-mask').setOrigin(0).setDepth(40);
+    this.darkness = this.textures.createCanvas('night-mask', 1, 1) ?? undefined;
+    this.darknessImage = this.add.image(0, 0, 'night-mask').setOrigin(0).setDepth(40);
     this.flashlight = this.add.graphics().setDepth(41);
     for (const lamp of LAMPS) {
       this.add.rectangle(lamp.x, lamp.y, 10, 18, 0xffd27b).setDepth(42);
@@ -149,15 +159,6 @@ export class WorldScene extends Phaser.Scene {
     for (const enemy of this.combat.enemies) {
       this.addEnemyObject(enemy);
     }
-    for (const point of WORLD.searchPoints) {
-      const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
-      const chest = this.add.rectangle(0, 0, 24, 18, 0xc99f60).setStrokeStyle(2, 0xffdc96);
-      const seam = this.add.rectangle(0, 0, 3, 18, 0x594523);
-      this.chestObjects.set(
-        point.id,
-        this.add.container(point.x, point.y, [halo, chest, seam]).setDepth(10),
-      );
-    }
     const keyboard = this.input.keyboard;
     if (keyboard) {
       for (const key of [
@@ -181,7 +182,9 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     const resizeCamera = () => {
-      this.cameras.main.setZoom(this.scale.width < 600 ? 0.72 : 1);
+      this.cameras.main.setZoom(
+        matchMedia('(pointer: coarse), (max-width: 950px)').matches ? 0.85 : 1,
+      );
     };
     resizeCamera();
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeCamera);
@@ -263,7 +266,9 @@ export class WorldScene extends Phaser.Scene {
       this.player?.setPosition(this.position.x, this.position.y);
       const pointer = this.input.activePointer;
       const touchLayout = matchMedia('(pointer: coarse), (max-width: 950px)').matches;
-      if (touchLayout && (movement.x || movement.y)) {
+      if (touchLayout && this.services.touch.aim) {
+        this.aim = Math.atan2(this.services.touch.aim.y, this.services.touch.aim.x);
+      } else if (touchLayout && (movement.x || movement.y)) {
         this.aim = Math.atan2(movement.y, movement.x);
       } else if (pointer && !touchLayout) {
         const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -405,7 +410,7 @@ export class WorldScene extends Phaser.Scene {
     } else if (!playable) {
       this.search.cancel();
       this.interaction = this.services.controller.isPaused()
-        ? '已暂停 · 关闭规则后继续'
+        ? '已暂停 · 横屏并关闭规则 / 校园图 / 图鉴后继续'
         : view.phase === 'preparing'
           ? '准备好后，开始本次校园探索'
           : '本次探索已结束，请查看结算';
@@ -415,8 +420,10 @@ export class WorldScene extends Phaser.Scene {
     this.extraction?.setFillStyle(current.value >= current.threshold ? 0x77d4a8 : 0x667a77, 0.24);
     this.extraction?.setStrokeStyle(2, current.value >= current.threshold ? 0x97ecc6 : 0x738984);
     const hug = this.combat.enemies.find((enemy) => enemy.state === 'request');
+    const activeBanner =
+      this.banner !== null && this.time.now < this.banner.untilMs ? this.banner.text : null;
     this.services.onFrame(
-      this.interaction,
+      activeBanner ?? this.interaction,
       hug ? hug.hugProgress / COMBAT_RULES.hug.calmHoldDurationMs : this.search.progress(),
     );
     this.drawNight();
@@ -428,20 +435,31 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     if (this.time.now - this.lastNightDraw >= 32) {
+      const camera = this.cameras.main;
+      const origin = { x: camera.worldView.x - 128, y: camera.worldView.y - 128 };
+      const width = Math.ceil(camera.width / camera.zoom) + 256;
+      const height = Math.ceil(camera.height / camera.zoom) + 256;
+      if (this.darkness.width !== width || this.darkness.height !== height)
+        this.darkness.setSize(width, height);
+      this.darknessImage?.setPosition(origin.x, origin.y);
       renderDarkness(
         this.darkness.context,
-        WORLD.width,
-        WORLD.height,
+        width,
+        height,
         this.lighting,
         this.position,
         this.aim,
         WORLD.obstacles,
+        origin,
       );
       this.darkness.refresh();
       const overview = document.querySelector<HTMLCanvasElement>('#campus-overview');
       if (overview) {
         drawCampusOverview(overview, this.position);
       }
+      const mapDialog = document.querySelector<HTMLDialogElement>('#campus-map-dialog');
+      const expanded = document.querySelector<HTMLCanvasElement>('#campus-map-expanded');
+      if (mapDialog?.open && expanded) drawCampusOverview(expanded, this.position, true);
       this.lastNightDraw = this.time.now;
     }
     this.flashlight.clear();
@@ -526,10 +544,12 @@ export class WorldScene extends Phaser.Scene {
         }
       }
     }
-    for (const point of WORLD.searchPoints) {
+    for (const point of this.searchPoints) {
       this.chestObjects
         .get(point.id)
-        ?.setVisible(this.lighting.visible(point, this.position, this.aim, WORLD.obstacles));
+        ?.setVisible(
+          this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
+        );
     }
     for (const drop of this.ground.values()) {
       drop.sprite.setVisible(
@@ -586,54 +606,63 @@ export class WorldScene extends Phaser.Scene {
       this.search.cancel();
       return;
     }
+    const carried = this.services.inventory.getCarriedItems();
+    const bagFull = carried.length >= RAID_RULES.bagCapacity;
     const hug = this.combat.enemies.find((enemy) => enemy.state === 'request');
     if (hug) {
       this.search.cancel();
       this.interaction = `抱抱请求 · ${Math.ceil(hug.timer / 1000)} 秒`;
       return;
     }
-    const loot = [...this.ground.values()].find(
-      (drop) =>
-        distance(drop.position, this.position) < 55 &&
-        lineOfSight(this.position, drop.position, WORLD.obstacles),
-    );
+    const loot = [...this.ground.values()]
+      .filter(
+        (drop) =>
+          distance(drop.position, this.position) < 70 &&
+          lineOfSight(this.position, drop.position, WORLD.obstacles),
+      )
+      .sort((a, b) => distance(a.position, this.position) - distance(b.position, this.position))[0];
     if (loot) {
-      this.interaction = '按 E 拾取脚边物品';
       this.search.cancel();
+      if (bagFull) {
+        this.interaction = '背包已满 · 先丢弃或替换物品再拾取';
+        return;
+      }
+      this.interaction = '按 E 拾取脚边物品';
       if (held && !this.previousInteract) {
         // Carry-in drops retain provenance: only the inventory transfer method may reinsert them.
         const result = this.services.inventory.addLoot(loot.item);
         if (result.ok) {
           loot.sprite.destroy();
           this.ground.delete(loot.item.instanceId);
+          this.banner = {
+            text: `已拾回：${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}`,
+            untilMs: this.time.now + 2600,
+          };
         }
         this.services.notify(result.ok ? '已拾回物品。' : '背包已满或来源无效，请先腾出空间。');
       }
       return;
     }
-    const chest = WORLD.searchPoints.find(
+    const chest = this.searchPoints.find(
       (point) =>
         !this.search.isOpened(point.id) &&
         distance(point, this.position) < 60 &&
-        lineOfSight(this.position, point, WORLD.obstacles),
+        this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
     );
     if (chest) {
-      const hasNotebook = this.services.inventory
-        .getCarriedItems()
-        .some(
-          (item) =>
-            item.itemId === 'torn-notebook' &&
-            item.origin.kind === 'raid-loot' &&
-            item.origin.obtainedInRaidId === view.raidId,
-        );
-      if (chest.itemId === 'anomalous-feather' && !hasNotebook) {
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId);
+      if (prerequisite !== null) {
         this.search.cancel();
-        this.interaction = '湖畔线索 · 缺少本局残缺手记';
+        this.interaction = prerequisite;
         return;
       }
-      if (!this.lighting.illuminated(chest, this.position, this.aim, WORLD.obstacles)) {
+      // 满包时不启动搜索进度：否则每次 2 秒读条失败重来，玩家只看得到进度条循环。
+      if (bagFull) {
         this.search.cancel();
-        this.interaction = '光线不足';
+        this.interaction = '背包已满 · 先丢弃或替换物品再搜索';
+        if (held && !this.previousInteract) {
+          this.services.notify('背包已满，搜索点保留在原地；丢弃或替换物品后可以重新搜索。');
+        }
         return;
       }
       this.interaction = `长按 E 搜索 · ${ITEM_DEFINITIONS[chest.itemId]?.name ?? '物资'}`;
@@ -651,21 +680,33 @@ export class WorldScene extends Phaser.Scene {
         const result = this.search.finish(item, (entry) => this.services.inventory.addLoot(entry));
         if (result.ok) {
           this.chestObjects.get(chest.id)?.setAlpha(0.23);
-          const questItems = this.services.inventory
-            .getCarriedItems()
-            .filter(
-              (item) =>
-                item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === view.raidId,
-            )
-            .map((item) => item.itemId);
-          if (questItems.includes('torn-notebook') && questItems.includes('anomalous-feather')) {
+          this.services.events.emit('LocationInteracted', {
+            raidId: view.raidId,
+            locationId: chest.id,
+          });
+          if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)) {
             this.services.controller.setQuestComplete(true);
-            this.services.notify('手记与异常羽毛已凑齐；带着它们成功撤离可解锁思源密码。');
           }
         }
-        this.services.notify(
-          result.ok ? '搜索完成，物资进入本局背包。' : '背包已满，搜索点已保留，腾出空间后重试。',
-        );
+        if (result.ok) {
+          const definition = ITEM_DEFINITIONS[chest.itemId];
+          const beat = isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)
+            ? QUEST_COMPLETE_HINT
+            : evidenceStoryBeat(chest.itemId);
+          const pickup =
+            beat ??
+            `已拾取：${definition?.name ?? chest.itemId}${
+              definition ? `（本局价值 ${RAID_RULES.values[definition.rarity]}）` : ''
+            }`;
+          this.banner = { text: pickup, untilMs: this.time.now + (beat === null ? 3200 : 6000) };
+          this.services.notify('搜索完成，物资进入本局背包。');
+        } else {
+          this.banner = {
+            text: '背包已满 · 先丢弃或替换物品再搜索',
+            untilMs: this.time.now + 3200,
+          };
+          this.services.notify('背包已满，搜索点已保留；丢弃或替换物品后可以重新搜索。');
+        }
       }
       return;
     }
@@ -709,6 +750,7 @@ export class WorldScene extends Phaser.Scene {
     this.hurtFeedbackMs = 0;
     this.attackFeedbackMs = 0;
     this.hitStopMs = 0;
+    this.banner = null;
     this.position = { ...WORLD.spawn };
     this.search.reset();
     this.lighting.reset();
@@ -729,7 +771,22 @@ export class WorldScene extends Phaser.Scene {
     this.lastNightDraw = -Infinity;
     this.player?.setPosition(this.position.x, this.position.y);
     for (const object of this.chestObjects.values()) {
-      object.setAlpha(1);
+      object.destroy();
+    }
+    this.chestObjects.clear();
+    this.searchPoints = raidId ? generateLootSpawns() : [];
+    for (const point of this.searchPoints) {
+      const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
+      const chest = this.add.rectangle(0, 0, 24, 18, 0xc99f60).setStrokeStyle(2, 0xffdc96);
+      const seam = this.add.rectangle(0, 0, 3, 18, 0x594523);
+      this.chestObjects.set(
+        point.id,
+        this.add
+          .container(point.x, point.y, [halo, chest, seam])
+          .setName(`chest-${point.id}`)
+          .setDepth(10)
+          .setVisible(false),
+      );
     }
     for (const drop of this.ground.values()) {
       drop.sprite.destroy();
@@ -855,6 +912,30 @@ export class WorldScene extends Phaser.Scene {
     oscillator.stop(start + 0.36);
   }
 
+  private addLandmarkLabel(
+    x: number,
+    y: number,
+    name: string,
+    width: number,
+    primary = false,
+  ): void {
+    this.add
+      .text(x, y, name, {
+        fontFamily: 'Microsoft YaHei, sans-serif',
+        fontSize: primary ? '30px' : '24px',
+        fontStyle: 'bold',
+        color: primary ? '#ffe3a0' : '#f2f6ef',
+        backgroundColor: '#14221e',
+        stroke: '#14221e',
+        strokeThickness: 2,
+        padding: { x: 10, y: 6 },
+        align: 'center',
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5)
+      .setDepth(44);
+  }
+
   private drawCampus(): void {
     const g = this.add.graphics();
     g.fillStyle(0x263c32);
@@ -864,33 +945,46 @@ export class WorldScene extends Phaser.Scene {
     for (const road of WORLD.roads) {
       g.fillRect(road.x, road.y, road.width, road.height);
     }
-    const sports = WORLD.sports;
-    g.fillStyle(0x75685d).fillRoundedRect(sports.x, sports.y, sports.width, sports.height, 75);
-    g.fillStyle(0x345844).fillRoundedRect(
-      sports.x + 25,
-      sports.y + 20,
-      sports.width - 50,
-      sports.height - 40,
-      50,
+    for (const sports of WORLD.sportsFields) {
+      g.fillStyle(0x75685d).fillRoundedRect(sports.x, sports.y, sports.width, sports.height, 75);
+      g.fillStyle(0x345844).fillRoundedRect(
+        sports.x + 25,
+        sports.y + 20,
+        sports.width - 50,
+        sports.height - 40,
+        50,
+      );
+      g.lineStyle(2, 0xb3c0a5, 0.8).strokeRect(
+        sports.x + 45,
+        sports.y + 55,
+        sports.width - 90,
+        sports.height - 110,
+      );
+      g.lineBetween(
+        sports.x + 45,
+        sports.y + sports.height / 2,
+        sports.x + sports.width - 45,
+        sports.y + sports.height / 2,
+      );
+      g.strokeCircle(sports.x + sports.width / 2, sports.y + sports.height / 2, 22);
+      this.addLandmarkLabel(
+        sports.x + sports.width / 2,
+        sports.y + sports.height / 2,
+        sports.name,
+        sports.width,
+        true,
+      );
+    }
+    const garden = WORLD.garden;
+    g.fillStyle(0x3e6148).fillRoundedRect(garden.x, garden.y, garden.width, garden.height, 40);
+    this.addLandmarkLabel(
+      garden.x + garden.width / 2,
+      garden.y + garden.height / 2,
+      garden.name,
+      garden.width,
+      true,
     );
-    g.lineStyle(2, 0xb3c0a5, 0.8).strokeRect(
-      sports.x + 45,
-      sports.y + 55,
-      sports.width - 90,
-      sports.height - 110,
-    );
-    g.lineBetween(
-      sports.x + 45,
-      sports.y + sports.height / 2,
-      sports.x + sports.width - 45,
-      sports.y + sports.height / 2,
-    );
-    g.strokeCircle(sports.x + sports.width / 2, sports.y + sports.height / 2, 22);
-    this.add.text(sports.x + 55, sports.y + sports.height + 9, '西侧运动场', {
-      fontSize: '16px',
-      color: '#d5decf',
-    });
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 40; i++) {
       const x = 70 + i * 82;
       g.fillStyle(0x335a4c);
       g.fillCircle(x, 50, 17);
@@ -904,16 +998,13 @@ export class WorldScene extends Phaser.Scene {
       g.fillRoundedRect(building.x, building.y, building.width, building.height, 5);
       g.fillStyle(0xb9bf9b);
       g.fillRect(building.x + 9, building.y + 9, building.width - 18, 10);
-      this.add.text(building.x + 16, building.y + 28, building.name, {
-        fontFamily: 'Microsoft YaHei',
-        fontSize: '20px',
-        color: '#153b38',
-      });
-      this.add.text(building.x + 16, building.y + 57, building.sub, {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#36564a',
-      });
+      this.addLandmarkLabel(
+        building.x + building.width / 2,
+        building.y + building.height / 2,
+        building.name,
+        building.width,
+        ['思源楼', '图书馆'].includes(building.name),
+      );
     }
     const lake = WORLD.lake;
     g.fillStyle(0x365b57);
@@ -924,31 +1015,35 @@ export class WorldScene extends Phaser.Scene {
     for (let y = lake.y + 25; y < lake.y + lake.height - 10; y += 25) {
       g.lineBetween(lake.x + 20, y, lake.x + lake.width - 20, y);
     }
-    this.add.text(lake.x + 40, lake.y + 40, '明湖', {
-      fontFamily: 'Microsoft YaHei',
-      fontSize: '25px',
-      color: '#d2e8cf',
-    });
-    this.add.text(lake.x + 35, lake.y + 74, 'MINGHU', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#acc9b9',
-    });
-    const clue = WORLD.searchPoints.find((point) => point.id === 'lake-clue')!;
+    this.addLandmarkLabel(
+      lake.x + lake.width / 2,
+      lake.y + lake.height / 2,
+      '明湖',
+      lake.width,
+      true,
+    );
+    const clue = WORLD.stone;
     g.fillStyle(0x9fa89b).fillRect(clue.x - 7, clue.y - 26, 14, 21);
-    this.add.text(clue.x - 30, clue.y + 19, '明湖石碑', { fontSize: '13px', color: '#d2decf' });
+    this.addLandmarkLabel(clue.x, clue.y + 19, '明湖石碑', 190);
     for (const gate of WORLD.gates) {
+      const isExtraction = gate.role === 'extraction';
+      this.add
+        .circle(gate.x, gate.y, isExtraction ? 13 : 8, isExtraction ? 0x8cdeb2 : 0xd3c08d, 0.9)
+        .setStrokeStyle(2, 0x17251e, 0.95)
+        .setDepth(8);
       this.add
         .text(gate.x, gate.y, gate.name, {
-          fontSize: '16px',
-          color: '#e0d8b9',
-          backgroundColor: '#29352f',
+          fontFamily: 'Microsoft YaHei, sans-serif',
+          fontSize: '24px',
+          fontStyle: 'bold',
+          color: isExtraction ? '#baf4d4' : '#e0d8b9',
+          backgroundColor: isExtraction ? '#173f32' : '#29352f',
           padding: { x: 6, y: 4 },
         })
         .setOrigin(0.5)
-        .setDepth(42);
+        .setDepth(43);
     }
-    this.add.text(45, 869, '海淀主校区 · 依据小组提供地图简化，非 1:1 复刻', {
+    this.add.text(45, WORLD.height - 31, '依据小组提供的海淀主校区地图简化制作，非 1:1 测绘', {
       fontFamily: 'Microsoft YaHei',
       fontSize: '13px',
       color: '#97b1a1',

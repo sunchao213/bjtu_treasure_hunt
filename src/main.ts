@@ -1,12 +1,15 @@
 import './style.css';
 import { createGame } from './app/create-game';
-import { ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
+import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
-import { ReferenceSave, SAVE_KEY } from './modules/save/reference-save';
+import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
 import { bindGameRules } from './modules/ui/game-rules';
+import { renderChapterUnlock, renderCodexPanel, renderQuestPanel } from './modules/ui/quest-view';
+import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
+import { renderCodex, exportCodexImage } from './modules/ui/codex';
 import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
@@ -44,9 +47,9 @@ async function bootstrap(): Promise<void> {
   if (!unlock) {
     throw new Error('另一个标签页正在使用这个存档，请关闭它后刷新本页。');
   }
-  let save: ReferenceSave;
+  let save: PersistentSave;
   try {
-    save = new ReferenceSave(localStorage);
+    save = new PersistentSave(localStorage);
   } catch (error) {
     unlock();
     element<HTMLButtonElement>('reset-save').disabled = true;
@@ -60,7 +63,7 @@ async function bootstrap(): Promise<void> {
       }
       try {
         if (confirm('建议先导出原始存档。确定清空本框架的损坏存档吗？')) {
-          localStorage.removeItem(SAVE_KEY);
+          localStorage.removeItem(FORMAL_SAVE_KEY);
           location.reload();
         }
       } finally {
@@ -78,6 +81,7 @@ async function bootstrap(): Promise<void> {
   const controller = new RaidController(inventory, save, events, RAID_RULES, ITEM_DEFINITIONS);
   let lastInventory = '';
   let lastWarehouse = '';
+  let lastCodex = '';
   let renderedAt = 0;
   let interacted = '';
   let searchProgress = 0;
@@ -98,25 +102,114 @@ async function bootstrap(): Promise<void> {
     },
   });
   const game = createGame(scene);
+  let rulesOpen = false;
+  let mapOpen = false;
+  let codexOpen = false;
+  const mobile = () => matchMedia('(pointer: coarse), (max-width: 950px)').matches;
+  const syncOrientation = () => {
+    const view = controller.getView();
+    const active = view.phase === 'active' || view.phase === 'extracting';
+    const portrait = mobile() && innerHeight > innerWidth;
+    app.dataset.mobile = String(mobile());
+    element('rotate-phone').hidden = !active || !portrait;
+    if (active && (portrait || rulesOpen || mapOpen || codexOpen)) {
+      if (!controller.isPaused()) {
+        controller.pause();
+        scene.clearInteractions();
+      }
+    } else if (!rulesOpen && !mapOpen && !codexOpen) controller.resume();
+    if (!active) {
+      app.dataset.bagOpen = 'false';
+      element('mobile-bag').setAttribute('aria-expanded', 'false');
+    }
+  };
+  const onResize = () => {
+    scene.clearInteractions();
+    render();
+  };
+  window.addEventListener('resize', onResize);
+  element('mobile-rules').onclick = () => element('open-rules').click();
+  element('mobile-bag').onclick = () => {
+    const open = app.dataset.bagOpen !== 'true';
+    app.dataset.bagOpen = String(open);
+    element('mobile-bag').setAttribute('aria-expanded', String(open));
+    element('mobile-bag').textContent = open ? '关闭背包' : '背包';
+    scene.clearInteractions();
+    render();
+  };
+  const campusMap = element<HTMLDialogElement>('campus-map-dialog');
+  element('open-campus-map').onclick = () => {
+    if (campusMap.open) return;
+    mapOpen = true;
+    controller.pause();
+    scene.clearInteractions();
+    campusMap.showModal();
+    render();
+  };
+  element('close-campus-map').onclick = () => campusMap.close();
+  campusMap.addEventListener('close', () => {
+    mapOpen = false;
+    scene.clearInteractions();
+    render();
+  });
+  const codex = element<HTMLDialogElement>('codex-dialog');
+  const openCodex = () => {
+    if (codex.open) return;
+    codexOpen = true;
+    controller.pause();
+    scene.clearInteractions();
+    const archive = save.view();
+    renderCodex(archive.codexIds, archive.unlockedChapterIds);
+    element('codex-export-status').textContent = '';
+    codex.showModal();
+    render();
+  };
+  for (const id of ['open-codex', 'archive-codex', 'mobile-codex']) {
+    element(id).onclick = openCodex;
+  }
+  element('close-codex').onclick = () => codex.close();
+  codex.addEventListener('close', () => {
+    codexOpen = false;
+    scene.clearInteractions();
+    render();
+  });
+  element('export-codex').onclick = async () => {
+    const button = element<HTMLButtonElement>('export-codex');
+    button.disabled = true;
+    element('codex-export-status').textContent = '正在生成图鉴图片…';
+    try {
+      const archive = save.view();
+      await exportCodexImage(archive.codexIds, archive.unlockedChapterIds);
+      element('codex-export-status').textContent = '图鉴图片已生成，请查看浏览器下载。';
+    } catch (error) {
+      element('codex-export-status').textContent =
+        error instanceof Error ? error.message : '导出失败，请重试。';
+    } finally {
+      button.disabled = false;
+    }
+  };
   bindGameRules(
     () => {
+      rulesOpen = true;
       controller.pause();
       scene.clearInteractions();
       render();
     },
     () => {
       scene.clearInteractions();
-      controller.resume();
+      rulesOpen = false;
+      syncOrientation();
       render();
     },
   );
 
   function render(): void {
+    syncOrientation();
     const view = controller.getView();
     const lighting = scene.getLightingStatus();
     const playable =
       !controller.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
-    touch.setEnabled(playable);
+    touch.setEnabled(playable && app.dataset.bagOpen !== 'true');
     app.dataset.phase = view.phase;
     const lightButton =
       element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="L"]');
@@ -136,6 +229,8 @@ async function bootstrap(): Promise<void> {
                 ? '拾取'
                 : '交互';
     }
+    element('mobile-hud').textContent =
+      `价值 ${view.value}/${view.threshold} · 手电 ${lighting.battery}%`;
     element('phase-label').textContent = phaseNames[view.phase];
     element('health').textContent = String(view.health);
     const seconds = Math.ceil(view.remainingMs / 1000);
@@ -147,6 +242,7 @@ async function bootstrap(): Promise<void> {
     element('light-reserves').textContent =
       `备用电池 ${lighting.spareBatteries} · 照明棒 ${lighting.flares}`;
     element<HTMLProgressElement>('battery-progress').value = lighting.battery;
+    app.dataset.valueReady = String(view.value >= view.threshold);
     element('gate-label').textContent = view.value >= view.threshold ? '可以撤离' : '继续搜集';
     element('value-hint').textContent =
       view.value >= view.threshold
@@ -183,16 +279,7 @@ async function bootstrap(): Promise<void> {
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = inventory.getCarriedItems();
-    const evidence = carried
-      .filter(
-        (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === view.raidId,
-      )
-      .map((item) => item.itemId);
-    element('quest-status').textContent = evidence.includes('torn-notebook')
-      ? evidence.includes('anomalous-feather')
-        ? '线索齐备 · 带回南门'
-        : '下一线索：明湖石碑'
-      : '线索：图书馆外残缺手记';
+    renderQuestPanel(questProgress(carried, view.raidId));
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
       renderInventory(carried);
@@ -214,6 +301,16 @@ async function bootstrap(): Promise<void> {
       }
       lastWarehouse = warehouseSignature;
     }
+    renderChapterUnlock(
+      element('quest-unlock'),
+      view.result !== null && chapterUnlockGranted(view.result),
+    );
+    const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
+    if (codexSignature !== lastCodex) {
+      renderCodexPanel(element('codex-list'), element('story-archive'), archive);
+      if (codex.open) renderCodex(archive.codexIds, archive.unlockedChapterIds);
+      lastCodex = codexSignature;
+    }
   }
 
   function renderInventory(items: readonly ItemInstance[]): void {
@@ -223,7 +320,7 @@ async function bootstrap(): Promise<void> {
     if (!items.length) {
       const li = document.createElement('li');
       li.className = 'empty';
-      li.textContent = '还没有物资，靠近金色搜索点试试。';
+      li.textContent = '还没有物资，用手电照亮附近，寻找物资箱。';
       list.append(li);
     }
     for (const item of items) {
@@ -250,16 +347,16 @@ async function bootstrap(): Promise<void> {
           if (state.phase !== 'active' && state.phase !== 'extracting') {
             return;
           }
-          if (state.health >= RAID_RULES.maxHealth) {
-            notify('生命已满。');
+          const amount = HEALING_AMOUNTS[item.itemId];
+          if (amount === undefined) {
+            notify('该恢复物尚未配置效果，物品没有消耗。');
             return;
           }
-          if (inventory.remove(item.instanceId).ok) {
-            controller.heal(25);
-            if (state.raidId) {
-              events.emit('ItemConsumed', { raidId: state.raidId, instanceId: item.instanceId });
-            }
+          const consumed = inventory.consumeHealing(item.instanceId, () => controller.heal(amount));
+          if (consumed.ok) {
             notify('恢复物已消耗，当前携带价值已重算。');
+          } else if (consumed.error === 'INVALID_STATE') {
+            notify('当前无法使用恢复物，物品没有消耗。');
           }
         };
         li.append(use);
@@ -282,6 +379,18 @@ async function bootstrap(): Promise<void> {
   element('start').onclick = async () => {
     if (!element<HTMLInputElement>('risk-consent').checked) {
       return;
+    }
+    if (mobile() && document.documentElement.requestFullscreen) {
+      // Must originate in the start gesture; unsupported browsers retain the rotation prompt.
+      void document.documentElement
+        .requestFullscreen()
+        .then(async () => {
+          const orientation = screen.orientation as ScreenOrientation & {
+            lock?: (direction: string) => Promise<void>;
+          };
+          await orientation.lock?.('landscape');
+        })
+        .catch(() => undefined);
     }
     const selected = element<HTMLSelectElement>('loadout').value;
     const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
@@ -329,6 +438,15 @@ async function bootstrap(): Promise<void> {
       }
     }
   };
+  element('export-save').onclick = () => {
+    const blob = new Blob([save.exportRaw()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bjtu-treasure-hunt-save-v2.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   if (import.meta.env.DEV) {
     element('debug-panel').hidden = false;
     element('damage').onclick = () => {
@@ -343,6 +461,7 @@ async function bootstrap(): Promise<void> {
   render();
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
+      window.removeEventListener('resize', onResize);
       controller.dispose();
       touch.dispose();
       game.destroy(true);
@@ -350,16 +469,6 @@ async function bootstrap(): Promise<void> {
     });
   }
 }
-
-element('export-save').onclick = () => {
-  const blob = new Blob([localStorage.getItem(SAVE_KEY) ?? '{}'], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'bjtu-framework-save.json';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
 void bootstrap().catch((error: unknown) => {
   notify(error instanceof Error ? error.message : '启动失败，请查看开发控制台。');
   element('interaction-label').textContent = '启动尚未完成';

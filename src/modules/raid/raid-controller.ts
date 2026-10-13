@@ -180,10 +180,15 @@ export class RaidController {
     this.tick();
   }
 
-  heal(amount: number): void {
-    if (this.playable() && Number.isFinite(amount) && amount > 0) {
-      this.health = Math.min(this.rules.maxHealth, this.health + amount);
+  heal(amount: number): boolean {
+    if (!this.playable() || !Number.isFinite(amount) || amount <= 0) {
+      return false;
     }
+    if (this.health >= this.rules.maxHealth) {
+      return false;
+    }
+    this.health = Math.min(this.rules.maxHealth, this.health + amount);
+    return true;
   }
 
   setQuestComplete(complete: boolean): void {

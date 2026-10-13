@@ -148,6 +148,53 @@ describe('A extraction lifecycle', () => {
     expect(s.results).toHaveLength(1);
   });
 
+  it('counts only current-raid loot even when a valuable item is carried in', async () => {
+    const s = await setup();
+    s.inventory.begin('raid-1', [
+      { instanceId: 'carried-key', itemId: 'siyuan-key', origin: { kind: 'carry-in' } },
+    ]);
+    s.inventory.addLoot(loot('rare-1'));
+    s.inventory.addLoot(loot('rare-2'));
+    s.inventory.addLoot(loot('rare-3'));
+    s.inventory.addLoot(loot('rare-4'));
+    expect(s.controller.getView().value).toBe(100);
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(5_000);
+    await flush();
+    expect(s.results[0]?.value).toBe(100);
+    expect(s.results[0]?.items).toHaveLength(5);
+  });
+
+  it('locks the value rules at controller construction', async () => {
+    const rules = { ...RAID_RULES, values: { ...RAID_RULES.values } };
+    const events = new EventBus();
+    const inventory = new ReferenceInventory(events, 6, ITEM_DEFINITIONS);
+    const results: RaidResult[] = [];
+    const controller = new RaidController(
+      inventory,
+      {
+        beginRaid: async () => [],
+        finalizeRaid: async (result) => {
+          results.push(result);
+        },
+      },
+      events,
+      rules,
+      ITEM_DEFINITIONS,
+      () => 0,
+      () => 'snapshot-raid',
+    );
+    await controller.start();
+    rules.values.uncommon = 1;
+    inventory.addLoot({
+      instanceId: 'loot',
+      itemId: 'school-badge',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'snapshot-raid' },
+    });
+    expect(controller.getView().value).toBe(25);
+  });
+
   it.each(['damage', 'leave'] as const)('cancels on %s', async (cause) => {
     const s = await setup();
     s.fill();

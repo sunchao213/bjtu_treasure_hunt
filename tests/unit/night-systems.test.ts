@@ -9,7 +9,7 @@ import {
 } from '../../src/modules/world/night-systems';
 import { COMBAT_RULES } from '../../src/config/combat-config';
 
-const bounds = { x: 0, y: 0, width: 1280, height: 900 };
+const bounds = { x: 0, y: 0, width: 3600, height: 2400 };
 const advance = (
   combat: NightCombat,
   player: { x: number; y: number },
@@ -24,6 +24,26 @@ const advance = (
 };
 
 describe('night lighting', () => {
+  it('reveals chests only within an active flashlight cone, even next to lamps or flares', () => {
+    const light = new NightLighting();
+    const player = { x: 100, y: 100 };
+    expect(light.flashlightReveals({ x: 130, y: 100 }, player, 0, [])).toBe(true);
+    expect(light.flashlightReveals({ x: 100, y: 130 }, player, 0, [])).toBe(false);
+    expect(light.flashlightReveals({ x: 420, y: 100 }, player, 0, [])).toBe(false);
+    expect(
+      light.flashlightReveals({ x: 200, y: 100 }, player, 0, [
+        { x: 140, y: 80, width: 20, height: 40 },
+      ]),
+    ).toBe(false);
+    light.enabled = false;
+    light.deploy(player);
+    expect(light.illuminated(player, player, 0, [])).toBe(true);
+    expect(light.flashlightReveals(player, player, 0, [])).toBe(false);
+    expect(light.flashlightReveals(LAMPS[0]!, LAMPS[0]!, 0, [])).toBe(false);
+    light.enabled = true;
+    light.battery = 0;
+    expect(light.flashlightReveals({ x: 130, y: 100 }, player, 0, [])).toBe(false);
+  });
   it('clips visibility at walls and distinguishes ambient visibility from search light', () => {
     const light = new NightLighting();
     const player = { x: 100, y: 100 };

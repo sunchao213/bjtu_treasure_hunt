@@ -161,6 +161,57 @@ describe('A to B reference persistence integration', () => {
     storage.setItem(SAVE_KEY, JSON.stringify({ schemaVersion: 99 }));
     expect(() => new ReferenceSave(storage)).toThrow();
   });
+  it('rejects duplicate settled raids and an active raid that was already settled', () => {
+    const storage = new MemoryStorage();
+    const valid = {
+      schemaVersion: 1,
+      warehouse: [],
+      codexIds: [],
+      unlockedChapterIds: [],
+      activeRaid: null,
+      settledRaidIds: ['same', 'same'],
+      lastResult: null,
+    };
+    storage.setItem(SAVE_KEY, JSON.stringify(valid));
+    expect(() => new ReferenceSave(storage)).toThrow();
+
+    storage.setItem(
+      SAVE_KEY,
+      JSON.stringify({ ...valid, settledRaidIds: ['same'], activeRaid: { raidId: 'same' } }),
+    );
+    expect(() => new ReferenceSave(storage)).toThrow();
+  });
+  it('rejects inconsistent last result and non-unique or invalid settlement instances', async () => {
+    const storage = new MemoryStorage();
+    const save = new ReferenceSave(storage);
+    await save.beginRaid('raid', []);
+    await expect(
+      save.finalizeRaid({
+        raidId: 'raid',
+        outcome: 'failed',
+        reason: 'abandoned',
+        items: result('raid').items,
+        value: 0,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      save.finalizeRaid({
+        raidId: 'raid',
+        outcome: 'success',
+        reason: null,
+        items: [result('raid').items[0]!, result('raid').items[0]!],
+        value: 100,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      save.finalizeRaid({
+        ...result('other'),
+        items: [],
+      }),
+    ).rejects.toThrow();
+    expect(save.view().activeRaid?.raidId).toBe('raid');
+    expect(save.view().settledRaidIds).toEqual([]);
+  });
   it('search/value/extraction acknowledges saved result then allows a new raid', async () => {
     let now = 0;
     const storage = new MemoryStorage();
