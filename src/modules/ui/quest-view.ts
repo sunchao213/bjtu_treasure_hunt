@@ -100,19 +100,19 @@ export function renderCodexPanel(
     story.append(hint);
   }
 
-  for (const act of FIRST_CHAPTER.acts) {
-    const actTitle = document.createElement('p');
-    actTitle.className = 'story-act-title';
-    actTitle.textContent = act.title;
-    story.append(actTitle);
+  for (const step of FIRST_CHAPTER.steps) {
+    const stepTitle = document.createElement('p');
+    stepTitle.className = 'story-step-title';
+    stepTitle.textContent = step.title;
+    story.append(stepTitle);
     const body = document.createElement('p');
     if (unlocked) {
       body.className = 'story-body';
-      body.textContent = act.body;
+      body.textContent = step.stepBody;
     } else {
       body.className = 'muted';
-      body.textContent = act.requiresEvidence.length
-        ? `未解锁：需先取得${evidenceNames(act.requiresEvidence)}并成功带出。`
+      body.textContent = step.requiresEvidence.length
+        ? `未解锁：需先取得${evidenceNames(step.requiresEvidence)}并成功带出。`
         : '未解锁：成功带出本章证据后开启。';
     }
     story.append(body);

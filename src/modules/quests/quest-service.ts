@@ -87,11 +87,11 @@ export function questProgress(
   if (raidId === null) {
     statusText = '开始探索后，可按线索搜集任务证据。';
   } else if (complete) {
-    statusText = '线索齐备 · 带回南门可解锁章节';
+    statusText = '线索齐备 · 带回南门撤离可解锁章节';
   } else if (evidence.notebook) {
-    statusText = '下一线索：明湖石碑';
+    statusText = '线索二 · 去明湖石碑（明湖东侧金色点）搜异常羽毛';
   } else {
-    statusText = '线索：图书馆外残缺手记';
+    statusText = '线索一 · 去图书馆东侧金色点搜残缺手记';
   }
   return { ...evidence, complete, statusText };
 }
