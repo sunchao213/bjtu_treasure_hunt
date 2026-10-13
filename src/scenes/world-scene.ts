@@ -194,23 +194,39 @@ export class WorldScene extends Phaser.Scene {
       const target = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       this.aim = angleBetween(this.position, target);
     });
-    this.releaseDamage = this.services.events.on('DamageTaken', ({ health }) => {
-      this.services.sound.play('behit');
-      this.services.sound.setLoop('alarm', health > 0 && health < 20);
-    this.releaseDamage = this.services.events.on('DamageTaken', ({ amount, health }) => {
-      this.hurtThisFrame = true;
-      this.hurtFeedbackMs = COMBAT_RULES.feedback.playerHighlightMs;
-      this.search.cancel();
-      for (const enemy of this.combat.enemies) {
-        enemy.hugProgress = 0;
-      }
-      this.services.notify(`受到 ${amount} 点伤害，当前生命 ${health}；搜索和撤离读条已中断。`);
-      this.cameras.main.flash(COMBAT_RULES.feedback.cameraFlashMs, 255, 72, 72, false);
-      this.cameras.main.shake(
-        COMBAT_RULES.feedback.cameraShakeMs,
-        COMBAT_RULES.feedback.cameraShakeIntensity,
-      );
-    });
+   this.releaseDamage = this.services.events.on(
+  'DamageTaken',
+  ({ amount, health }) => {
+    this.services.sound.play('behit');
+    this.services.sound.setLoop('alarm', health > 0 && health < 20);
+
+    this.hurtThisFrame = true;
+    this.hurtFeedbackMs = COMBAT_RULES.feedback.playerHighlightMs;
+    this.search.cancel();
+
+    for (const enemy of this.combat.enemies) {
+      enemy.hugProgress = 0;
+    }
+
+    this.services.notify(
+      `受到 ${amount} 点伤害，当前生命 ${health}；搜索和撤离读条已中断。`,
+    );
+
+    this.cameras.main.flash(
+      COMBAT_RULES.feedback.cameraFlashMs,
+      255,
+      72,
+      72,
+      false,
+    );
+
+    this.cameras.main.shake(
+      COMBAT_RULES.feedback.cameraShakeMs,
+      COMBAT_RULES.feedback.cameraShakeIntensity,
+    );
+  },
+);
+     
     const onHidden = () => {
       if (document.hidden) {
         this.services.touch.reset();
