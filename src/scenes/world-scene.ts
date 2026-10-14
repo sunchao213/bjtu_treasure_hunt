@@ -29,6 +29,7 @@ import type { RaidController } from '../modules/raid/raid-controller';
 import type { EventBus } from '../shared/events/game-events';
 import type { InventoryPort, ItemInstance, Point } from '../shared/types/game';
 import type { TouchControls } from '../modules/world/touch-controls';
+import type { SoundManager } from '../modules/ui/sound-manager';
 import {
   isQuestComplete,
   prerequisiteHint,
@@ -42,6 +43,7 @@ interface SceneServices {
   events: EventBus;
   notify: (message: string) => void;
   touch: TouchControls;
+  sound: SoundManager;
   onFrame: (interaction: string, progress: number) => void;
 }
 
@@ -193,6 +195,8 @@ export class WorldScene extends Phaser.Scene {
       this.aim = angleBetween(this.position, target);
     });
     this.releaseDamage = this.services.events.on('DamageTaken', ({ amount, health }) => {
+      this.services.sound.play('behit');
+      this.services.sound.setLoop('alarm', health > 0 && health < 20);
       this.hurtThisFrame = true;
       this.hurtFeedbackMs = COMBAT_RULES.feedback.playerHighlightMs;
       this.search.cancel();
@@ -227,6 +231,7 @@ export class WorldScene extends Phaser.Scene {
     this.attackFeedbackMs = Math.max(0, this.attackFeedbackMs - Math.max(0, deltaMs));
     this.hitStopMs = Math.max(0, this.hitStopMs - Math.max(0, deltaMs));
     const view = this.services.controller.getView();
+    this.services.sound.setLoop('alarm', view.health > 0 && view.health < 20);
     if (view.raidId !== this.lastRaidId) {
       this.resetRaid(view.raidId);
     }
@@ -251,6 +256,7 @@ export class WorldScene extends Phaser.Scene {
           this.services.touch.movement.y,
       };
       this.moving = Math.hypot(movement.x, movement.y) > 0.1;
+      this.services.sound.setLoop('footsteps', this.moving);
       if (this.moving) {
         this.search.cancel();
       }
@@ -288,6 +294,7 @@ export class WorldScene extends Phaser.Scene {
         this.services.notify('照明棒已部署，附近区域将保持可见 30 秒。');
       }
       if (down('SPACE')) {
+        this.services.sound.play('hit');
         this.search.cancel();
         const carriedItems = this.services.inventory.getCarriedItems();
         const weaponItem = carriedItems.find(
@@ -632,6 +639,7 @@ export class WorldScene extends Phaser.Scene {
         // Carry-in drops retain provenance: only the inventory transfer method may reinsert them.
         const result = this.services.inventory.addLoot(loot.item);
         if (result.ok) {
+          this.services.sound.play('pick');
           loot.sprite.destroy();
           this.ground.delete(loot.item.instanceId);
           this.banner = {
@@ -670,7 +678,11 @@ export class WorldScene extends Phaser.Scene {
         this.search.cancel();
         return;
       }
+      const wasSearching = this.search.current() === chest.id;
       this.search.begin(chest.id);
+      if (!wasSearching) {
+        this.services.sound.play('box');
+      }
       if (this.search.progress() >= 1 && view.raidId) {
         const item: ItemInstance = {
           instanceId: `${view.raidId}:${chest.id}`,
@@ -720,6 +732,9 @@ export class WorldScene extends Phaser.Scene {
             : `撤离未解锁 · 还差 ${view.threshold - view.value} 价值`;
       if (held && !this.previousInteract && view.phase === 'active') {
         const result = this.services.controller.startExtraction();
+        if (result.ok) {
+          this.services.sound.play('home');
+        }
         if (!result.ok) {
           this.services.notify('本局携带价值不足，先搜索物资再回来。');
         }
@@ -747,6 +762,7 @@ export class WorldScene extends Phaser.Scene {
 
   private resetRaid(raidId: string | null): void {
     this.lastRaidId = raidId;
+    this.services.sound.setLoop('alarm', false);
     this.hurtFeedbackMs = 0;
     this.attackFeedbackMs = 0;
     this.hitStopMs = 0;

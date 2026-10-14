@@ -1,0 +1,29 @@
+sequenceDiagram
+  actor P as Player
+  participant T as TouchControls
+  participant S as WorldScene
+  participant I as SearchInteraction
+  participant V as InventoryPort
+  participant E as EventBus
+  P->>T: Hold keyboard or touch E
+  S->>T: held("E")
+  T-->>S: true or false
+  S->>S: Check phase, range, line of sight, light and evidence
+  alt Invalid condition, release, movement or damage
+    S->>I: cancel()
+    S-->>P: Show cancellation reason
+  else Valid search condition
+    S->>I: begin(pointId)
+    loop While E is held
+      S->>I: progress()
+    end
+    S->>I: finish(item, V.addLoot)
+    alt Inventory full or invalid source
+      I-->>S: { ok: false }
+      S-->>P: Keep search point and show retry hint
+    else Loot accepted
+      I-->>S: { ok: true }
+      S->>E: emit(LocationInteracted)
+      S-->>P: Add loot to raid inventory
+    end
+  end
