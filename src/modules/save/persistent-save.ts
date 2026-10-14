@@ -1,6 +1,7 @@
 import { ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
+import { chapterUnlockGranted, QUEST_CHAPTER_ID } from '../quests/quest-service';
 
 export const FORMAL_SAVE_KEY = 'bjtu-treasure-hunt:save:v2';
 export const FORMAL_SCHEMA_VERSION = 2 as const;
@@ -62,7 +63,8 @@ function validResult(value: unknown): value is RaidResult {
     value.items.every(validItem) &&
     typeof value.value === 'number' &&
     Number.isSafeInteger(value.value) &&
-    value.value >= 0
+    value.value >= 0 &&
+    (value.questComplete === undefined || typeof value.questComplete === 'boolean')
   );
 }
 
@@ -289,6 +291,9 @@ export class PersistentSave implements SavePort {
         if (!next.codexIds.includes(item.itemId)) {
           next.codexIds.push(item.itemId);
         }
+      }
+      if (chapterUnlockGranted(result) && !next.unlockedChapterIds.includes(QUEST_CHAPTER_ID)) {
+        next.unlockedChapterIds.push(QUEST_CHAPTER_ID);
       }
     }
     next.activeRaid = null;

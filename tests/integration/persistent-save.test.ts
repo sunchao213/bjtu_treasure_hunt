@@ -31,6 +31,59 @@ const result = (raidId: string): RaidResult => {
 };
 
 describe('formal persistence and migration', () => {
+  it('saves chapter unlocks atomically with evidence and keeps them after reload and failure', async () => {
+    const storage = new MemoryStorage();
+    const save = new PersistentSave(storage);
+    await save.beginRaid('story', []);
+    const storyResult: RaidResult = {
+      ...result('story'),
+      questComplete: true,
+      items: ['torn-notebook', 'anomalous-feather'].map((itemId) => ({
+        instanceId: `story:${itemId}`,
+        itemId,
+        origin: { kind: 'raid-loot', obtainedInRaidId: 'story' },
+      })),
+    };
+    storage.fail = true;
+    await expect(save.finalizeRaid(storyResult)).rejects.toThrow();
+    expect(save.view().unlockedChapterIds).toEqual([]);
+    expect(save.view().warehouse).toEqual([]);
+    storage.fail = false;
+    await save.finalizeRaid(storyResult);
+    await save.finalizeRaid(storyResult);
+    const reloaded = new PersistentSave(storage);
+    expect(reloaded.view().unlockedChapterIds).toEqual(['siyuan-code']);
+    expect(reloaded.view().warehouse).toHaveLength(2);
+    await reloaded.beginRaid('failed', []);
+    await reloaded.finalizeRaid({
+      raidId: 'failed',
+      outcome: 'failed',
+      reason: 'death',
+      items: [],
+      value: 0,
+    });
+    expect(reloaded.view().unlockedChapterIds).toEqual(['siyuan-code']);
+    expect(reloaded.view().warehouse).toHaveLength(2);
+  });
+
+  it('does not unlock a chapter without both current-raid evidence items and quest completion', async () => {
+    for (const complete of [true, false]) {
+      const save = new PersistentSave(new MemoryStorage());
+      await save.beginRaid('story', []);
+      const evidence = ['torn-notebook', 'anomalous-feather'].map((itemId) => ({
+        instanceId: `story:${itemId}`,
+        itemId,
+        origin: { kind: 'raid-loot' as const, obtainedInRaidId: 'story' },
+      }));
+      await save.finalizeRaid({
+        ...result('story'),
+        questComplete: complete,
+        items: complete ? evidence.slice(0, 1) : evidence,
+      });
+      expect(save.view().unlockedChapterIds).toEqual([]);
+    }
+  });
+
   it('imports v1 reference data into v2 without changing the legacy key', async () => {
     const storage = new MemoryStorage();
     const reference = new ReferenceSave(storage);
