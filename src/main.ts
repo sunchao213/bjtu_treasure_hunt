@@ -439,10 +439,12 @@ async function bootstrap(): Promise<void> {
   };
   element('abandon').onclick = () => {
     controller.abandon();
+    sound.setBackground(false);
     render();
   };
   element('next').onclick = () => {
     controller.prepareNext();
+    sound.setBackground(false);
     render();
   };
   element('retry-save').onclick = async () => {
@@ -493,6 +495,7 @@ async function bootstrap(): Promise<void> {
       window.removeEventListener('resize', onResize);
       controller.dispose();
       touch.dispose();
+      sound.stopAll();
       game.destroy(true);
       unlock();
     });

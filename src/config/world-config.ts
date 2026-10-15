@@ -167,6 +167,9 @@ export const WORLD = {
     { id: 'siyuan', kind: 'patrol' as const, route: [{ x: 1600, y: 1200 }] },
     { id: 'south-teaching', kind: 'patrol' as const, route: [{ x: 2000, y: 1800 }] },
     { id: 'hug', kind: 'hug' as const, route: [{ x: 1580, y: 1240 }] },
+    { id: 'hug-west', kind: 'hug' as const, route: [{ x: 920, y: 880 }] },
+    { id: 'hug-east', kind: 'hug' as const, route: [{ x: 2320, y: 1320 }] },
+    { id: 'hug-south', kind: 'hug' as const, route: [{ x: 2450, y: 1200 }] },
   ],
   lootZones: [
     { id: 'south', x: 1110, y: 1790, width: 660, height: 220 },
