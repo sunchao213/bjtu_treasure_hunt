@@ -141,10 +141,6 @@ async function bootstrap(): Promise<void> {
         scene.clearInteractions();
       }
     } else if (!rulesOpen && !mapOpen && !codexOpen) controller.resume();
-    if (!active) {
-      app.dataset.bagOpen = 'false';
-      element('mobile-bag').setAttribute('aria-expanded', 'false');
-    }
   };
   const onResize = () => {
     scene.clearInteractions();
@@ -156,12 +152,8 @@ async function bootstrap(): Promise<void> {
   };
   element('mobile-rules').onclick = () => element('open-rules').click();
   element('mobile-bag').onclick = () => {
-    const open = app.dataset.bagOpen !== 'true';
-    app.dataset.bagOpen = String(open);
-    element('mobile-bag').setAttribute('aria-expanded', String(open));
-    element('mobile-bag').textContent = open ? '关闭背包' : '背包';
     scene.clearInteractions();
-    render();
+    app.scrollTo({ top: element('inventory-panel').offsetTop - 12, behavior: 'smooth' });
   };
   const campusMap = element<HTMLDialogElement>('campus-map-dialog');
   element('open-campus-map').onclick = () => {
@@ -235,7 +227,7 @@ async function bootstrap(): Promise<void> {
     const lighting = scene.getLightingStatus();
     const playable =
       !controller.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
-    touch.setEnabled(playable && app.dataset.bagOpen !== 'true');
+    touch.setEnabled(playable);
     app.dataset.phase = view.phase;
     const lightButton =
       element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="L"]');
@@ -417,6 +409,7 @@ async function bootstrap(): Promise<void> {
         : '无法保存开局，请检查浏览器存储或刷新后重试。',
     );
     render();
+    if (result.ok && mobile()) app.scrollTo(0, 0);
   };
   element('extract').onclick = () => {
     const result = controller.startExtraction();
@@ -434,6 +427,7 @@ async function bootstrap(): Promise<void> {
     controller.prepareNext();
     sound.setMusic(false);
     render();
+    if (mobile()) app.scrollTo(0, 0);
   };
   element('retry-save').onclick = async () => {
     await controller.retrySettlement();
