@@ -1,4 +1,6 @@
 import './style.css';
+import './mobile-layout.css';
+import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { createGame } from './app/create-game';
 import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
@@ -127,14 +129,13 @@ async function bootstrap(): Promise<void> {
   let rulesOpen = false;
   let mapOpen = false;
   let codexOpen = false;
-  const mobile = () => matchMedia('(pointer: coarse), (max-width: 950px)').matches;
+  const mobile = isTouchLayout;
   const syncOrientation = () => {
     const view = controller.getView();
     const active = view.phase === 'active' || view.phase === 'extracting';
-    const portrait = mobile() && innerHeight > innerWidth;
     app.dataset.mobile = String(mobile());
-    element('rotate-phone').hidden = !active || !portrait;
-    if (active && (portrait || rulesOpen || mapOpen || codexOpen)) {
+    element('rotate-phone').hidden = true;
+    if (active && (rulesOpen || mapOpen || codexOpen)) {
       if (!controller.isPaused()) {
         controller.pause();
         scene.clearInteractions();
@@ -149,7 +150,10 @@ async function bootstrap(): Promise<void> {
     scene.clearInteractions();
     render();
   };
-  window.addEventListener('resize', onResize);
+  const disposeLayout = bindMobileLayout(app, () => queueMicrotask(onResize));
+  element('mobile-fullscreen').onclick = () => {
+    void requestLandscape();
+  };
   element('mobile-rules').onclick = () => element('open-rules').click();
   element('mobile-bag').onclick = () => {
     const open = app.dataset.bagOpen !== 'true';
@@ -402,18 +406,7 @@ async function bootstrap(): Promise<void> {
     if (!element<HTMLInputElement>('risk-consent').checked) {
       return;
     }
-    if (mobile() && document.documentElement.requestFullscreen) {
-      // Must originate in the start gesture; unsupported browsers retain the rotation prompt.
-      void document.documentElement
-        .requestFullscreen()
-        .then(async () => {
-          const orientation = screen.orientation as ScreenOrientation & {
-            lock?: (direction: string) => Promise<void>;
-          };
-          await orientation.lock?.('landscape');
-        })
-        .catch(() => undefined);
-    }
+    void requestLandscape();
     const selected = element<HTMLSelectElement>('loadout').value;
     const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
     const result = await controller.start(selected ? [selected] : [], starterWeapon || undefined);
@@ -424,11 +417,6 @@ async function bootstrap(): Promise<void> {
         : '无法保存开局，请检查浏览器存储或刷新后重试。',
     );
     render();
-    if (result.ok && matchMedia('(max-width: 950px)').matches) {
-      element('game-canvas')
-        .closest('.map-panel')
-        ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    }
   };
   element('extract').onclick = () => {
     const result = controller.startExtraction();
@@ -439,12 +427,12 @@ async function bootstrap(): Promise<void> {
   };
   element('abandon').onclick = () => {
     controller.abandon();
-    sound.setBackground(false);
+    sound.setMusic(false);
     render();
   };
   element('next').onclick = () => {
     controller.prepareNext();
-    sound.setBackground(false);
+    sound.setMusic(false);
     render();
   };
   element('retry-save').onclick = async () => {
@@ -492,7 +480,7 @@ async function bootstrap(): Promise<void> {
       document.removeEventListener('pointerdown', startMusic);
       document.removeEventListener('keydown', startMusic);
       sound.stopAll();
-      window.removeEventListener('resize', onResize);
+      disposeLayout();
       controller.dispose();
       touch.dispose();
       sound.stopAll();

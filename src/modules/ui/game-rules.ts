@@ -30,7 +30,7 @@ export function gameRulesMarkup(): string {
           <div><dt><kbd>Q</kbd></dt><dd>安抚抱抱怪</dd></div>
           <div><dt><kbd>Space</kbd></dt><dd>近身攻击</dd></div>
           <div><dt><kbd>L</kbd> / <kbd>R</kbd> / <kbd>G</kbd></dt><dd>手电开关 / 换电池 / 放照明棒</dd></div>
-        </dl><p>手机局内使用横屏，竖屏时暂停并提示旋转。左摇杆移动，右侧瞄准摇杆控制手电与攻击方向，松手后保留朝向；右侧按钮执行对应操作。顶部可查看价值、电量、背包和规则，背包打开期间计时继续。局内打开规则、校园图或图鉴会暂停计时与敌人行动，并中断当前读条；关闭后继续。刷新仍按失败处理。</p></section>
+        </dl><p>手机页面始终按横屏排版；支持的浏览器会在开始探索时进入全屏并锁定横屏，不支持时自动旋转页面。可点击顶部“全屏”重试。左摇杆移动，右侧瞄准摇杆控制手电与攻击方向，松手后保留朝向；右侧按钮执行对应操作。顶部可查看价值、电量、背包和规则，背包打开期间计时继续。局内打开规则、校园图或图鉴会暂停计时与敌人行动，并中断当前读条；关闭后继续。刷新仍按失败处理。</p></section>
       </div>
       <footer class="rules-footer"><button id="rules-continue" class="primary">进入校园</button></footer>
     </dialog>`;

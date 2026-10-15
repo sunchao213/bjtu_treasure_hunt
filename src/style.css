@@ -5,7 +5,8 @@
   background: #111313;
   font-synthesis: none;
 }
-body {
+#app,
+dialog {
   filter: brightness(var(--screen-brightness));
 }
 .settings label {
@@ -791,7 +792,7 @@ footer {
     min-height: 44px;
   }
 }
-@media (pointer: coarse), (max-width: 950px) {
+@media (pointer: coarse) {
   .touch-controls {
     display: flex;
   }

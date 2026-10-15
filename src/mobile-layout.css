@@ -1,0 +1,216 @@
+/* Logical landscape dimensions also apply when the browser cannot lock orientation. */
+:root {
+  --game-width: 100vw;
+  --game-height: 100dvh;
+  --view-x: 0px;
+  --view-y: 0px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+html[data-touch='true'] {
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+html[data-rotated='true'] {
+  --safe-top: env(safe-area-inset-right, 0px);
+  --safe-right: env(safe-area-inset-bottom, 0px);
+  --safe-bottom: env(safe-area-inset-left, 0px);
+  --safe-left: env(safe-area-inset-top, 0px);
+}
+html[data-touch='true'] #app {
+  position: fixed;
+  inset: auto;
+  top: var(--view-y);
+  left: var(--view-x);
+  width: var(--game-width);
+  height: var(--game-height);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+html[data-rotated='true'] #app {
+  transform-origin: top left;
+  transform: translateX(var(--game-height)) rotate(90deg);
+}
+html[data-touch='true'] #app .masthead {
+  display: flex;
+  padding: 8px 12px;
+}
+html[data-touch='true'] #app main {
+  padding: 8px 12px;
+}
+html[data-touch='true'] #app .play-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+  gap: 12px;
+}
+html[data-touch='true'] #app aside {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+html[data-touch='true'] #game-canvas {
+  min-height: 0;
+  height: clamp(200px, calc(var(--game-height) - 120px), 500px);
+}
+html[data-touch='true'] #app select {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 16px;
+}
+html[data-touch='true'] #app:is([data-phase='active'], [data-phase='extracting']) {
+  overflow: hidden;
+  padding: 0;
+}
+html[data-touch='true'] #app:is([data-phase='active'], [data-phase='extracting']) .masthead {
+  display: none;
+}
+html[data-touch='true'] #app:is([data-phase='active'], [data-phase='extracting']) main {
+  padding: 0;
+}
+html[data-touch='true'] #app:is([data-phase='active'], [data-phase='extracting']) .map-panel {
+  grid-template-rows: 26px 40px minmax(0, 1fr) 28px;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+html[data-touch='true'] #app .map-viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+html[data-touch='true'] #app:is([data-phase='active'], [data-phase='extracting']) #game-canvas {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+html[data-touch='true'] #app .interaction {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  gap: 8px;
+  border-radius: 0;
+  overflow: hidden;
+}
+html[data-touch='true'] #app .interaction span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-touch='true'] #app .interaction progress {
+  flex: 0 0 64px;
+}
+html[data-touch='true'] #app .mobile-toolbar {
+  gap: 5px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+html[data-touch='true'] #app .mobile-toolbar button {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 36px;
+  padding: 2px 6px;
+}
+html[data-touch='true'] #app[data-mobile='true'] .campus-map-button {
+  width: clamp(96px, calc(var(--game-height) * 0.3), 150px);
+  top: 4px;
+  right: 6px;
+}
+html[data-touch='true'][data-compact='true'] .campus-overview {
+  display: none;
+}
+html[data-touch='true'][data-compact='true'] .campus-map-button span {
+  padding: 8px 3px;
+}
+html[data-touch='true'] #app .touch-controls {
+  --stick-size: clamp(64px, calc(var(--game-height) * 0.22), 104px);
+  display: flex;
+  inset: auto 10px 8px;
+  gap: 14px;
+}
+html[data-touch='true'] #app .touch-stick {
+  width: var(--stick-size);
+  height: var(--stick-size);
+  flex-basis: var(--stick-size);
+  flex-shrink: 0;
+}
+html[data-touch='true'] #app .stick-knob {
+  top: calc(50% - 18px);
+  left: calc(50% - 18px);
+}
+html[data-touch='true'] #app .stick-arrows {
+  font-size: 16px;
+  line-height: calc((var(--stick-size) - 10px) / 3);
+}
+html[data-touch='true'] #app .touch-actions {
+  grid-template-columns: repeat(3, 48px);
+  gap: 5px;
+}
+html[data-touch='true'] #app .touch-actions button {
+  height: 44px;
+}
+html[data-touch='true'] #app .touch-interact {
+  grid-column: auto;
+}
+html[data-touch='true']
+  #app[data-bag-open='true']:is([data-phase='active'], [data-phase='extracting'])
+  aside {
+  top: calc(66px + var(--safe-top));
+  bottom: calc(28px + var(--safe-bottom));
+  right: var(--safe-right);
+  width: min(360px, calc(var(--game-width) * 0.55));
+  overscroll-behavior: contain;
+}
+/* Native modal dialogs live in the top layer, so rotate them separately from #app. */
+html[data-touch='true'] dialog {
+  position: fixed;
+  inset: auto;
+  top: var(--view-y);
+  left: var(--view-x);
+  margin: 0;
+  width: var(--game-width);
+  height: var(--game-height);
+  max-width: none;
+  max-height: none;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  border-radius: 0;
+  overflow: hidden;
+}
+html[data-rotated='true'] dialog {
+  transform-origin: top left;
+  transform: translateX(var(--game-height)) rotate(90deg);
+}
+html[data-touch='true'] dialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+html[data-touch='true'] .rules-header {
+  padding: 4px 12px;
+}
+html[data-touch='true'] .rules-header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+html[data-touch='true'] .rules-eyebrow {
+  display: none;
+}
+html[data-touch='true'] .rules-footer {
+  padding: 6px 12px;
+}
+html[data-touch='true'] :is(.rules-content, .codex-content, .campus-map-scroll) {
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+html[data-touch='true'] .codex-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+html[data-touch='true'] .codex-footer {
+  flex-wrap: nowrap;
+}
+html[data-touch='true'] .campus-map-dialog canvas {
+  min-width: 0;
+  width: 100%;
+  height: auto;
+}

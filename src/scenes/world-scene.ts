@@ -1,3 +1,4 @@
+import { isTouchLayout } from '../modules/ui/mobile-layout';
 import Phaser from 'phaser';
 import { COMBAT_RULES } from '../config/combat-config';
 import {
@@ -186,12 +187,15 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     const resizeCamera = () => {
       this.cameras.main.setZoom(
-        matchMedia('(pointer: coarse), (max-width: 950px)').matches ? 0.85 : 1,
+        isTouchLayout()
+          ? Math.max(0.5, Math.min(0.85, this.scale.width / 900, this.scale.height / 500))
+          : 1,
       );
     };
     resizeCamera();
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeCamera);
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (isTouchLayout()) return;
       const target = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       this.aim = angleBetween(this.position, target);
     });
@@ -272,7 +276,7 @@ export class WorldScene extends Phaser.Scene {
       );
       this.player?.setPosition(this.position.x, this.position.y);
       const pointer = this.input.activePointer;
-      const touchLayout = matchMedia('(pointer: coarse), (max-width: 950px)').matches;
+      const touchLayout = isTouchLayout();
       if (touchLayout && this.services.touch.aim) {
         this.aim = Math.atan2(this.services.touch.aim.y, this.services.touch.aim.x);
       } else if (touchLayout && this.services.touch.aimDirection) {
