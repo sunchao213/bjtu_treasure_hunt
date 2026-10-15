@@ -799,9 +799,6 @@ footer {
   .key-help {
     display: none;
   }
-  #game-canvas canvas {
-    touch-action: none;
-  }
   #app[data-phase='active'] .intro,
   #app[data-phase='extracting'] .intro {
     display: none;

@@ -95,9 +95,6 @@ async function bootstrap(): Promise<void> {
   let searchProgress = 0;
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
-  const startMusic = () => sound.setMusic(true);
-  document.addEventListener('pointerdown', startMusic, { once: true });
-  document.addEventListener('keydown', startMusic, { once: true });
   const volume = element<HTMLInputElement>('sound-volume');
   const brightness = element<HTMLInputElement>('screen-brightness');
   const applySettings = () => {
@@ -125,7 +122,6 @@ async function bootstrap(): Promise<void> {
       }
     },
   });
-  const game = createGame(scene);
   let rulesOpen = false;
   let mapOpen = false;
   let codexOpen = false;
@@ -147,6 +143,8 @@ async function bootstrap(): Promise<void> {
     render();
   };
   const disposeLayout = bindMobileLayout(app, () => queueMicrotask(onResize));
+  // Establish the logical landscape box before Phaser measures its canvas.
+  const game = createGame(scene);
   element('mobile-fullscreen').onclick = () => {
     void requestLandscape();
   };
@@ -398,11 +396,12 @@ async function bootstrap(): Promise<void> {
     if (!element<HTMLInputElement>('risk-consent').checked) {
       return;
     }
+    // Start playback within the click gesture, before fullscreen or save awaits.
+    sound.setMusic(true);
     void requestLandscape();
     const selected = element<HTMLSelectElement>('loadout').value;
     const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
     const result = await controller.start(selected ? [selected] : [], starterWeapon || undefined);
-    if (result.ok) sound.setMusic(true);
     notify(
       result.ok
         ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
@@ -471,13 +470,10 @@ async function bootstrap(): Promise<void> {
   render();
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
-      document.removeEventListener('pointerdown', startMusic);
-      document.removeEventListener('keydown', startMusic);
-      sound.stopAll();
+      sound.dispose();
       disposeLayout();
       controller.dispose();
       touch.dispose();
-      sound.stopAll();
       game.destroy(true);
       unlock();
     });
