@@ -74,6 +74,9 @@ export const MONSTER_ANIMATIONS: Readonly<Record<string, MonsterAnimationAsset>>
 };
 
 export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
+  if (enemy.state === 'mutation-warning') {
+    return SQUIRREL_ANIMATIONS.request;
+  }
   if (enemy.state === 'dead') {
     if (enemy.kind === 'hug' && enemy.mutated) {
       return MUTANT_ANIMATIONS.death;

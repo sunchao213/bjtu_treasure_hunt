@@ -14,7 +14,7 @@ export function mountShell(root: HTMLElement): void {
         <section class="map-panel" aria-label="游戏地图">
           <div class="map-top"><span><i class="status-dot"></i><b id="phase-label">准备出发</b></span>
             <span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span></div>
-          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-codex">图鉴</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="inventory-panel">背包</button></div>
+          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-codex">图鉴</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="preparation">出发</button></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
           <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-label="放大校园地图">
             <canvas id="campus-overview" class="campus-overview" width="600" height="400" aria-hidden="true"></canvas>
@@ -62,7 +62,7 @@ export function mountShell(root: HTMLElement): void {
           <section class="side-card" id="inventory-panel" hidden><div class="section-kicker">临时背包 <span id="bag-count">0 / 6</span></div>
             <ul id="inventory" class="inventory"></ul>
             <button id="extract" class="primary">在撤离点申请撤离</button>
-            <details class="danger-area"><summary>结束当前对局</summary><p>放弃会损失本局携带物。</p><button id="abandon" class="secondary">确认放弃</button></details>
+            <details class="danger-area"><summary>结束当前对局</summary><p>放弃会损失本局携带物。</p><button id="abandon" class="secondary">放弃探索</button></details>
           </section>
           <section class="side-card result-card" id="result-panel" hidden><h2 id="result-title">本次结算</h2><p id="result-detail"></p>
             <p id="quest-unlock" class="quest-unlock" hidden></p>

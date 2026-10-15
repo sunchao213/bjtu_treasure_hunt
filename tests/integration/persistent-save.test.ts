@@ -84,7 +84,7 @@ describe('formal persistence and migration', () => {
     }
   });
 
-  it('imports v1 reference data into v2 without changing the legacy key', async () => {
+  it('imports v1 reference data into v3 without changing the legacy key', async () => {
     const storage = new MemoryStorage();
     const reference = new ReferenceSave(storage);
     await reference.beginRaid('legacy', []);
@@ -92,10 +92,10 @@ describe('formal persistence and migration', () => {
     const legacyRaw = storage.getItem(SAVE_KEY);
 
     const formal = new PersistentSave(storage);
-    expect(formal.importReference()).toEqual({ sourceSchemaVersion: 1, targetSchemaVersion: 2 });
+    expect(formal.importReference()).toEqual({ sourceSchemaVersion: 1, targetSchemaVersion: 3 });
     expect(storage.getItem(SAVE_KEY)).toBe(legacyRaw);
     expect(storage.getItem(FORMAL_SAVE_KEY)).not.toBeNull();
-    expect(formal.view().schemaVersion).toBe(2);
+    expect(formal.view().schemaVersion).toBe(3);
     expect(formal.view().warehouse).toHaveLength(4);
     expect(new PersistentSave(storage).view().codexIds).toEqual(['school-badge']);
   });
@@ -104,6 +104,120 @@ describe('formal persistence and migration', () => {
     const storage = new MemoryStorage();
     await new PersistentSave(storage).beginRaid('existing', []);
     expect(() => new PersistentSave(storage).importReference()).toThrow('already exists');
+  });
+
+  it('migrates a v2 save in place, preserves permanent progress and interrupts untracked active raids', () => {
+    for (const activeRaid of [null, { raidId: 'old-active' }]) {
+      const storage = new MemoryStorage();
+      const old = {
+        schemaVersion: 2,
+        warehouse: result('old').items,
+        codexIds: ['school-badge'],
+        unlockedChapterIds: ['siyuan-code'],
+        activeRaid,
+        settledRaidIds: ['old'],
+        lastResult: result('old'),
+      };
+      const raw = JSON.stringify(old);
+      storage.setItem(FORMAL_SAVE_KEY, raw);
+      storage.fail = true;
+      expect(() => new PersistentSave(storage)).toThrow('QuotaExceeded');
+      expect(storage.getItem(FORMAL_SAVE_KEY)).toBe(raw);
+      storage.fail = false;
+      const save = new PersistentSave(storage);
+      expect(save.view()).toMatchObject({
+        schemaVersion: 3,
+        activeRaid: null,
+        warehouse: old.warehouse,
+        codexIds: old.codexIds,
+        unlockedChapterIds: old.unlockedChapterIds,
+      });
+      expect(new PersistentSave(storage).view()).toEqual(save.view());
+      if (activeRaid) {
+        expect(save.view().lastResult).toMatchObject({
+          raidId: 'old-active',
+          outcome: 'failed',
+          reason: 'interrupted',
+          items: [],
+        });
+      } else {
+        expect(save.view().lastResult).toEqual(old.lastResult);
+      }
+      const imported = new PersistentSave(new MemoryStorage());
+      expect(imported.importRaw(raw)).toEqual({ sourceSchemaVersion: 2, targetSchemaVersion: 3 });
+      expect(imported.view()).toEqual(save.view());
+    }
+  });
+
+  it('rejects fabricated carry-ins, changed identities, changed origins and duplicate returns', async () => {
+    const storage = new MemoryStorage();
+    const save = new PersistentSave(storage);
+    await save.beginRaid('seed', []);
+    await save.finalizeRaid(result('seed'));
+    const [carry] = await save.beginRaid('raid', ['seed-0']);
+    expect(save.view().activeRaid?.loadout).toEqual([carry]);
+    const before = save.exportRaw();
+    for (const items of [
+      [{ ...carry!, instanceId: 'fake' }],
+      [{ ...carry!, itemId: 'siyuan-key' }],
+      [{ ...carry!, origin: { kind: 'raid-loot' as const, obtainedInRaidId: 'raid' } }],
+      [carry!, carry!],
+    ]) {
+      await expect(save.finalizeRaid({ ...result('raid'), items })).rejects.toThrow(
+        'Invalid settlement',
+      );
+      expect(save.exportRaw()).toBe(before);
+    }
+  });
+
+  it('returns only surviving carry-ins on success and keeps other warehouse items after failure', async () => {
+    const save = new PersistentSave(new MemoryStorage());
+    await save.beginRaid('seed', []);
+    await save.finalizeRaid(result('seed'));
+    const carry = await save.beginRaid('return', ['seed-0', 'seed-1']);
+    await save.finalizeRaid({ ...result('return'), items: [carry[0]!, ...result('return').items] });
+    expect(save.view().warehouse.map((item) => item.instanceId)).not.toContain('seed-1');
+    expect(save.view().warehouse).toHaveLength(7);
+    await save.beginRaid('loss', ['seed-0']);
+    await save.finalizeRaid({
+      raidId: 'loss',
+      outcome: 'failed',
+      reason: 'death',
+      items: [],
+      value: 0,
+    });
+    expect(save.view().warehouse).toHaveLength(6);
+    expect(save.view().warehouse.map((item) => item.instanceId)).not.toContain('seed-0');
+  });
+
+  it('rejects invalid carry-in manifests without changing storage or the current save', async () => {
+    const storage = new MemoryStorage();
+    const save = new PersistentSave(storage);
+    await save.beginRaid('seed', []);
+    await save.finalizeRaid(result('seed'));
+    const carry = await save.beginRaid('active', ['seed-0']);
+    const original = save.exportRaw();
+    for (const loadout of [
+      undefined,
+      null,
+      [carry[0], carry[0]],
+      result('active').items,
+      [{ ...carry[0], instanceId: 'seed-1' }],
+      [{ ...carry[0], itemId: 'unknown' }],
+      Array.from({ length: RAID_RULES.bagCapacity + 1 }, (_, index) => ({
+        ...carry[0],
+        instanceId: `too-many-${index}`,
+      })),
+    ]) {
+      const corrupt = JSON.stringify({ ...save.view(), activeRaid: { raidId: 'active', loadout } });
+      expect(() => save.importRaw(corrupt)).toThrow('corrupt');
+      expect(save.exportRaw()).toBe(original);
+      expect(storage.getItem(FORMAL_SAVE_KEY)).toBe(original);
+      const corruptedStorage = new MemoryStorage();
+      corruptedStorage.setItem(FORMAL_SAVE_KEY, corrupt);
+      expect(() => new PersistentSave(corruptedStorage)).toThrow('corrupt');
+      expect(corruptedStorage.getItem(FORMAL_SAVE_KEY)).toBe(corrupt);
+    }
   });
 
   it('commits begin and finalize only after storage accepts the complete object', async () => {
@@ -200,5 +314,56 @@ describe('formal persistence and migration', () => {
     expect(save.view().settledRaidIds).toEqual(['formal-raid']);
     expect(save.view().lastResult?.raidId).toBe('formal-raid');
     expect(new PersistentSave(storage).view().warehouse).toHaveLength(4);
+  });
+
+  it('returns a dropped and retrieved carry-in exactly once after a failed write and permits the next raid', async () => {
+    let now = 0;
+    let raidNumber = 0;
+    const storage = new MemoryStorage();
+    const save = new PersistentSave(storage);
+    await save.beginRaid('seed', []);
+    await save.finalizeRaid(result('seed'));
+    const events = new EventBus();
+    const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
+    const controller = new RaidController(
+      inventory,
+      save,
+      events,
+      RAID_RULES,
+      ITEM_DEFINITIONS,
+      () => now,
+      () => `formal-${++raidNumber}`,
+    );
+    expect((await controller.start(['seed-0'], 'training-bat')).ok).toBe(true);
+    expect(controller.getView().value).toBe(0);
+    const dropped = inventory.remove('seed-0');
+    expect(dropped.ok).toBe(true);
+    if (dropped.ok) expect(inventory.addLoot(dropped.value).ok).toBe(true);
+    for (const item of result('formal-1').items) expect(inventory.addLoot(item).ok).toBe(true);
+    controller.setExtractionPresence(true);
+    expect(controller.startExtraction().ok).toBe(true);
+    storage.fail = true;
+    now += RAID_RULES.extractionDurationMs;
+    controller.tick();
+    await Promise.resolve();
+    expect(controller.getView()).toMatchObject({ phase: 'settling', saveError: true });
+    const frozen = controller.getView().result;
+    storage.fail = false;
+    await controller.retrySettlement();
+    expect(controller.getView().phase).toBe('success');
+    expect(controller.getView().value).toBe(100);
+    expect(controller.getView().result).toEqual(frozen);
+    expect(save.view().warehouse).toHaveLength(8);
+    expect(save.view().warehouse.filter((item) => item.instanceId === 'seed-0')).toHaveLength(1);
+    expect(save.view().warehouse.some((item) => item.instanceId.includes(':starter:'))).toBe(false);
+    await save.finalizeRaid(frozen!);
+    expect(new PersistentSave(storage).view()).toEqual(save.view());
+    expect(controller.prepareNext()).toBe(true);
+    expect((await controller.start(['seed-0'])).ok).toBe(true);
+    controller.abandon();
+    await Promise.resolve();
+    expect(controller.getView().phase).toBe('failed');
+    expect(save.view().warehouse).toHaveLength(7);
+    controller.dispose();
   });
 });

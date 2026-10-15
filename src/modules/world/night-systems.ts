@@ -164,7 +164,8 @@ export class NightLighting {
   }
 }
 
-export type EnemyState = 'patrol' | 'chase' | 'windup' | 'request' | 'calmed' | 'stunned' | 'dead';
+export type EnemyState =
+  'patrol' | 'chase' | 'windup' | 'request' | 'calmed' | 'mutation-warning' | 'stunned' | 'dead';
 export type CombatWeaponId = 'training-bat' | 'stun-baton';
 export interface Enemy {
   id: string;
@@ -442,35 +443,12 @@ export class NightCombat {
       }
       this.attackHit = true;
       if (enemy.kind === 'hug' && !enemy.mutated) {
-        enemy.calmHitCount += 1;
         enemy.health = Math.max(0, enemy.health - damage);
-        enemy.hugProgress = 0;
         if (enemy.health === 0) {
           enemy.state = 'dead';
           defeated.push(enemy);
-        } else if (enemy.calmHitCount >= COMBAT_RULES.hug.calmHitsToMutate) {
-          enemy.calmHitCount = 0;
-          enemy.mutated = true;
-          enemy.health = COMBAT_RULES.hug.health;
-          enemy.state = 'chase';
-          enemy.timer = COMBAT_RULES.enemy.chaseMemoryMs;
-        }
-        continue;
-      }
-      if (enemy.state === 'calmed') {
-        enemy.calmHitCount += 1;
-        enemy.health = Math.max(0, enemy.health - damage);
-        enemy.hugProgress = 0;
-        if (enemy.health > 0 && enemy.calmHitCount >= COMBAT_RULES.hug.calmHitsToMutate) {
-          enemy.calmHitCount = 0;
-          enemy.mutated = true;
-          enemy.health = COMBAT_RULES.hug.health;
-          enemy.state = 'chase';
-          enemy.timer = COMBAT_RULES.enemy.chaseMemoryMs;
-        }
-        if (enemy.health === 0) {
-          enemy.state = 'dead';
-          defeated.push(enemy);
+        } else if (damage > 0) {
+          this.warnMutation(enemy);
         }
         continue;
       }
@@ -488,6 +466,31 @@ export class NightCombat {
       }
     }
     return defeated;
+  }
+
+  private warnMutation(enemy: Enemy): void {
+    if (enemy.state === 'mutation-warning') {
+      return;
+    }
+    enemy.state = 'mutation-warning';
+    enemy.timer = COMBAT_RULES.hug.mutationWarningMs;
+    enemy.hugProgress = 0;
+    enemy.calmHitCount = 0;
+  }
+
+  /** Only effective player damage during an active hug triggers mutation. */
+  onPlayerDamaged(calmingAtStart: ReadonlySet<string> = new Set()): void {
+    for (const enemy of this.enemies) {
+      if (
+        enemy.kind === 'hug' &&
+        !enemy.mutated &&
+        ((enemy.state === 'request' && enemy.hugProgress > 0) ||
+          (calmingAtStart.has(enemy.id) && (enemy.state === 'request' || enemy.state === 'calmed')))
+      ) {
+        this.warnMutation(enemy);
+      }
+      enemy.hugProgress = 0;
+    }
   }
   acceptDamage(): boolean {
     if (this.invulnerability > 0) {
@@ -523,8 +526,23 @@ export class NightCombat {
     this.tick(dt);
     let damage = 0;
     const calmed: Enemy[] = [];
+    const calmingAtStart = new Set(
+      this.enemies
+        .filter((enemy) => enemy.state === 'request' && enemy.hugProgress > 0)
+        .map((enemy) => enemy.id),
+    );
     for (const enemy of this.enemies) {
       if (enemy.state === 'dead') {
+        continue;
+      }
+      if (enemy.state === 'mutation-warning') {
+        enemy.timer -= dt;
+        if (enemy.timer <= 0) {
+          enemy.mutated = true;
+          enemy.health = COMBAT_RULES.hug.health;
+          enemy.state = 'chase';
+          enemy.timer = COMBAT_RULES.enemy.chaseMemoryMs;
+        }
         continue;
       }
       if (enemy.state === 'calmed') {
@@ -559,10 +577,8 @@ export class NightCombat {
         if (enemy.state === 'request') {
           enemy.timer -= dt;
           if (enemy.timer <= 0) {
-            enemy.mutated = true;
-            enemy.state = 'chase';
-            enemy.hugProgress = 0;
-            enemy.calmHitCount = 0;
+            this.warnMutation(enemy);
+            continue;
           } else if (d > COMBAT_RULES.hug.loseTargetRange || !sight) {
             enemy.state = 'patrol';
             enemy.timer = 0;
@@ -662,6 +678,9 @@ export class NightCombat {
         );
       }
     }
-    return { damage, calmed };
+    if (damage > 0) {
+      this.onPlayerDamaged(calmingAtStart);
+    }
+    return { damage, calmed: calmed.filter((enemy) => enemy.state === 'calmed') };
   }
 }
