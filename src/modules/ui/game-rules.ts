@@ -26,7 +26,8 @@ export function gameRulesMarkup(): string {
         <section><h2>操作</h2><dl class="rules-controls">
           <div><dt><kbd>W A S D</kbd> / 方向键</dt><dd>移动</dd></div>
           <div><dt>鼠标指向</dt><dd>手电与攻击朝向</dd></div>
-          <div><dt><kbd>E</kbd></dt><dd>搜索 / 拾取 / 抱抱 / 充电 / 撤离</dd></div>
+          <div><dt><kbd>E</kbd></dt><dd>搜索 / 拾取 / 充电 / 撤离</dd></div>
+          <div><dt><kbd>Q</kbd></dt><dd>靠近抱抱怪后持续抱抱</dd></div>
           <div><dt><kbd>Space</kbd></dt><dd>近身攻击</dd></div>
           <div><dt><kbd>L</kbd> / <kbd>R</kbd> / <kbd>G</kbd></dt><dd>手电开关 / 换电池 / 放照明棒</dd></div>
         </dl><p>手机局内使用横屏，竖屏时暂停并提示旋转。左摇杆移动，右侧瞄准摇杆控制手电方向，松手后保留朝向；右侧按钮执行对应操作。顶部可查看价值、电量、背包和规则，背包打开期间计时继续。局内打开规则、校园图或图鉴会暂停计时与敌人行动，并中断当前读条；关闭后继续。刷新仍按失败处理。</p></section>

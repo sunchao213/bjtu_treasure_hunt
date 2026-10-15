@@ -26,6 +26,7 @@ export function mountShell(root: HTMLElement): void {
             <div class="touch-actions">
               <button data-touch-action="E" class="touch-interact" disabled>交互</button>
               <button data-touch-action="SPACE" disabled>攻击</button>
+              <button data-touch-action="Q" disabled>抱抱</button>
               <button data-touch-action="L" aria-pressed="true" disabled>手电</button>
               <button data-touch-action="R" disabled>换电池</button>
               <button data-touch-action="G" disabled>照明棒</button>

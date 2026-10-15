@@ -1,6 +1,6 @@
 import type { Point } from '../../shared/types/game';
 
-export type TouchAction = 'E' | 'SPACE' | 'L' | 'R' | 'G';
+export type TouchAction = 'E' | 'SPACE' | 'Q' | 'L' | 'R' | 'G';
 
 /** Pointer capture lets movement and an action stay held by separate fingers. */
 export class TouchControls {

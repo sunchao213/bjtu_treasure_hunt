@@ -82,7 +82,7 @@ export const WORLD = {
   width: 3600,
   height: 2400,
   playerRadius: 13,
-  playerSpeed: 400,
+  playerSpeed: 260,
   spawn: { x: 1320, y: 2160 },
   extraction: { x: 1220, y: 2100, width: 200, height: 150 },
   buildings,
@@ -161,7 +161,42 @@ export const WORLD = {
         { x: 2260, y: 1710 },
       ],
     },
+    {
+      id: 'west-south',
+      kind: 'patrol' as const,
+      route: [
+        { x: 450, y: 1360 },
+        { x: 1080, y: 1360 },
+      ],
+    },
+    {
+      id: 'center',
+      kind: 'patrol' as const,
+      route: [
+        { x: 1110, y: 930 },
+        { x: 1110, y: 1540 },
+      ],
+    },
+    {
+      id: 'east-north',
+      kind: 'patrol' as const,
+      route: [
+        { x: 2460, y: 790 },
+        { x: 3100, y: 790 },
+      ],
+    },
+    {
+      id: 'southeast',
+      kind: 'patrol' as const,
+      route: [
+        { x: 2460, y: 2050 },
+        { x: 3100, y: 2050 },
+      ],
+    },
     { id: 'hug', kind: 'hug' as const, route: [{ x: 1580, y: 1240 }] },
+    { id: 'hug-west', kind: 'hug' as const, route: [{ x: 920, y: 880 }] },
+    { id: 'hug-east', kind: 'hug' as const, route: [{ x: 2320, y: 1320 }] },
+    { id: 'hug-south', kind: 'hug' as const, route: [{ x: 2450, y: 1200 }] },
   ],
   lootZones: [
     { id: 'south', x: 1110, y: 1790, width: 660, height: 220 },

@@ -143,6 +143,7 @@ export class WorldScene extends Phaser.Scene {
         'S',
         'D',
         'E',
+        'Q',
         'L',
         'R',
         'G',
@@ -284,7 +285,7 @@ export class WorldScene extends Phaser.Scene {
         deltaMs,
         this.position,
         this.lighting.enabled,
-        down('E') && !down('SPACE'),
+        down('Q') && !down('SPACE'),
         !this.moving,
         WORLD.obstacles,
         this.bounds,
@@ -463,7 +464,7 @@ export class WorldScene extends Phaser.Scene {
     const hug = this.combat.enemies.find((enemy) => enemy.state === 'request');
     if (hug) {
       this.search.cancel();
-      this.interaction = `抱抱请求 · ${Math.ceil(hug.timer / 1000)} 秒`;
+      this.interaction = `按住 Q 抱抱 · ${Math.ceil(hug.timer / 1000)} 秒`;
       return;
     }
     const loot = [...this.ground.values()].find(

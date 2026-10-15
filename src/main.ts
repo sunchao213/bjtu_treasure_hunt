@@ -12,6 +12,7 @@ import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
+import { SoundManager } from './modules/ui/sound-manager';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -83,6 +84,7 @@ async function bootstrap(): Promise<void> {
   let interacted = '';
   let searchProgress = 0;
   const touch = new TouchControls(element('touch-controls'));
+  const sound = new SoundManager();
   const scene = new WorldScene({
     controller,
     inventory,
@@ -394,7 +396,11 @@ async function bootstrap(): Promise<void> {
         .catch(() => undefined);
     }
     const selected = element<HTMLSelectElement>('loadout').value;
+    sound.setBackground(true);
     const result = await controller.start(selected ? [selected] : []);
+    if (!result.ok) {
+      sound.setBackground(false);
+    }
     notify(
       result.ok
         ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
@@ -413,10 +419,12 @@ async function bootstrap(): Promise<void> {
   };
   element('abandon').onclick = () => {
     controller.abandon();
+    sound.setBackground(false);
     render();
   };
   element('next').onclick = () => {
     controller.prepareNext();
+    sound.setBackground(false);
     render();
   };
   element('retry-save').onclick = async () => {
@@ -455,6 +463,7 @@ async function bootstrap(): Promise<void> {
       window.removeEventListener('resize', onResize);
       controller.dispose();
       touch.dispose();
+      sound.stopAll();
       game.destroy(true);
       unlock();
     });
