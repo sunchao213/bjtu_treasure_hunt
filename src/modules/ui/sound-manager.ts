@@ -5,6 +5,9 @@ export interface AudioSettings {
 const KEY = 'bjtu-audio-settings-v1';
 export class SoundManager {
   private readonly sounds = new Map<string, HTMLAudioElement>();
+  private readonly activation = new AbortController();
+  private musicRequested = true;
+  private musicPending = false;
   private settings: AudioSettings = { volume: 0.8, brightness: 1 };
   constructor() {
     try {
@@ -21,14 +24,23 @@ export class SoundManager {
       behit: '/audio/behit.wav',
       box: '/audio/box.wav',
       home: '/audio/home.wav',
-      music: '/audio/brainiac-maniac.ogg',
+      // AAC also plays in Safari and iOS webviews that cannot decode Ogg Vorbis.
+      music: '/audio/brainiac-maniac.m4a',
     })) {
-      const audio = new Audio(src);
+      const audio = new Audio(`${import.meta.env.BASE_URL}${src.slice(1)}`);
       audio.preload = 'auto';
       audio.loop = name === 'footsteps' || name === 'alarm' || name === 'music';
       this.sounds.set(name, audio);
     }
     this.applyVolume();
+    // Mobile activation is granted on release/click. Keep retrying after a denied
+    // attempt, and respect an explicit stop when subsequent gestures arrive.
+    const activate = () => {
+      if (this.musicRequested) this.setMusic(true);
+    };
+    for (const event of ['pointerup', 'touchend', 'click', 'keydown']) {
+      document.addEventListener(event, activate, { signal: this.activation.signal });
+    }
   }
   getSettings(): Readonly<AudioSettings> {
     return this.settings;
@@ -59,20 +71,34 @@ export class SoundManager {
     }
   }
   setMusic(active: boolean): void {
+    this.musicRequested = active;
     const music = this.sounds.get('music');
     if (!music) return;
     if (active) {
-      if (music.paused) void music.play().catch(() => undefined);
+      if (music.paused && !this.musicPending) {
+        this.musicPending = true;
+        void music
+          .play()
+          .catch(() => undefined)
+          .finally(() => {
+            this.musicPending = false;
+          });
+      }
     } else {
       music.pause();
       music.currentTime = 0;
     }
   }
   stopAll(): void {
+    this.musicRequested = false;
     for (const audio of this.sounds.values()) {
       audio.pause();
       audio.currentTime = 0;
     }
+  }
+  dispose(): void {
+    this.activation.abort();
+    this.stopAll();
   }
   private applyVolume(): void {
     for (const audio of this.sounds.values())
