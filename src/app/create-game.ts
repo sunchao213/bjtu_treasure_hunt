@@ -7,6 +7,8 @@ export function createGame(scene: WorldScene): Phaser.Game {
     type: Phaser.AUTO,
     parent: 'game-canvas',
     backgroundColor: '#143c3c',
+    // SoundManager owns the shared audio context, including synthesized cries.
+    audio: { noAudio: true },
     // DOM joysticks handle gameplay touch; allow swiping the canvas to scroll.
     input: { touch: { capture: false } },
     // Measure the unrotated content box; boundingClientRect swaps axes in portrait.

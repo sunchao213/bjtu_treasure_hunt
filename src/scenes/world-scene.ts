@@ -88,7 +88,6 @@ export class WorldScene extends Phaser.Scene {
   private readonly bounds = { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 };
   private interaction = '从右侧准备面板开始探索';
   private releaseDamage?: () => void;
-  private cryAudioContext?: AudioContext;
   /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
   private banner: { text: string; untilMs: number } | null = null;
 
@@ -187,9 +186,7 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     const resizeCamera = () => {
       this.cameras.main.setZoom(
-        isTouchLayout()
-          ? Math.max(0.5, Math.min(0.85, this.scale.width / 900, this.scale.height / 500))
-          : 1,
+        isTouchLayout() ? Math.max(0.75, Math.min(1, this.scale.width / 960)) : 1,
       );
     };
     resizeCamera();
@@ -425,6 +422,7 @@ export class WorldScene extends Phaser.Scene {
         this.spawnCalmedLoot(combat.calmed, view.raidId);
       }
     } else if (!playable) {
+      this.services.sound.setLoop('footsteps', false);
       this.search.cancel();
       this.interaction = this.services.controller.isPaused()
         ? '已暂停 · 横屏并关闭规则 / 校园图 / 图鉴后继续'
@@ -935,23 +933,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private playHugCry(): void {
-    const AudioContextConstructor = window.AudioContext;
-    if (!AudioContextConstructor) return;
-    this.cryAudioContext ??= new AudioContextConstructor();
-    const context = this.cryAudioContext;
-    void context.resume();
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const start = context.currentTime;
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(720, start);
-    oscillator.frequency.exponentialRampToValueAtTime(390, start + 0.28);
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.08, start + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.34);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start(start);
-    oscillator.stop(start + 0.36);
+    this.services.sound.playHugCry();
   }
 
   private addLandmarkLabel(

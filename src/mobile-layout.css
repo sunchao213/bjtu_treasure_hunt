@@ -37,12 +37,10 @@ html[data-rotated='true'] #app {
   transform: translateX(var(--game-height)) rotate(90deg);
 }
 html[data-touch='true'] #app .masthead {
-  display: flex;
-  flex-wrap: wrap;
-  padding: 8px 12px;
+  display: none;
 }
 html[data-touch='true'] #app main {
-  padding: 8px 12px;
+  padding: 4px;
 }
 html[data-touch='true'] #app .play-layout {
   grid-template-columns: minmax(0, 1fr);
@@ -52,15 +50,24 @@ html[data-touch='true'] #app aside {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
+  padding: 0 8px;
 }
 html[data-touch='true'] #app .map-panel {
   display: grid;
-  grid-template-rows: 28px 40px minmax(0, 1fr) 32px;
-  height: clamp(260px, calc(var(--game-height) - 80px), 600px);
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 44px minmax(0, 1fr) 26px;
+  height: calc(var(--game-height) - var(--safe-top) - var(--safe-bottom) - 8px);
 }
 html[data-touch='true'] #app .map-top {
-  padding: 5px 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 0 8px;
+  gap: 6px;
   font-size: 11px;
+  white-space: nowrap;
+}
+html[data-touch='true'] #app .map-top em {
+  margin: 0 4px;
 }
 html[data-touch='true'] #game-canvas {
   position: absolute;
@@ -78,19 +85,21 @@ html[data-touch='true'] #app select {
   max-width: 100%;
   font-size: 16px;
 }
-html[data-touch='true'] #app:not([data-phase='active'], [data-phase='extracting']) #mobile-bag {
+html[data-touch='true'] #app:not([data-phase='active'], [data-phase='extracting']) .touch-controls {
   display: none;
 }
 html[data-touch='true'] #app .map-viewport {
+  grid-column: 1 / -1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 html[data-touch='true'] #app .interaction {
+  grid-column: 1 / -1;
   min-width: 0;
   min-height: 0;
   margin: 0;
-  padding: 5px 12px;
+  padding: 3px 8px;
   gap: 8px;
   border-radius: 0;
   font-size: 11px;
@@ -108,17 +117,20 @@ html[data-touch='true'] #app .interaction progress {
 html[data-touch='true'] #app .mobile-toolbar {
   display: flex;
   align-items: center;
-  gap: 5px;
-  background: #16332c;
+  gap: 3px;
+  background: #102f32;
   font-size: 12px;
-  padding: 2px 8px;
+  padding: 0 4px;
   white-space: nowrap;
+}
+html[data-touch='true'] #mobile-hud {
+  display: none;
 }
 html[data-touch='true'] #app .mobile-toolbar button {
   flex-shrink: 0;
   min-width: 44px;
-  min-height: 36px;
-  padding: 2px 6px;
+  min-height: 44px;
+  padding: 2px 4px;
 }
 html[data-touch='true'] #app[data-mobile='true'] .campus-map-button {
   width: clamp(96px, calc(var(--game-height) * 0.3), 150px);
@@ -132,9 +144,9 @@ html[data-touch='true'][data-compact='true'] .campus-map-button span {
   padding: 8px 3px;
 }
 html[data-touch='true'] #app .touch-controls {
-  --stick-size: clamp(64px, calc(var(--game-height) * 0.22), 104px);
+  --stick-size: clamp(64px, calc(var(--game-height) * 0.2), 84px);
   display: flex;
-  inset: auto 10px 8px;
+  inset: auto 10px 10px;
   gap: 14px;
 }
 html[data-touch='true'] #app .touch-stick {

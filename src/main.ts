@@ -96,6 +96,7 @@ async function bootstrap(): Promise<void> {
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
   const volume = element<HTMLInputElement>('sound-volume');
+  let audibleVolume = sound.getSettings().volume || 0.8;
   const brightness = element<HTMLInputElement>('screen-brightness');
   const applySettings = () => {
     sound.setSettings({ volume: Number(volume.value), brightness: Number(brightness.value) });
@@ -149,9 +150,24 @@ async function bootstrap(): Promise<void> {
     void requestLandscape();
   };
   element('mobile-rules').onclick = () => element('open-rules').click();
+  element('mobile-sound').onclick = () => {
+    if (sound.getMusicState() === 'playing') {
+      audibleVolume = sound.getSettings().volume;
+      volume.value = '0';
+      sound.setSettings({ volume: 0 });
+    } else {
+      if (sound.getSettings().volume === 0) {
+        volume.value = String(audibleVolume);
+        sound.setSettings({ volume: audibleVolume });
+      }
+      sound.setMusic(true);
+    }
+    render();
+  };
   element('mobile-bag').onclick = () => {
     scene.clearInteractions();
-    app.scrollTo({ top: element('inventory-panel').offsetTop - 12, behavior: 'smooth' });
+    const target = element('mobile-bag').getAttribute('aria-controls')!;
+    app.scrollTo({ top: element(target).offsetTop - 12, behavior: 'smooth' });
   };
   const campusMap = element<HTMLDialogElement>('campus-map-dialog');
   element('open-campus-map').onclick = () => {
@@ -223,6 +239,25 @@ async function bootstrap(): Promise<void> {
     syncOrientation();
     const view = controller.getView();
     const lighting = scene.getLightingStatus();
+    const musicState = sound.getMusicState();
+    const soundButton = element('mobile-sound');
+    soundButton.textContent =
+      musicState === 'playing'
+        ? '静音'
+        : musicState === 'loading'
+          ? '加载声音'
+          : musicState === 'error'
+            ? '重试声音'
+            : '开启声音';
+    soundButton.setAttribute('aria-pressed', String(musicState === 'playing'));
+    const bagButton = element('mobile-bag');
+    const preparing = view.phase === 'preparing';
+    const finished = ['settling', 'success', 'failed'].includes(view.phase);
+    bagButton.textContent = preparing ? '出发' : finished ? '结算' : '背包';
+    bagButton.setAttribute(
+      'aria-controls',
+      preparing ? 'preparation' : finished ? 'result-panel' : 'inventory-panel',
+    );
     const playable =
       !controller.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
     touch.setEnabled(playable);
