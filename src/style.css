@@ -951,7 +951,7 @@ footer {
     font-size: 11px;
   }
 }
-/* Active mobile raids occupy the landscape viewport; inventory is an overlay. */
+/* Shared touch controls; the mobile page layout lives in mobile-layout.css. */
 .mobile-toolbar {
   display: none;
 }
@@ -989,41 +989,6 @@ footer {
 .rotate-phone strong {
   font-size: 24px;
 }
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .masthead,
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .notice {
-  display: none;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) main {
-  padding: 0;
-  max-width: none;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .map-panel {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  border-radius: 0;
-  display: grid;
-  grid-template-rows: 30px 38px minmax(0, 1fr) 32px;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-    env(safe-area-inset-left);
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .map-top {
-  padding: 5px 12px;
-  font-size: 11px;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .mobile-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #16332c;
-  padding: 2px 12px;
-  font-size: 12px;
-}
 .mobile-toolbar span {
   margin-right: auto;
 }
@@ -1033,42 +998,6 @@ footer {
   background: #29483d;
   border: 1px solid #607768;
   border-radius: 5px;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) #game-canvas {
-  height: 100%;
-  min-height: 0;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .interaction {
-  padding: 5px 12px;
-  font-size: 11px;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) .campus-map-button {
-  width: min(190px, 24vw);
-  top: 6px;
-  right: 6px;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) aside {
-  display: none;
-}
-#app[data-mobile='true'][data-bag-open='true']:is([data-phase='active'], [data-phase='extracting'])
-  aside {
-  display: block;
-  position: absolute;
-  z-index: 60;
-  top: 68px;
-  bottom: 32px;
-  right: env(safe-area-inset-right);
-  width: min(320px, 48vw);
-  overflow-y: auto;
-  background: #17251ff5;
-  padding: 8px;
-}
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) aside .archive,
-#app[data-mobile='true']:is([data-phase='active'], [data-phase='extracting']) aside .debug {
-  display: none;
-}
-#app[data-mobile='true'][data-bag-open='true'] .touch-controls {
-  visibility: hidden;
 }
 @media (max-height: 420px) and (orientation: landscape) {
   .touch-stick {
