@@ -308,7 +308,7 @@ export class NightCombat {
   currentWeaponId: CombatWeaponId = 'training-bat';
   weaponUsesRemaining: number | null = null;
   private spawnTimer = 0;
-  private hugSpawnTimer = COMBAT_RULES.spawning.hugSpawnIntervalMs;
+  private hugSpawnTimer: number = COMBAT_RULES.spawning.hugSpawnIntervalMs;
   private nextSpawnId = 1;
 
   constructor(private readonly random: () => number = Math.random) {
@@ -341,7 +341,7 @@ export class NightCombat {
         const position = findPosition();
         if (!position) break;
         const patrolPoint = findPatrolWaypoint(position, position, this.random);
-        if (!patrolPoint) break;
+        if (!patrolPoint) continue;
         const enemy: Enemy = {
           id: `spawn-${this.nextSpawnId++}`,
           kind: 'patrol',

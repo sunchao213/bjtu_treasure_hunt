@@ -21,10 +21,11 @@ export class SoundManager {
       behit: '/audio/behit.wav',
       box: '/audio/box.wav',
       home: '/audio/home.wav',
+      music: '/audio/brainiac-maniac.ogg',
     })) {
       const audio = new Audio(src);
       audio.preload = 'auto';
-      audio.loop = name === 'footsteps' || name === 'alarm';
+      audio.loop = name === 'footsteps' || name === 'alarm' || name === 'music';
       this.sounds.set(name, audio);
     }
     this.applyVolume();
@@ -55,6 +56,16 @@ export class SoundManager {
     } else {
       audio.pause();
       audio.currentTime = 0;
+    }
+  }
+  setMusic(active: boolean): void {
+    const music = this.sounds.get('music');
+    if (!music) return;
+    if (active) {
+      if (music.paused) void music.play().catch(() => undefined);
+    } else {
+      music.pause();
+      music.currentTime = 0;
     }
   }
   stopAll(): void {

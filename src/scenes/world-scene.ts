@@ -169,6 +169,7 @@ export class WorldScene extends Phaser.Scene {
         'S',
         'D',
         'E',
+        'Q',
         'L',
         'R',
         'G',
@@ -274,6 +275,11 @@ export class WorldScene extends Phaser.Scene {
       const touchLayout = matchMedia('(pointer: coarse), (max-width: 950px)').matches;
       if (touchLayout && this.services.touch.aim) {
         this.aim = Math.atan2(this.services.touch.aim.y, this.services.touch.aim.x);
+      } else if (touchLayout && this.services.touch.aimDirection) {
+        this.aim = Math.atan2(
+          this.services.touch.aimDirection.y,
+          this.services.touch.aimDirection.x,
+        );
       } else if (touchLayout && (movement.x || movement.y)) {
         this.aim = Math.atan2(movement.y, movement.x);
       } else if (pointer && !touchLayout) {
@@ -294,7 +300,6 @@ export class WorldScene extends Phaser.Scene {
         this.services.notify('照明棒已部署，附近区域将保持可见 30 秒。');
       }
       if (down('SPACE')) {
-        this.services.sound.play('hit');
         this.search.cancel();
         const carriedItems = this.services.inventory.getCarriedItems();
         const weaponItem = carriedItems.find(
@@ -319,6 +324,7 @@ export class WorldScene extends Phaser.Scene {
             }
             this.previousAttack = down('SPACE');
           }
+          const previousCooldown = this.combat.attackCooldown;
           const defeated = this.combat.attack(
             this.position,
             this.aim,
@@ -326,10 +332,11 @@ export class WorldScene extends Phaser.Scene {
             weapon.damage,
             stunBaton ? 'stun-baton' : 'training-bat',
           );
-          if (this.combat.swingMs === COMBAT_RULES.player.attack.swingMs) {
+          if (previousCooldown <= 0 && this.combat.attackCooldown > 0) {
+            this.services.sound.play('hit');
             this.attackFeedbackMs = COMBAT_RULES.feedback.playerAttackFlashMs;
-            this.hitStopMs = COMBAT_RULES.feedback.playerAttackHitStopMs;
             if (this.combat.attackHit) {
+              this.hitStopMs = COMBAT_RULES.feedback.playerAttackHitStopMs;
               this.cameras.main.shake(
                 COMBAT_RULES.feedback.playerAttackShakeMs,
                 COMBAT_RULES.feedback.playerAttackShakeIntensity,
@@ -360,7 +367,7 @@ export class WorldScene extends Phaser.Scene {
         deltaMs,
         this.position,
         this.lighting.enabled,
-        down('E') && !down('SPACE'),
+        down('Q') && !down('SPACE'),
         !this.moving,
         WORLD.obstacles,
         this.bounds,
@@ -378,7 +385,7 @@ export class WorldScene extends Phaser.Scene {
         this.services.controller.applyDamage(combat.damage);
       }
       if (combat.calmed.length > 0) {
-        this.services.notify('抱抱成功，怪物暂时平静，不会掉落物品。');
+        this.spawnCalmedLoot(combat.calmed, view.raidId);
       }
       this.services.controller.setExtractionPresence(contains(WORLD.extraction, this.position));
       this.interact(down('E') && !down('SPACE') && !this.hurtThisFrame);
@@ -387,7 +394,6 @@ export class WorldScene extends Phaser.Scene {
       this.previousLight = down('L');
       this.previousRefill = down('R');
       this.previousFlare = down('G');
-      this.previousAttack = false;
     } else if (playable) {
       // Hit-stop freezes player input/movement, not the enemy simulation.
       const combat = this.combat.update(
@@ -412,7 +418,7 @@ export class WorldScene extends Phaser.Scene {
         this.services.controller.applyDamage(combat.damage);
       }
       if (combat.calmed.length > 0) {
-        this.services.notify('抱抱成功，怪物暂时平静，不会掉落物品。');
+        this.spawnCalmedLoot(combat.calmed, view.raidId);
       }
     } else if (!playable) {
       this.search.cancel();
@@ -607,6 +613,21 @@ export class WorldScene extends Phaser.Scene {
     this.ground.set(item.instanceId, { item, position: point, sprite });
   }
 
+  private spawnCalmedLoot(enemies: readonly Enemy[], raidId: string | null): void {
+    if (!raidId) return;
+    for (const enemy of enemies) {
+      this.spawnLoot(
+        {
+          instanceId: `${raidId}:hug:${enemy.id}`,
+          itemId: 'gpa-charm',
+          origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
+        },
+        enemy.position,
+      );
+    }
+    this.services.notify('抱抱成功，护符已掉落在怪物身边。');
+  }
+
   private interact(held: boolean): void {
     const view = this.services.controller.getView();
     if (view.phase !== 'active' && view.phase !== 'extracting') {
@@ -615,12 +636,11 @@ export class WorldScene extends Phaser.Scene {
     }
     const carried = this.services.inventory.getCarriedItems();
     const bagFull = carried.length >= RAID_RULES.bagCapacity;
-    const hug = this.combat.enemies.find((enemy) => enemy.state === 'request');
-    if (hug) {
-      this.search.cancel();
-      this.interaction = `抱抱请求 · ${Math.ceil(hug.timer / 1000)} 秒`;
-      return;
-    }
+    const hug = this.combat.enemies.find(
+      (enemy) =>
+        enemy.state === 'request' &&
+        distance(enemy.position, this.position) < COMBAT_RULES.hug.calmRange,
+    );
     const loot = [...this.ground.values()]
       .filter(
         (drop) =>
@@ -755,7 +775,9 @@ export class WorldScene extends Phaser.Scene {
         }
       } else {
         this.search.cancel();
-        this.interaction = '校园夜巡';
+        this.interaction = hug
+          ? `长按 Q 安抚抱抱怪 · 剩余 ${Math.ceil(hug.timer / 1000)} 秒`
+          : '校园夜巡';
       }
     }
   }

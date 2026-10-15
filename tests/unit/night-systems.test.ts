@@ -8,6 +8,7 @@ import {
   shouldDropPatrolLoot,
 } from '../../src/modules/world/night-systems';
 import { COMBAT_RULES } from '../../src/config/combat-config';
+import { WORLD } from '../../src/config/world-config';
 
 const bounds = { x: 0, y: 0, width: 3600, height: 2400 };
 const advance = (
@@ -109,9 +110,9 @@ describe('night combat', () => {
       expect(enemy.position).toEqual(enemy.route[0]);
       expect(enemy.home).toEqual(enemy.position);
       expect(enemy.position.x).toBeGreaterThanOrEqual(45 + 18);
-      expect(enemy.position.x).toBeLessThanOrEqual(1280 - 45 - 18);
+      expect(enemy.position.x).toBeLessThanOrEqual(WORLD.width - 45 - 18);
       expect(enemy.position.y).toBeGreaterThanOrEqual(50 + 18);
-      expect(enemy.position.y).toBeLessThanOrEqual(900 - 50 - 18);
+      expect(enemy.position.y).toBeLessThanOrEqual(WORLD.height - 50 - 18);
       expect(enemy.wanders).toBe(enemy.kind === 'patrol');
     }
     for (let i = 0; i < firstRaid.enemies.length; i++) {
@@ -139,9 +140,11 @@ describe('night combat', () => {
     const combat = new NightCombat(() => 0);
     let positionIndex = 0;
     const findPosition = () => ({ x: 100 + positionIndex++ * 140, y: 150 });
-    expect(combat.updateSpawns(39_999, findPosition)).toHaveLength(0);
+    expect(combat.updateSpawns(COMBAT_RULES.spawning.intervalMinMs - 1, findPosition)).toHaveLength(
+      0,
+    );
     const firstWave = combat.updateSpawns(1, findPosition);
-    expect(firstWave).toHaveLength(3);
+    expect(firstWave).toHaveLength(COMBAT_RULES.spawning.spawnCount);
     expect(firstWave.every((enemy) => enemy.kind === 'patrol')).toBe(true);
     expect(firstWave.every((enemy) => enemy.route.length === 1 && enemy.wanders)).toBe(true);
     for (const enemy of firstWave) {
@@ -169,28 +172,23 @@ describe('night combat', () => {
         firstWave[0]!.route[0]!.y - firstWave[0]!.home.y,
       ),
     ).toBeLessThanOrEqual(480);
-    expect(combat.enemies).toHaveLength(7);
+    expect(combat.enemies).toHaveLength(WORLD.enemyRoutes.length + firstWave.length);
 
-    const secondWave = combat.updateSpawns(60_000, findPosition);
-    expect(secondWave).toHaveLength(4);
-    expect(secondWave.filter((enemy) => enemy.kind === 'patrol')).toHaveLength(3);
+    const secondWave = combat.updateSpawns(100_000, findPosition);
+    expect(secondWave).toHaveLength(COMBAT_RULES.spawning.spawnCount + 1);
+    expect(secondWave.filter((enemy) => enemy.kind === 'patrol')).toHaveLength(
+      COMBAT_RULES.spawning.spawnCount,
+    );
     expect(secondWave.filter((enemy) => enemy.kind === 'hug')).toHaveLength(1);
-    expect(combat.enemies.filter((enemy) => enemy.state !== 'dead')).toHaveLength(11);
+    expect(combat.enemies.filter((enemy) => enemy.state !== 'dead')).toHaveLength(
+      WORLD.enemyRoutes.length + firstWave.length + secondWave.length,
+    );
   });
 
   it('chooses spawn positions outside view, away from the player and extraction', () => {
     const lighting = new NightLighting();
     const player = { x: 625, y: 800 };
-    const candidates = [
-      620 / 1190,
-      500 / 800,
-      (800 - 45) / 1190,
-      (780 - 50) / 800,
-      (450 - 45) / 1190,
-      (320 - 50) / 800,
-      (300 - 45) / 1190,
-      (160 - 50) / 800,
-    ];
+    const candidates = [(300 - 45) / (WORLD.width - 90), (160 - 50) / (WORLD.height - 100)];
     let index = 0;
     const point = findEnemySpawnPosition(
       player,
@@ -333,10 +331,10 @@ describe('night combat', () => {
     expect(hug.state).toBe('patrol');
     expect(hug.mutated).toBe(false);
   });
-  it('mutates after a 15 second request expires or after two calm-state hits', () => {
+  it('mutates after a 6 second request expires or after two calm-state hits', () => {
     const combat = new NightCombat();
     const hug = combat.enemies.find((e) => e.kind === 'hug')!;
-    advance(combat, { x: hug.position.x + 70, y: hug.position.y }, 15_100);
+    advance(combat, { x: hug.position.x + 70, y: hug.position.y }, 6_100);
     expect(hug.mutated).toBe(true);
     expect(hug.state).not.toBe('request');
     combat.reset();

@@ -32,7 +32,7 @@ describe('persistent collection gallery', () => {
       'portable-medkit',
       'morning-coffee',
     ]);
-    expect(entries.filter((e) => e.unlocked)).toHaveLength(1);
+    expect(entries.filter((e) => e.unlocked)).toHaveLength(2);
     expect(entries.map((e) => e.id)).toEqual(ITEM_CATALOG_IDS);
     expect(entries.find((e) => e.id === 'portable-medkit')?.description).toContain(
       '恢复 30 点生命',
@@ -41,7 +41,14 @@ describe('persistent collection gallery', () => {
 
   it('preserves the teammate-authored lore for every unlocked catalog entry', () => {
     for (const entry of getCodexEntries(ITEM_CATALOG_IDS)) {
-      expect(entry.description).toContain(CODEX_ENTRIES[entry.id]);
+      if (CODEX_ENTRIES[entry.id]) expect(entry.description).toContain(CODEX_ENTRIES[entry.id]);
     }
+  });
+
+  it('shows every item that can be saved after extraction', () => {
+    const unlocked = getCodexEntries(['morning-coffee', 'training-bat', 'stun-baton'])
+      .filter((entry) => entry.unlocked)
+      .map((entry) => entry.id);
+    expect(unlocked).toEqual(['morning-coffee', 'training-bat', 'stun-baton']);
   });
 });

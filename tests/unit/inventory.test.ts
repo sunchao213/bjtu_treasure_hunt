@@ -131,7 +131,7 @@ describe('B reference inventory contract', () => {
     expect(
       inventory.addLoot({
         instanceId: 'loot',
-        itemId: 'reinforced-bat',
+        itemId: 'stun-baton',
         origin: { kind: 'raid-loot', obtainedInRaidId: 'current' },
       }).ok,
     ).toBe(true);

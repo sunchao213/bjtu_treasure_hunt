@@ -28,7 +28,7 @@ mountShell(app);
 const settings = document.createElement('section');
 settings.className = 'side-card settings';
 settings.innerHTML =
-  '<h2>设置</h2><label>音效音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label>';
+  '<h2>设置</h2><label>游戏音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label>';
 document.querySelector('aside')?.append(settings);
 const notify = (message: string) => {
   element('notice').textContent = message;
@@ -93,6 +93,9 @@ async function bootstrap(): Promise<void> {
   let searchProgress = 0;
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
+  const startMusic = () => sound.setMusic(true);
+  document.addEventListener('pointerdown', startMusic, { once: true });
+  document.addEventListener('keydown', startMusic, { once: true });
   const volume = element<HTMLInputElement>('sound-volume');
   const brightness = element<HTMLInputElement>('screen-brightness');
   const applySettings = () => {
@@ -414,6 +417,7 @@ async function bootstrap(): Promise<void> {
     const selected = element<HTMLSelectElement>('loadout').value;
     const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
     const result = await controller.start(selected ? [selected] : [], starterWeapon || undefined);
+    if (result.ok) sound.setMusic(true);
     notify(
       result.ok
         ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
@@ -483,6 +487,9 @@ async function bootstrap(): Promise<void> {
   render();
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
+      document.removeEventListener('pointerdown', startMusic);
+      document.removeEventListener('keydown', startMusic);
+      sound.stopAll();
       window.removeEventListener('resize', onResize);
       controller.dispose();
       touch.dispose();

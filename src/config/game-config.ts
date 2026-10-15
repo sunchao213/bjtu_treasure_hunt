@@ -40,12 +40,13 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
   }),
 );
 
-/** The 12 product-design codex entries; weapons and support placeholders are excluded. */
+/** Every item that can enter the permanent warehouse must have a gallery entry. */
 export const ITEM_CATALOG_IDS = [
   'scratch-paper',
   'half-eraser',
   'campus-map',
   'portable-medkit',
+  'morning-coffee',
   'torn-notebook',
   'window-seat',
   'school-badge',
@@ -54,6 +55,8 @@ export const ITEM_CATALOG_IDS = [
   'library-reward-ticket',
   'siyuan-key',
   'anomalous-embrace-token',
+  'training-bat',
+  'stun-baton',
 ] as const;
 
 /** Healing amounts are effects, not extraction values; values reflect current product rules. */

@@ -47,6 +47,10 @@ const details: Record<string, { icon: string; description: string }> = {
     icon: 'bat',
     description: '携带时用于近身攻击的训练装备；仓库带入不计本局价值。',
   },
+  'stun-baton': {
+    icon: 'bat',
+    description: '可使用 15 次，命中后短暂击晕敌人；仓库带入不计本局价值。',
+  },
   'reinforced-bat': {
     icon: 'bat',
     description: '强化近身训练装备，携带时提升攻击伤害；仓库带入不计本局价值。',
