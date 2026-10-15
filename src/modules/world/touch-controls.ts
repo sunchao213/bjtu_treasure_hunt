@@ -1,3 +1,4 @@
+import { localTouchDelta } from '../ui/mobile-layout';
 import type { Point } from '../../shared/types/game';
 
 export type TouchAction = 'E' | 'Q' | 'SPACE' | 'L' | 'R' | 'G';
@@ -75,8 +76,11 @@ export class TouchControls {
     if (aimStick) {
       const point = (event: PointerEvent) => {
         const box = aimStick.getBoundingClientRect();
-        const x = event.clientX - box.left - box.width / 2;
-        const y = event.clientY - box.top - box.height / 2;
+        const { x, y } = localTouchDelta(
+          event.clientX - box.left - box.width / 2,
+          event.clientY - box.top - box.height / 2,
+          document.documentElement.dataset.rotated === 'true',
+        );
         const length = Math.hypot(x, y);
         this.aim = length > 5 ? { x: x / length, y: y / length } : null;
         if (this.aim) this.aimDirection = this.aim;
@@ -171,8 +175,11 @@ export class TouchControls {
   private move(event: PointerEvent): void {
     const bounds = this.stick.getBoundingClientRect();
     const radius = bounds.width * 0.32;
-    const dx = (event.clientX - bounds.left - bounds.width / 2) / radius;
-    const dy = (event.clientY - bounds.top - bounds.height / 2) / radius;
+    const { x: dx, y: dy } = localTouchDelta(
+      (event.clientX - bounds.left - bounds.width / 2) / radius,
+      (event.clientY - bounds.top - bounds.height / 2) / radius,
+      document.documentElement.dataset.rotated === 'true',
+    );
     const length = Math.hypot(dx, dy);
     this.movement =
       length < 0.15

@@ -174,15 +174,61 @@ describe('night combat', () => {
     ).toBeLessThanOrEqual(480);
     expect(combat.enemies).toHaveLength(WORLD.enemyRoutes.length + firstWave.length);
 
-    const secondWave = combat.updateSpawns(100_000, findPosition);
-    expect(secondWave).toHaveLength(COMBAT_RULES.spawning.spawnCount + 1);
-    expect(secondWave.filter((enemy) => enemy.kind === 'patrol')).toHaveLength(
-      COMBAT_RULES.spawning.spawnCount,
-    );
-    expect(secondWave.filter((enemy) => enemy.kind === 'hug')).toHaveLength(1);
+    const availableSlots = COMBAT_RULES.spawning.maxAlive - combat.enemies.length;
+    const expectedPatrols = Math.min(COMBAT_RULES.spawning.spawnCount, availableSlots);
+    const expectedHugs = Math.min(1, availableSlots - expectedPatrols);
+    const secondWave = combat.updateSpawns(COMBAT_RULES.spawning.hugSpawnIntervalMs, findPosition);
+    expect(secondWave).toHaveLength(expectedPatrols + expectedHugs);
+    expect(secondWave.filter((enemy) => enemy.kind === 'patrol')).toHaveLength(expectedPatrols);
+    expect(secondWave.filter((enemy) => enemy.kind === 'hug')).toHaveLength(expectedHugs);
     expect(combat.enemies.filter((enemy) => enemy.state !== 'dead')).toHaveLength(
       WORLD.enemyRoutes.length + firstWave.length + secondWave.length,
     );
+  });
+
+  it('spawns a hug monster on its own timer when capacity is available', () => {
+    const combat = new NightCombat(() => 0);
+    combat.enemies = [];
+    const findPosition = () => ({ x: 100, y: 150 });
+    const rules = COMBAT_RULES.spawning;
+    for (let elapsed = 0; elapsed < rules.hugSpawnIntervalMs - 1;) {
+      const step = Math.min(rules.intervalMinMs, rules.hugSpawnIntervalMs - 1 - elapsed);
+      expect(
+        combat.updateSpawns(step, findPosition).every((enemy) => enemy.kind === 'patrol'),
+      ).toBe(true);
+      elapsed += step;
+    }
+    const spawned = combat.updateSpawns(1, findPosition);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]!.kind).toBe('hug');
+    expect(combat.enemies.filter((enemy) => enemy.kind === 'hug')).toHaveLength(1);
+    expect(combat.updateSpawns(0, findPosition)).toHaveLength(0);
+  });
+
+  it('blocks both monster types at the shared cap and refills slots freed by defeated enemies', () => {
+    const combat = new NightCombat(() => 0);
+    const rules = COMBAT_RULES.spawning;
+    const template = combat.enemies[0]!;
+    combat.enemies = Array.from({ length: rules.maxAlive }, (_, index) => ({
+      ...template,
+      id: `cap-${index}`,
+    }));
+    let positionCalls = 0;
+    const findPosition = () => {
+      positionCalls++;
+      return { x: 100, y: 150 };
+    };
+    expect(combat.updateSpawns(rules.hugSpawnIntervalMs, findPosition)).toHaveLength(0);
+    expect(positionCalls).toBe(0);
+    const defeated = combat.enemies[0]!;
+    defeated.health = 0;
+    defeated.state = 'dead';
+    const spawned = combat.updateSpawns(rules.intervalMaxMs, findPosition);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]!.kind).toBe('patrol');
+    expect(positionCalls).toBe(1);
+    expect(combat.enemies.filter((enemy) => enemy.state !== 'dead')).toHaveLength(rules.maxAlive);
+    expect(combat.enemies).toContain(defeated);
   });
 
   it('chooses spawn positions outside view, away from the player and extraction', () => {
