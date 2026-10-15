@@ -64,6 +64,7 @@ export class WorldScene extends Phaser.Scene {
   private readonly enemyVisualStates = new Map<string, EnemyState>();
   private readonly enemyAnimationKeys = new Map<string, string>();
   private readonly enemyDeathFinished = new Set<string>();
+  private readonly rewardedHugs = new Set<string>();
   private readonly enemyMutatedStates = new Map<string, boolean>();
   private readonly enemyLastPositions = new Map<string, Point>();
   private readonly ground = new Map<
@@ -72,6 +73,7 @@ export class WorldScene extends Phaser.Scene {
   >();
   private lastRaidId: string | null = null;
   private previousInteract = false;
+  private huggingWithInteract = false;
   private previousAttack = false;
   private previousFlare = false;
   private previousLight = false;
@@ -120,6 +122,7 @@ export class WorldScene extends Phaser.Scene {
 
   clearInteractions(): void {
     this.search.cancel();
+    this.huggingWithInteract = false;
     this.services.touch.reset();
     this.input?.keyboard?.resetKeys();
     for (const enemy of this.combat.enemies) {
@@ -240,9 +243,13 @@ export class WorldScene extends Phaser.Scene {
       (view.phase === 'active' || view.phase === 'extracting');
     if (playable && this.hitStopMs <= 0) {
       this.hurtThisFrame = false;
+      const focused = document.activeElement;
       const isTyping =
-        document.activeElement instanceof HTMLInputElement ||
-        document.activeElement instanceof HTMLSelectElement;
+        (focused instanceof HTMLInputElement &&
+          !['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file'].includes(
+            focused.type,
+          )) ||
+        focused instanceof HTMLSelectElement;
       const down = (key: string) =>
         this.services.touch.held(key) || (!isTyping && (this.keys[key]?.isDown ?? false));
       const movement = {
@@ -362,11 +369,14 @@ export class WorldScene extends Phaser.Scene {
           }
         }
       }
+      // Keep E assigned to this hug until release, including its completion frame.
+      this.huggingWithInteract =
+        down('E') && (this.huggingWithInteract || this.nearbyHug() !== undefined);
       const combat = this.combat.update(
         deltaMs,
         this.position,
         this.lighting.enabled,
-        down('Q') && !down('SPACE'),
+        (down('Q') || this.huggingWithInteract) && !down('SPACE'),
         !this.moving,
         WORLD.obstacles,
         this.bounds,
@@ -383,11 +393,11 @@ export class WorldScene extends Phaser.Scene {
       if (combat.damage) {
         this.services.controller.applyDamage(combat.damage);
       }
-      if (combat.calmed.length > 0) {
-        this.services.notify('安抚成功：怪物暂时平静，可以安全通过。');
-      }
+      this.rewardCalmed(combat.calmed, view.raidId);
       this.services.controller.setExtractionPresence(contains(WORLD.extraction, this.position));
-      this.interact(down('E') && !down('SPACE') && !this.hurtThisFrame);
+      this.interact(
+        down('E') && !this.huggingWithInteract && !down('SPACE') && !this.hurtThisFrame,
+      );
       this.previousInteract = down('E');
       this.previousAttack = down('SPACE');
       this.previousLight = down('L');
@@ -416,9 +426,7 @@ export class WorldScene extends Phaser.Scene {
       if (combat.damage) {
         this.services.controller.applyDamage(combat.damage);
       }
-      if (combat.calmed.length > 0) {
-        this.services.notify('安抚成功：怪物暂时平静，可以安全通过。');
-      }
+      this.rewardCalmed(combat.calmed, view.raidId);
     } else if (!playable) {
       this.services.sound.setLoop('footsteps', false);
       this.search.cancel();
@@ -432,11 +440,13 @@ export class WorldScene extends Phaser.Scene {
     const current = this.services.controller.getView();
     this.extraction?.setFillStyle(current.value >= current.threshold ? 0x77d4a8 : 0x667a77, 0.24);
     this.extraction?.setStrokeStyle(2, current.value >= current.threshold ? 0x97ecc6 : 0x738984);
-    const hug = this.combat.enemies.find((enemy) => enemy.state === 'request');
+    const hug = this.nearbyHug();
     const activeBanner =
       this.banner !== null && this.time.now < this.banner.untilMs ? this.banner.text : null;
     this.services.onFrame(
-      activeBanner ?? this.interaction,
+      hug || this.interaction.includes('抱抱')
+        ? this.interaction
+        : (activeBanner ?? this.interaction),
       hug ? hug.hugProgress / COMBAT_RULES.hug.calmHoldDurationMs : this.search.progress(),
     );
     this.drawNight();
@@ -618,6 +628,56 @@ export class WorldScene extends Phaser.Scene {
     this.ground.set(item.instanceId, { item, position: point, sprite });
   }
 
+  private nearbyHug(): Enemy | undefined {
+    const hug = this.requestingHug();
+    return hug && distance(hug.position, this.position) < COMBAT_RULES.hug.calmRange
+      ? hug
+      : undefined;
+  }
+
+  private requestingHug(): Enemy | undefined {
+    return this.combat.enemies
+      .filter(
+        (enemy) =>
+          enemy.kind === 'hug' &&
+          enemy.state === 'request' &&
+          distance(enemy.position, this.position) <= COMBAT_RULES.hug.loseTargetRange &&
+          lineOfSight(this.position, enemy.position, WORLD.obstacles),
+      )
+      .sort((a, b) => distance(a.position, this.position) - distance(b.position, this.position))[0];
+  }
+
+  private hugInstruction(hug: Enemy): string {
+    const action = isTouchLayout() ? '长按抱抱按钮' : '长按 E / Q';
+    const inRange = distance(hug.position, this.position) < COMBAT_RULES.hug.calmRange;
+    const instruction = inRange
+      ? `${this.moving ? '停住后' : ''}${action}安抚抱抱怪`
+      : '靠近抱抱怪，再停住长按抱抱';
+    return `${instruction} · 剩余 ${Math.ceil(hug.timer / 1000)} 秒 · 抱满 1.5 秒掉落 GPA4.0 神器`;
+  }
+
+  private rewardCalmed(enemies: readonly Enemy[], raidId: string | null): void {
+    for (const enemy of enemies) {
+      if (!raidId || this.rewardedHugs.has(enemy.id)) {
+        this.services.notify('安抚成功：抱抱怪平静 30 秒，这只的奖励已领取。');
+        continue;
+      }
+      const itemId = COMBAT_RULES.hug.rewardItemId;
+      this.spawnLoot(
+        {
+          instanceId: `${raidId}:hug:${enemy.id}`,
+          itemId,
+          origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
+        },
+        enemy.position,
+      );
+      this.rewardedHugs.add(enemy.id);
+      const text = `安抚成功 · 掉落${ITEM_DEFINITIONS[itemId]?.name}，靠近后按 E 拾取`;
+      this.banner = { text, untilMs: this.time.now + 3200 };
+      this.services.notify(text);
+    }
+  }
+
   private interact(held: boolean): void {
     const view = this.services.controller.getView();
     if (view.phase !== 'active' && view.phase !== 'extracting') {
@@ -626,11 +686,12 @@ export class WorldScene extends Phaser.Scene {
     }
     const carried = this.services.inventory.getCarriedItems();
     const bagFull = carried.length >= RAID_RULES.bagCapacity;
-    const hug = this.combat.enemies.find(
-      (enemy) =>
-        enemy.state === 'request' &&
-        distance(enemy.position, this.position) < COMBAT_RULES.hug.calmRange,
-    );
+    const hug = this.nearbyHug();
+    if (hug) {
+      this.search.cancel();
+      this.interaction = this.hugInstruction(hug);
+      return;
+    }
     const loot = [...this.ground.values()]
       .filter(
         (drop) =>
@@ -765,15 +826,15 @@ export class WorldScene extends Phaser.Scene {
         }
       } else {
         this.search.cancel();
-        this.interaction = hug
-          ? `长按 Q 安抚抱抱怪 · 剩余 ${Math.ceil(hug.timer / 1000)} 秒`
-          : '校园夜巡';
+        const request = this.requestingHug();
+        this.interaction = request ? this.hugInstruction(request) : '校园夜巡';
       }
     }
   }
 
   private resetRaid(raidId: string | null): void {
     this.lastRaidId = raidId;
+    this.huggingWithInteract = false;
     this.services.sound.setLoop('alarm', false);
     this.hurtFeedbackMs = 0;
     this.attackFeedbackMs = 0;
@@ -786,6 +847,7 @@ export class WorldScene extends Phaser.Scene {
     this.enemyVisualStates.clear();
     this.enemyAnimationKeys.clear();
     this.enemyDeathFinished.clear();
+    this.rewardedHugs.clear();
     this.enemyMutatedStates.clear();
     this.enemyLastPositions.clear();
     const enemyIds = new Set(this.combat.enemies.map((enemy) => enemy.id));
@@ -829,13 +891,18 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createEnemyAnimations(): void {
-    for (const [key, { texture, frameRate, repeat }] of Object.entries(MONSTER_ANIMATIONS)) {
+    for (const [key, { texture, frameRate, repeat, frames }] of Object.entries(
+      MONSTER_ANIMATIONS,
+    )) {
       if (!this.textures.exists(texture) || this.anims.exists(key)) {
         continue;
       }
       this.anims.create({
         key,
-        frames: this.anims.generateFrameNumbers(texture),
+        frames: this.anims.generateFrameNumbers(
+          texture,
+          frames ? { frames: [...frames] } : undefined,
+        ),
         frameRate,
         repeat,
       });

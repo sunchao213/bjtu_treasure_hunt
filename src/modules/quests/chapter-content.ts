@@ -83,7 +83,7 @@ export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
   'morning-coffee': '早八不困咖啡，热气挡不住困意，但能让人撑过前三节。',
   'school-badge': '校训徽章，别在包带上，走夜路时反着光。',
   'anomalous-feather': '明湖石碑给的异常羽毛，凉、轻，且不属于任何一只已知鸟类。',
-  'gpa-charm': 'GPA 4.0 护符——据说只在通宵自习后才会出现。',
+  'gpa-charm': 'GPA4.0 神器——抱抱怪送给耐心陪伴者的祝福，据说能带来通宵自习后的好运。',
   'library-reward-ticket': '图书馆奖励券，背面印着借阅榜单，翻过去才看得见。',
   'siyuan-key': '思源楼金钥匙，握在手里比看起来沉，像是压着一整栋楼的记忆。',
   'anomalous-embrace-token': '安抚情绪怪后落下的护符，还带着一点温度（传说物，名称待确认）。',

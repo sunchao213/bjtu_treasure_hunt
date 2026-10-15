@@ -41,7 +41,10 @@ const details: Record<string, { icon: string; description: string }> = {
     icon: 'feather',
     description: '明湖石碑周边的主线线索；与本局残缺手记一起成功撤离可解锁章节。',
   },
-  'gpa-charm': { icon: 'badge', description: '安抚抱抱怪后可能获得的护符，作为收藏物计分。' },
+  'gpa-charm': {
+    icon: 'badge',
+    description: '成功安抚抱抱怪后必定掉落的神器，每只限一件，作为收藏物计分。',
+  },
   'siyuan-key': { icon: 'key', description: '思源楼主题的传说收藏物，具有较高携带价值。' },
   'training-bat': {
     icon: 'bat',

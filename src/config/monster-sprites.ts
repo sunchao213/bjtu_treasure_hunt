@@ -4,6 +4,7 @@ export interface MonsterAnimationAsset {
   readonly texture: string;
   readonly frameRate: number;
   readonly repeat: number;
+  readonly frames?: readonly number[];
 }
 
 const DUCK_ANIMATIONS = {
@@ -53,7 +54,8 @@ export const MONSTER_ANIMATIONS: Readonly<Record<string, MonsterAnimationAsset>>
   'duck-attack': { texture: 'duck-attack', frameRate: 12, repeat: 0 },
   'duck-hurt': { texture: 'duck-hurt', frameRate: 10, repeat: 0 },
   'duck-death': { texture: 'duck-death', frameRate: 8, repeat: 0 },
-  'squirrel-idle': { texture: 'squirrel-idle', frameRate: 6, repeat: -1 },
+  // Frame 4 contains two miniature squirrels rather than a single idle pose.
+  'squirrel-idle': { texture: 'squirrel-idle', frameRate: 6, repeat: -1, frames: [0, 1, 2, 3, 5] },
   'squirrel-walk': { texture: 'squirrel-walk', frameRate: 10, repeat: -1 },
   'squirrel-request': { texture: 'squirrel-request', frameRate: 10, repeat: -1 },
   'squirrel-mutate': { texture: 'squirrel-mutate', frameRate: 10, repeat: 0 },
