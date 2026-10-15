@@ -202,9 +202,7 @@ export class WorldScene extends Phaser.Scene {
       this.hurtThisFrame = true;
       this.hurtFeedbackMs = COMBAT_RULES.feedback.playerHighlightMs;
       this.search.cancel();
-      for (const enemy of this.combat.enemies) {
-        enemy.hugProgress = 0;
-      }
+      this.combat.onPlayerDamaged();
       this.services.notify(`受到 ${amount} 点伤害，当前生命 ${health}；搜索和撤离读条已中断。`);
       this.cameras.main.flash(COMBAT_RULES.feedback.cameraFlashMs, 255, 72, 72, false);
       this.cameras.main.shake(
@@ -386,7 +384,7 @@ export class WorldScene extends Phaser.Scene {
         this.services.controller.applyDamage(combat.damage);
       }
       if (combat.calmed.length > 0) {
-        this.spawnCalmedLoot(combat.calmed, view.raidId);
+        this.services.notify('安抚成功：怪物暂时平静，可以安全通过。');
       }
       this.services.controller.setExtractionPresence(contains(WORLD.extraction, this.position));
       this.interact(down('E') && !down('SPACE') && !this.hurtThisFrame);
@@ -419,7 +417,7 @@ export class WorldScene extends Phaser.Scene {
         this.services.controller.applyDamage(combat.damage);
       }
       if (combat.calmed.length > 0) {
-        this.spawnCalmedLoot(combat.calmed, view.raidId);
+        this.services.notify('安抚成功：怪物暂时平静，可以安全通过。');
       }
     } else if (!playable) {
       this.services.sound.setLoop('footsteps', false);
@@ -534,6 +532,11 @@ export class WorldScene extends Phaser.Scene {
               (enemy.kind === 'hug' ? COMBAT_RULES.hug.health : COMBAT_RULES.enemy.patrol.health),
             4,
           );
+        if (enemy.state === 'mutation-warning') {
+          this.flashlight
+            .lineStyle(4, 0xffb347, 0.65 + Math.sin(this.time.now / 75) * 0.3)
+            .strokeCircle(enemy.position.x, enemy.position.y, 48);
+        }
         if (enemy.state === 'windup') {
           const warning = COMBAT_RULES.feedback.enemyWarning;
           const direction = angleBetween(enemy.position, this.position);
@@ -613,21 +616,6 @@ export class WorldScene extends Phaser.Scene {
       ])
       .setDepth(12);
     this.ground.set(item.instanceId, { item, position: point, sprite });
-  }
-
-  private spawnCalmedLoot(enemies: readonly Enemy[], raidId: string | null): void {
-    if (!raidId) return;
-    for (const enemy of enemies) {
-      this.spawnLoot(
-        {
-          instanceId: `${raidId}:hug:${enemy.id}`,
-          itemId: 'gpa-charm',
-          origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
-        },
-        enemy.position,
-      );
-    }
-    this.services.notify('抱抱成功，护符已掉落在怪物身边。');
   }
 
   private interact(held: boolean): void {
@@ -865,8 +853,19 @@ export class WorldScene extends Phaser.Scene {
       )
       .setName('sprite')
       .setOrigin(0.5, 1);
+    const warning = this.add
+      .text(0, -76, '即将变异 · 远离', {
+        fontFamily: 'Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#ffcc7c',
+        backgroundColor: '#301914',
+        padding: { x: 5, y: 3 },
+      })
+      .setName('mutation-warning')
+      .setOrigin(0.5, 1)
+      .setVisible(false);
     const object = this.add
-      .container(enemy.position.x, enemy.position.y, [shadow, sprite])
+      .container(enemy.position.x, enemy.position.y, [shadow, sprite, warning])
       .setName(`enemy-${enemy.id}`)
       .setDepth(25);
     this.enemyObjects.set(enemy.id, object);
@@ -885,6 +884,8 @@ export class WorldScene extends Phaser.Scene {
     const requesting = isHug && enemy.state === 'request';
     const calmed = isHug && enemy.state === 'calmed';
     const windup = enemy.state === 'windup';
+    const mutationWarning = enemy.state === 'mutation-warning';
+    (object.getByName('mutation-warning') as Phaser.GameObjects.Text).setVisible(mutationWarning);
     const previousPosition = this.enemyLastPositions.get(enemy.id);
     const isMoving = !!previousPosition && distance(previousPosition, enemy.position) > 0.2;
     const mutatedNow = isMutated && !this.enemyMutatedStates.get(enemy.id);
@@ -924,6 +925,11 @@ export class WorldScene extends Phaser.Scene {
       sprite.setFlipX(enemy.position.x < lastPosition.x);
     }
     sprite.setAlpha(windup ? 0.72 : calmed ? 0.78 : 1);
+    if (mutationWarning) {
+      sprite.setTint(0xffb347);
+    } else {
+      sprite.clearTint();
+    }
     object.setRotation(requesting ? Math.sin(this.time.now / 45) * 0.035 : 0);
     shadow.setScale(isMutated ? 1.3 : isHug ? 1.05 : 0.9, 1);
     if (requesting && previousState !== 'request') this.playHugCry();

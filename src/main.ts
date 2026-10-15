@@ -453,6 +453,9 @@ async function bootstrap(): Promise<void> {
     render();
   };
   element('abandon').onclick = () => {
+    if (!confirm('确定放弃本次探索吗？本局携带物（包括从仓库带入的物品）将全部损失。')) {
+      return;
+    }
     controller.abandon();
     sound.setMusic(false);
     render();
@@ -487,7 +490,7 @@ async function bootstrap(): Promise<void> {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'bjtu-treasure-hunt-save-v2.json';
+    link.download = 'bjtu-treasure-hunt-save-v3.json';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };

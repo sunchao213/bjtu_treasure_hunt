@@ -62,7 +62,7 @@ export function mountShell(root: HTMLElement): void {
           <section class="side-card" id="inventory-panel" hidden><div class="section-kicker">临时背包 <span id="bag-count">0 / 6</span></div>
             <ul id="inventory" class="inventory"></ul>
             <button id="extract" class="primary">在撤离点申请撤离</button>
-            <details class="danger-area"><summary>结束当前对局</summary><p>放弃会损失本局携带物。</p><button id="abandon" class="secondary">确认放弃</button></details>
+            <details class="danger-area"><summary>结束当前对局</summary><p>放弃会损失本局携带物。</p><button id="abandon" class="secondary">放弃探索</button></details>
           </section>
           <section class="side-card result-card" id="result-panel" hidden><h2 id="result-title">本次结算</h2><p id="result-detail"></p>
             <p id="quest-unlock" class="quest-unlock" hidden></p>

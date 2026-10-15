@@ -91,9 +91,32 @@ describe('B reference inventory contract', () => {
     }
     const removed = inventory.remove('carry');
     if (removed.ok) {
-      inventory.addLoot(removed.value);
+      expect(inventory.addLoot(removed.value).ok).toBe(true);
     }
+    expect(inventory.getCarriedItems()).toContainEqual(carry);
     expect(value(inventory.getCarriedItems())).toBe(25);
+  });
+  it('rejects forged carry-ins and changes to a dropped carry-in identity or origin', () => {
+    const inventory = new ReferenceInventory(new EventBus(), 6, ITEM_DEFINITIONS);
+    const carry: ItemInstance = {
+      instanceId: 'carry',
+      itemId: 'siyuan-key',
+      origin: { kind: 'carry-in' },
+    };
+    inventory.begin('current', [carry]);
+    inventory.remove('carry');
+    for (const forged of [
+      { ...carry, instanceId: 'fake' },
+      { ...carry, itemId: 'school-badge' },
+      { ...carry, origin: { kind: 'raid-loot' as const, obtainedInRaidId: 'current' } },
+    ]) {
+      expect(inventory.addLoot(forged)).toEqual({ ok: false, error: 'INVALID_ITEM' });
+    }
+    expect(inventory.addLoot(carry).ok).toBe(true);
+    expect(value(inventory.getCarriedItems())).toBe(0);
+    inventory.clear();
+    inventory.begin('next', []);
+    expect(inventory.addLoot(carry).ok).toBe(false);
   });
   it('full bag leaves the search point available; interruption never grants a reward', () => {
     let now = 0;

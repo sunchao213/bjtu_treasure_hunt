@@ -11,6 +11,16 @@ import { COMBAT_RULES } from '../../src/config/combat-config';
 import { WORLD } from '../../src/config/world-config';
 
 const bounds = { x: 0, y: 0, width: 3600, height: 2400 };
+// Behavior tests control position and isolate one enemy; spawning has separate tests.
+function isolatedCombat(kind: 'patrol' | 'hug' = 'patrol'): NightCombat {
+  const combat = new NightCombat(() => 0.5);
+  const enemy = combat.enemies.find((entry) => entry.kind === kind)!;
+  enemy.position = { x: 1000, y: 1000 };
+  enemy.home = { ...enemy.position };
+  enemy.route = [{ x: 1200, y: 1000 }];
+  combat.enemies = [enemy];
+  return combat;
+}
 const advance = (
   combat: NightCombat,
   player: { x: number; y: number },
@@ -249,7 +259,7 @@ describe('night combat', () => {
   });
 
   it('patrols, chases into reachable range, warns before attacking and damages', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat();
     const enemy = combat.enemies[0]!;
     const original = { ...enemy.position };
     advance(combat, { x: 700, y: 850 }, 1000);
@@ -264,7 +274,7 @@ describe('night combat', () => {
     expect(advance(combat, player, 500)).toBe(0);
   });
   it('lets a player dodge a telegraphed strike', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat();
     const enemy = combat.enemies[0]!;
     const player = { x: enemy.position.x + 40, y: enemy.position.y };
     advance(combat, player, 100);
@@ -272,7 +282,7 @@ describe('night combat', () => {
     expect(advance(combat, { x: player.x + 100, y: player.y }, 500)).toBe(0);
   });
   it('blocks melee through walls, honors cooldown and returns a defeat only once', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat();
     const enemy = combat.enemies[0]!;
     const player = { x: enemy.position.x - 60, y: enemy.position.y };
     const wall = [{ x: player.x + 20, y: player.y - 40, width: 10, height: 80 }];
@@ -295,7 +305,7 @@ describe('night combat', () => {
     expect(combat.attackCooldown).toBe(0);
   });
   it('uses a stun baton fifteen times with its shorter range, narrow arc and stun duration', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat();
     const enemy = combat.enemies[0]!;
     const player = { x: enemy.position.x - 70, y: enemy.position.y };
     combat.attack(player, 0, [], 15, 'stun-baton');
@@ -329,7 +339,7 @@ describe('night combat', () => {
     expect(combat.attackHit).toBe(false);
     expect(combat.weaponUsesRemaining).toBe(0);
 
-    const narrow = new NightCombat();
+    const narrow = isolatedCombat();
     const target = narrow.enemies[0]!;
     const narrowPlayer = { x: target.position.x - 70, y: target.position.y };
     narrow.attack(narrowPlayer, Math.PI / 2, [], 15, 'stun-baton');
@@ -337,7 +347,7 @@ describe('night combat', () => {
     expect(target.health).toBe(70);
   });
   it('stuns mutated enemies for 600ms and respects the 75-unit attack range', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((e) => e.kind === 'hug')!;
     hug.mutated = true;
     hug.state = 'chase';
@@ -356,7 +366,7 @@ describe('night combat', () => {
     expect(hug.state).toBe('chase');
   });
   it('follows during a hug request, supports continuous hugs and calms only once', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((e) => e.kind === 'hug')!;
     const player = { x: hug.position.x + 100, y: hug.position.y };
     const original = { ...hug.position };
@@ -377,61 +387,104 @@ describe('night combat', () => {
     expect(hug.state).toBe('patrol');
     expect(hug.mutated).toBe(false);
   });
-  it('mutates after a 6 second request expires or after two calm-state hits', () => {
-    const combat = new NightCombat();
+  it('warns for the complete configured interval after a request expires before chasing or damaging', () => {
+    const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((e) => e.kind === 'hug')!;
-    advance(combat, { x: hug.position.x + 70, y: hug.position.y }, 6_100);
+    const player = { x: hug.position.x + 30, y: hug.position.y };
+    expect(advance(combat, player, COMBAT_RULES.hug.requestDurationMs)).toBe(0);
+    expect(hug.state).toBe('mutation-warning');
+    expect(hug.mutated).toBe(false);
+    const position = { ...hug.position };
+    expect(advance(combat, player, COMBAT_RULES.hug.mutationWarningMs - 100)).toBe(0);
+    expect(hug.state).toBe('mutation-warning');
+    expect(hug.position).toEqual(position);
+    expect(advance(combat, player, 100)).toBe(0);
+    expect(hug.state).toBe('chase');
     expect(hug.mutated).toBe(true);
-    expect(hug.state).not.toBe('request');
-    combat.reset();
-    const fresh = combat.enemies.find((e) => e.kind === 'hug')!;
-    expect(fresh.mutated).toBe(false);
-    const player = { x: fresh.position.x + 30, y: fresh.position.y };
-    advance(combat, player, 1_500, true);
-    expect(fresh.state).toBe('calmed');
-    combat.attack(player, Math.PI, [], 35);
-    expect(fresh.state).toBe('calmed');
-    combat.tick(450);
-    combat.attack(player, Math.PI, [], 35);
-    expect(fresh.mutated).toBe(true);
-    expect(fresh.health).toBe(COMBAT_RULES.hug.health);
+    expect(advance(combat, player, 600)).toBe(COMBAT_RULES.enemy.mutated.damage);
   });
 
-  it('does not mutate a peaceful patrol hug monster on the first hit and restores full health on the second', () => {
-    const combat = new NightCombat();
+  it('warns on the first effective hit and cannot have its warning extended by repeated attacks', () => {
+    const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((enemy) => enemy.kind === 'hug')!;
     const player = { x: hug.position.x + 30, y: hug.position.y };
 
     combat.attack(player, Math.PI, [], 35);
     expect(hug.mutated).toBe(false);
-    expect(hug.state).toBe('patrol');
+    expect(hug.state).toBe('mutation-warning');
     expect(hug.health).toBe(COMBAT_RULES.hug.health - 35);
 
-    combat.tick(450);
+    advance(combat, player, 500);
     combat.attack(player, Math.PI, [], 35);
+    expect(hug.timer).toBe(COMBAT_RULES.hug.mutationWarningMs - 500);
+    advance(combat, player, 500);
     expect(hug.mutated).toBe(true);
     expect(hug.state).toBe('chase');
     expect(hug.health).toBe(COMBAT_RULES.hug.health);
   });
 
-  it('counts electric shocks against a calm hug monster as two hits to mutate', () => {
-    const combat = new NightCombat();
+  it('warns on the first electric shock against a calmed hug monster', () => {
+    const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((e) => e.kind === 'hug')!;
     const player = { x: hug.position.x + 30, y: hug.position.y };
     advance(combat, player, 1_500, true);
     expect(hug.state).toBe('calmed');
     combat.attack(player, Math.PI, [], 15, 'stun-baton');
-    expect(hug.state).toBe('calmed');
-    expect(hug.calmHitCount).toBe(1);
-    combat.tick(1_200);
-    combat.attack(player, Math.PI, [], 15, 'stun-baton');
+    expect(hug.state).toBe('mutation-warning');
+    expect(hug.mutated).toBe(false);
+    advance(combat, player, COMBAT_RULES.hug.mutationWarningMs);
     expect(hug.mutated).toBe(true);
     expect(hug.state).toBe('chase');
     expect(hug.calmHitCount).toBe(0);
   });
 
+  it('keeps a lethally hit hug monster dead throughout the warning interval', () => {
+    const combat = isolatedCombat('hug');
+    const hug = combat.enemies[0]!;
+    const player = { x: hug.position.x - 30, y: hug.position.y };
+    expect(combat.attack(player, 0, [], 100)).toEqual([hug]);
+    advance(combat, player, COMBAT_RULES.hug.mutationWarningMs + 100);
+    expect(hug.state).toBe('dead');
+    expect(hug.health).toBe(0);
+    expect(hug.mutated).toBe(false);
+  });
+
+  it('warns when player damage interrupts an active hug, including its completion frame', () => {
+    for (const progress of [500, COMBAT_RULES.hug.calmHoldDurationMs - 100]) {
+      const combat = isolatedCombat('hug');
+      const hug = combat.enemies[0]!;
+      const player = { x: hug.position.x - 30, y: hug.position.y };
+      advance(combat, player, progress, true);
+      const attacker = isolatedCombat().enemies[0]!;
+      attacker.position = { ...player };
+      attacker.state = 'windup';
+      attacker.timer = 100;
+      combat.enemies.push(attacker);
+      const result = combat.update(100, player, true, true, true, [], bounds);
+      expect(result.damage).toBe(COMBAT_RULES.enemy.patrol.damage);
+      expect(result.calmed).toEqual([]);
+      expect(hug.state).toBe('mutation-warning');
+      expect(hug.hugProgress).toBe(0);
+      expect(hug.mutated).toBe(false);
+    }
+  });
+
+  it('allows retry after releasing a hug and ignores player damage when not calming', () => {
+    const combat = isolatedCombat('hug');
+    const hug = combat.enemies[0]!;
+    const player = { x: hug.position.x - 30, y: hug.position.y };
+    advance(combat, player, 500, true);
+    advance(combat, player, 100, false);
+    combat.onPlayerDamaged();
+    expect(hug.state).toBe('request');
+    expect(hug.mutated).toBe(false);
+    expect(hug.hugProgress).toBe(0);
+    advance(combat, player, COMBAT_RULES.hug.calmHoldDurationMs, true);
+    expect(hug.state).toBe('calmed');
+  });
+
   it('loses a hug target when the player escapes instead of mutating', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((e) => e.kind === 'hug')!;
     const near = { x: hug.position.x + 30, y: hug.position.y };
     advance(combat, near, 100);
@@ -442,7 +495,7 @@ describe('night combat', () => {
   });
 
   it('detects a mutated hug monster from an expanded chase range', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((e) => e.kind === 'hug')!;
     hug.mutated = true;
     const player = { x: hug.position.x + 280, y: hug.position.y };
@@ -451,7 +504,7 @@ describe('night combat', () => {
   });
 
   it('lets a calm hug monster request attention beyond the mutated patrol detection range', () => {
-    const combat = new NightCombat();
+    const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((enemy) => enemy.kind === 'hug')!;
     const player = { x: hug.position.x + 290, y: hug.position.y };
     combat.update(100, player, true, false, true, [], bounds);
