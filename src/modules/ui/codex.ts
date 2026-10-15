@@ -1,4 +1,5 @@
-import { ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { CODEX_ENTRIES } from '../quests/chapter-content';
 import type { Rarity } from '../../shared/types/game';
 
 const rarityNames: Record<Rarity, string> = {
@@ -14,6 +15,15 @@ const rarityColors: Record<Rarity, string> = {
   legendary: '#f3ce81',
 };
 const details: Record<string, { icon: string; description: string }> = {
+  'portable-medkit': {
+    icon: 'medkit',
+    description: '使用后恢复 30 点生命并消耗；满血时不能使用，消耗后不再计入携带价值。',
+  },
+  'library-reward-ticket': { icon: 'paper', description: '图书馆主题的史诗收藏物。' },
+  'anomalous-embrace-token': {
+    icon: 'badge',
+    description: '抱抱机制关联的传说收藏物，名称待小组确认。',
+  },
   'scratch-paper': { icon: 'paper', description: '写满演算痕迹的草稿纸，校园里的普通收藏物。' },
   'half-eraser': { icon: 'eraser', description: '只剩半块的橡皮，普通收藏物。' },
   'campus-map': { icon: 'map', description: '一张校园地图线索，作为收藏物计入携带价值。' },
@@ -37,12 +47,17 @@ const details: Record<string, { icon: string; description: string }> = {
     icon: 'bat',
     description: '携带时用于近身攻击的训练装备；仓库带入不计本局价值。',
   },
+  'stun-baton': {
+    icon: 'bat',
+    description: '可使用 15 次，命中后短暂击晕敌人；仓库带入不计本局价值。',
+  },
   'reinforced-bat': {
     icon: 'bat',
     description: '强化近身训练装备，携带时提升攻击伤害；仓库带入不计本局价值。',
   },
 };
 const iconPaths: Record<string, string> = {
+  medkit: 'M10 18H54V54H10Z M24 18V10H40V18 M28 28H36V34H42V42H36V48H28V42H22V34H28Z',
   paper: 'M16 8H42L50 16V56H16Z M42 8V18H50 M24 28H42 M24 36H42 M24 44H36',
   eraser: 'M10 38L34 14L54 34L30 58H22Z M24 24L44 44 M30 58H54',
   map: 'M8 16L24 10L40 16L56 10V48L40 54L24 48L8 54Z M24 10V48 M40 16V54 M29 29L35 35 M35 29L29 35',
@@ -73,7 +88,8 @@ export interface CodexEntry {
 /** Only persisted codex IDs unlock entries; warehouse possession is not required. */
 export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
   const unlocked = new Set(ids);
-  return Object.values(ITEM_DEFINITIONS).map((item, index) => {
+  return ITEM_CATALOG_IDS.map((itemId, index) => {
+    const item = ITEM_DEFINITIONS[itemId]!;
     const known = unlocked.has(item.itemId);
     const detail = details[item.itemId];
     return {
@@ -84,7 +100,9 @@ export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
       rarity: known ? rarityNames[item.rarity] : '未解锁',
       value: known ? RAID_RULES.values[item.rarity] : null,
       description: known
-        ? (detail?.description ?? '校园收藏物。')
+        ? [CODEX_ENTRIES[item.itemId], detail?.description ?? '校园收藏物。']
+            .filter(Boolean)
+            .join(' ')
         : '搜到物品并成功撤离后点亮此图鉴。',
       color: known ? rarityColors[item.rarity] : '#7d8a82',
       icon: known ? (detail?.icon ?? 'paper') : 'locked',
@@ -164,7 +182,7 @@ export async function exportCodexImage(
   const entries = getCodexEntries(ids);
   const canvas = document.createElement('canvas');
   canvas.width = 1440;
-  canvas.height = 240 + Math.ceil(entries.length / 3) * 285 + 65;
+  canvas.height = 240 + Math.ceil(entries.length / 3) * 395 + 65;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('浏览器无法生成图鉴图片。');
   ctx.fillStyle = '#14221e';
@@ -188,12 +206,12 @@ export async function exportCodexImage(
   ctx.fillText('成功撤离后点亮图鉴；未解锁物品仅展示剪影。', 48, 199);
   entries.forEach((entry, index) => {
     const x = 48 + (index % 3) * 452;
-    const y = 230 + Math.floor(index / 3) * 285;
+    const y = 230 + Math.floor(index / 3) * 395;
     ctx.fillStyle = '#20332b';
-    ctx.fillRect(x, y, 430, 263);
+    ctx.fillRect(x, y, 430, 373);
     ctx.strokeStyle = entry.color;
     ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, 430, 263);
+    ctx.strokeRect(x, y, 430, 373);
     ctx.save();
     ctx.translate(x + 24, y + 15);
     ctx.scale(1.1, 1.1);
@@ -207,16 +225,16 @@ export async function exportCodexImage(
     ctx.font = '18px Microsoft YaHei, sans-serif';
     ctx.fillText(`NO. ${entry.number}`, x + 333, y + 42);
     ctx.font = 'bold 27px Microsoft YaHei, sans-serif';
-    ctx.fillText(entry.name, x + 24, y + 119);
+    wrapText(ctx, entry.name, x + 24, y + 119, 382, 32);
     ctx.font = '21px Microsoft YaHei, sans-serif';
     ctx.fillText(
       `${entry.rarity}${entry.value === null ? '' : ` · ${entry.value} 价值`}`,
       x + 24,
-      y + 153,
+      y + 187,
     );
     ctx.fillStyle = '#c5d1c9';
     ctx.font = '19px Microsoft YaHei, sans-serif';
-    wrapText(ctx, entry.description, x + 24, y + 190, 382, 27);
+    wrapText(ctx, entry.description, x + 24, y + 223, 382, 27);
   });
   ctx.fillStyle = '#a8b8ad';
   ctx.font = '18px Microsoft YaHei, sans-serif';

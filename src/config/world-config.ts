@@ -161,38 +161,11 @@ export const WORLD = {
         { x: 2260, y: 1710 },
       ],
     },
-    {
-      id: 'west-south',
-      kind: 'patrol' as const,
-      route: [
-        { x: 450, y: 1360 },
-        { x: 1080, y: 1360 },
-      ],
-    },
-    {
-      id: 'center',
-      kind: 'patrol' as const,
-      route: [
-        { x: 1110, y: 930 },
-        { x: 1110, y: 1540 },
-      ],
-    },
-    {
-      id: 'east-north',
-      kind: 'patrol' as const,
-      route: [
-        { x: 2460, y: 790 },
-        { x: 3100, y: 790 },
-      ],
-    },
-    {
-      id: 'southeast',
-      kind: 'patrol' as const,
-      route: [
-        { x: 2460, y: 2050 },
-        { x: 3100, y: 2050 },
-      ],
-    },
+    { id: 'west-dorm', kind: 'patrol' as const, route: [{ x: 720, y: 1320 }] },
+    { id: 'north-teaching', kind: 'patrol' as const, route: [{ x: 1620, y: 450 }] },
+    { id: 'east-labs', kind: 'patrol' as const, route: [{ x: 3000, y: 700 }] },
+    { id: 'siyuan', kind: 'patrol' as const, route: [{ x: 1600, y: 1200 }] },
+    { id: 'south-teaching', kind: 'patrol' as const, route: [{ x: 2000, y: 1800 }] },
     { id: 'hug', kind: 'hug' as const, route: [{ x: 1580, y: 1240 }] },
     { id: 'hug-west', kind: 'hug' as const, route: [{ x: 920, y: 880 }] },
     { id: 'hug-east', kind: 'hug' as const, route: [{ x: 2320, y: 1320 }] },

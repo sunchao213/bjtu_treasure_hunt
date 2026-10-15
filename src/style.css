@@ -1,8 +1,20 @@
 :root {
+  --screen-brightness: 1;
   font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
   color: #e5e7e6;
   background: #111313;
   font-synthesis: none;
+}
+body {
+  filter: brightness(var(--screen-brightness));
+}
+.settings label {
+  display: block;
+  font-size: 12px;
+  margin: 10px 0;
+}
+.settings input {
+  width: 100%;
 }
 * {
   box-sizing: border-box;
@@ -811,6 +823,133 @@ footer {
   }
 }
 
+/* ===== D：五类界面视觉规范（任务进度 / 图鉴 / 剧情档案 / 数值状态 / 双端排版） =====
+   沿用项目深色底：底 #111313 · 主文 #e5e7e6 · 次文 #aeb8af · 主色 #9bb967 · 强调 #e6ac48
+   状态色统一：未开始 #6f7d72 · 可进行 #e6ac48 · 已完成 #9bb967 */
+
+.quest-steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.quest-steps li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 9px;
+  border-left: 3px solid #3b403d;
+  border-radius: 0 5px 5px 0;
+  background: #1a1d1c;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6f7d72;
+}
+.quest-steps li::before {
+  content: '○';
+}
+.quest-steps li.done {
+  border-left-color: #9bb967;
+  background: #1d231c;
+  color: #cfe0c0;
+}
+.quest-steps li.done::before {
+  content: '●';
+  color: #9bb967;
+}
+.quest-steps li.active {
+  border-left-color: #e6ac48;
+  background: #221f19;
+  color: #e8dcc0;
+}
+.quest-steps li.active::before {
+  content: '◉';
+  color: #e6ac48;
+}
+
+.codex-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 12px;
+  font-size: 11px;
+  line-height: 1.9;
+}
+.codex-list .lit {
+  color: #dfe7dc;
+}
+.codex-list .unlit {
+  color: #55605a;
+}
+
+.story-archive {
+  margin-top: 12px;
+  border-top: 1px dashed #3b403d;
+  padding-top: 10px;
+}
+.story-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: #e5e7e6;
+}
+.story-subtitle {
+  margin: 0 0 10px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #8d9b83;
+}
+.story-step-title {
+  margin: 12px 0 4px;
+  padding-left: 8px;
+  border-left: 3px solid #e6ac48;
+  font-size: 12px;
+  font-weight: 650;
+  color: #e8dcc0;
+}
+.story-body {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 3px solid #9bb967;
+  font-size: 11px;
+  line-height: 1.8;
+  color: #c9d3c7;
+}
+
+.quest-unlock {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border-left: 3px solid #9bb967;
+  border-radius: 0 5px 5px 0;
+  background: rgba(155, 185, 103, 0.12);
+  font-size: 12px;
+  font-weight: 650;
+  color: #cfe0c0;
+}
+
+/* 价值达标时 HUD 数值转主色，未达标保持中性 */
+[data-value-ready='true'] .value b {
+  color: #9bb967;
+}
+[data-value-ready='true'] #value-hint {
+  color: #cfe0c0;
+}
+
+@media (max-width: 950px) {
+  .codex-list {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 580px) {
+  .quest-steps li,
+  .quest-unlock {
+    font-size: 11px;
+  }
+}
 /* Active mobile raids occupy the landscape viewport; inventory is an overlay. */
 .mobile-toolbar {
   display: none;

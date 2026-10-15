@@ -1,12 +1,14 @@
 import './style.css';
 import { createGame } from './app/create-game';
-import { ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
+import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
-import { ReferenceSave, SAVE_KEY } from './modules/save/reference-save';
+import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
 import { bindGameRules } from './modules/ui/game-rules';
+import { renderChapterUnlock, renderCodexPanel, renderQuestPanel } from './modules/ui/quest-view';
+import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
 import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
@@ -23,6 +25,11 @@ function element<T extends HTMLElement>(id: string): T {
 }
 const app = element('app');
 mountShell(app);
+const settings = document.createElement('section');
+settings.className = 'side-card settings';
+settings.innerHTML =
+  '<h2>设置</h2><label>游戏音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label>';
+document.querySelector('aside')?.append(settings);
 const notify = (message: string) => {
   element('notice').textContent = message;
 };
@@ -46,9 +53,9 @@ async function bootstrap(): Promise<void> {
   if (!unlock) {
     throw new Error('另一个标签页正在使用这个存档，请关闭它后刷新本页。');
   }
-  let save: ReferenceSave;
+  let save: PersistentSave;
   try {
-    save = new ReferenceSave(localStorage);
+    save = new PersistentSave(localStorage);
   } catch (error) {
     unlock();
     element<HTMLButtonElement>('reset-save').disabled = true;
@@ -62,7 +69,7 @@ async function bootstrap(): Promise<void> {
       }
       try {
         if (confirm('建议先导出原始存档。确定清空本框架的损坏存档吗？')) {
-          localStorage.removeItem(SAVE_KEY);
+          localStorage.removeItem(FORMAL_SAVE_KEY);
           location.reload();
         }
       } finally {
@@ -80,17 +87,33 @@ async function bootstrap(): Promise<void> {
   const controller = new RaidController(inventory, save, events, RAID_RULES, ITEM_DEFINITIONS);
   let lastInventory = '';
   let lastWarehouse = '';
+  let lastCodex = '';
   let renderedAt = 0;
   let interacted = '';
   let searchProgress = 0;
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
+  const startMusic = () => sound.setMusic(true);
+  document.addEventListener('pointerdown', startMusic, { once: true });
+  document.addEventListener('keydown', startMusic, { once: true });
+  const volume = element<HTMLInputElement>('sound-volume');
+  const brightness = element<HTMLInputElement>('screen-brightness');
+  const applySettings = () => {
+    sound.setSettings({ volume: Number(volume.value), brightness: Number(brightness.value) });
+    document.documentElement.style.setProperty('--screen-brightness', brightness.value);
+  };
+  volume.value = String(sound.getSettings().volume);
+  brightness.value = String(sound.getSettings().brightness);
+  volume.oninput = applySettings;
+  brightness.oninput = applySettings;
+  applySettings();
   const scene = new WorldScene({
     controller,
     inventory,
     events,
     notify,
     touch,
+    sound,
     onFrame: (interaction, progress) => {
       interacted = interaction;
       searchProgress = progress;
@@ -104,7 +127,6 @@ async function bootstrap(): Promise<void> {
   let rulesOpen = false;
   let mapOpen = false;
   let codexOpen = false;
-  let lastCodex = '';
   const mobile = () => matchMedia('(pointer: coarse), (max-width: 950px)').matches;
   const syncOrientation = () => {
     const view = controller.getView();
@@ -242,6 +264,7 @@ async function bootstrap(): Promise<void> {
     element('light-reserves').textContent =
       `备用电池 ${lighting.spareBatteries} · 照明棒 ${lighting.flares}`;
     element<HTMLProgressElement>('battery-progress').value = lighting.battery;
+    app.dataset.valueReady = String(view.value >= view.threshold);
     element('gate-label').textContent = view.value >= view.threshold ? '可以撤离' : '继续搜集';
     element('value-hint').textContent =
       view.value >= view.threshold
@@ -278,27 +301,13 @@ async function bootstrap(): Promise<void> {
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = inventory.getCarriedItems();
-    const evidence = carried
-      .filter(
-        (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === view.raidId,
-      )
-      .map((item) => item.itemId);
-    element('quest-status').textContent = evidence.includes('torn-notebook')
-      ? evidence.includes('anomalous-feather')
-        ? '线索齐备 · 带回南门'
-        : '下一线索：明湖石碑'
-      : '线索：图书馆外残缺手记';
+    renderQuestPanel(questProgress(carried, view.raidId));
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
       renderInventory(carried);
       lastInventory = signature;
     }
     const archive = save.view();
-    const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
-    if (codex.open && codexSignature !== lastCodex) {
-      renderCodex(archive.codexIds, archive.unlockedChapterIds);
-      lastCodex = codexSignature;
-    }
     const warehouseSignature = JSON.stringify(archive.warehouse);
     element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
     element('archive-detail').textContent = archive.unlockedChapterIds.length
@@ -313,6 +322,16 @@ async function bootstrap(): Promise<void> {
         select.add(new Option(ITEM_DEFINITIONS[item.itemId]?.name ?? item.itemId, item.instanceId));
       }
       lastWarehouse = warehouseSignature;
+    }
+    renderChapterUnlock(
+      element('quest-unlock'),
+      view.result !== null && chapterUnlockGranted(view.result),
+    );
+    const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
+    if (codexSignature !== lastCodex) {
+      renderCodexPanel(element('codex-list'), element('story-archive'), archive);
+      if (codex.open) renderCodex(archive.codexIds, archive.unlockedChapterIds);
+      lastCodex = codexSignature;
     }
   }
 
@@ -350,16 +369,16 @@ async function bootstrap(): Promise<void> {
           if (state.phase !== 'active' && state.phase !== 'extracting') {
             return;
           }
-          if (state.health >= RAID_RULES.maxHealth) {
-            notify('生命已满。');
+          const amount = HEALING_AMOUNTS[item.itemId];
+          if (amount === undefined) {
+            notify('该恢复物尚未配置效果，物品没有消耗。');
             return;
           }
-          if (inventory.remove(item.instanceId).ok) {
-            controller.heal(25);
-            if (state.raidId) {
-              events.emit('ItemConsumed', { raidId: state.raidId, instanceId: item.instanceId });
-            }
+          const consumed = inventory.consumeHealing(item.instanceId, () => controller.heal(amount));
+          if (consumed.ok) {
             notify('恢复物已消耗，当前携带价值已重算。');
+          } else if (consumed.error === 'INVALID_STATE') {
+            notify('当前无法使用恢复物，物品没有消耗。');
           }
         };
         li.append(use);
@@ -396,11 +415,9 @@ async function bootstrap(): Promise<void> {
         .catch(() => undefined);
     }
     const selected = element<HTMLSelectElement>('loadout').value;
-    sound.setBackground(true);
-    const result = await controller.start(selected ? [selected] : []);
-    if (!result.ok) {
-      sound.setBackground(false);
-    }
+    const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
+    const result = await controller.start(selected ? [selected] : [], starterWeapon || undefined);
+    if (result.ok) sound.setMusic(true);
     notify(
       result.ok
         ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
@@ -414,7 +431,10 @@ async function bootstrap(): Promise<void> {
     }
   };
   element('extract').onclick = () => {
-    controller.startExtraction();
+    const result = controller.startExtraction();
+    if (result.ok) {
+      sound.play('home');
+    }
     render();
   };
   element('abandon').onclick = () => {
@@ -446,6 +466,15 @@ async function bootstrap(): Promise<void> {
       }
     }
   };
+  element('export-save').onclick = () => {
+    const blob = new Blob([save.exportRaw()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bjtu-treasure-hunt-save-v2.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   if (import.meta.env.DEV) {
     element('debug-panel').hidden = false;
     element('damage').onclick = () => {
@@ -460,6 +489,9 @@ async function bootstrap(): Promise<void> {
   render();
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
+      document.removeEventListener('pointerdown', startMusic);
+      document.removeEventListener('keydown', startMusic);
+      sound.stopAll();
       window.removeEventListener('resize', onResize);
       controller.dispose();
       touch.dispose();
@@ -469,16 +501,6 @@ async function bootstrap(): Promise<void> {
     });
   }
 }
-
-element('export-save').onclick = () => {
-  const blob = new Blob([localStorage.getItem(SAVE_KEY) ?? '{}'], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'bjtu-framework-save.json';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
 void bootstrap().catch((error: unknown) => {
   notify(error instanceof Error ? error.message : '启动失败，请查看开发控制台。');
   element('interaction-label').textContent = '启动尚未完成';

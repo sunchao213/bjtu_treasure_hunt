@@ -1,10 +1,11 @@
 import type { Point } from '../../shared/types/game';
 
-export type TouchAction = 'E' | 'SPACE' | 'Q' | 'L' | 'R' | 'G';
+export type TouchAction = 'E' | 'Q' | 'SPACE' | 'L' | 'R' | 'G';
 
 /** Pointer capture lets movement and an action stay held by separate fingers. */
 export class TouchControls {
   aim: Point | null = null;
+  aimDirection: Point | null = null;
   private aimPointer: number | null = null;
   movement: Point = { x: 0, y: 0 };
   private directionPointer: number | null = null;
@@ -78,6 +79,7 @@ export class TouchControls {
         const y = event.clientY - box.top - box.height / 2;
         const length = Math.hypot(x, y);
         this.aim = length > 5 ? { x: x / length, y: y / length } : null;
+        if (this.aim) this.aimDirection = this.aim;
         aimStick.style.setProperty('--stick-x', `${this.aim ? this.aim.x * 24 : 0}px`);
         aimStick.style.setProperty('--stick-y', `${this.aim ? this.aim.y * 24 : 0}px`);
       };
@@ -150,6 +152,7 @@ export class TouchControls {
     this.directionPointer = null;
     this.aimPointer = null;
     this.aim = null;
+    this.aimDirection = null;
     const aimStick = this.root.querySelector<HTMLElement>('.touch-aim');
     aimStick?.style.setProperty('--stick-x', '0px');
     aimStick?.style.setProperty('--stick-y', '0px');

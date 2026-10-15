@@ -12,7 +12,7 @@ const loot = (id: string, itemId = 'school-badge'): ItemInstance => ({
 });
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
-async function setup(durationMs = 600_000) {
+async function setup(durationMs = 600_000, starterWeaponId?: string) {
   let now = 0;
   let rejectSave = false;
   const results: RaidResult[] = [];
@@ -36,7 +36,7 @@ async function setup(durationMs = 600_000) {
     () => now,
     () => 'raid-1',
   );
-  await controller.start();
+  await controller.start([], starterWeaponId);
   return {
     controller,
     inventory,
@@ -87,6 +87,23 @@ describe('A extraction lifecycle', () => {
     expect(s.controller.isPaused()).toBe(false);
   });
 
+  it('adds a selected starter weapon to the raid inventory without requiring warehouse stock', async () => {
+    const s = await setup(600_000, 'training-bat');
+    expect(s.inventory.getCarriedItems()).toEqual([
+      {
+        instanceId: 'raid-1:starter:training-bat',
+        itemId: 'training-bat',
+        origin: { kind: 'carry-in' },
+      },
+    ]);
+    s.fill();
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(5_000);
+    await flush();
+    expect(s.results[0]?.items.some((item) => item.itemId === 'training-bat')).toBe(false);
+  });
+
   it('rejects 95, rejects outside zone, and allows exactly 100', async () => {
     const s = await setup();
     s.inventory.addLoot(loot('epic', 'gpa-charm'));
@@ -129,6 +146,53 @@ describe('A extraction lifecycle', () => {
     s.advance(5_000);
     await flush();
     expect(s.results).toHaveLength(1);
+  });
+
+  it('counts only current-raid loot even when a valuable item is carried in', async () => {
+    const s = await setup();
+    s.inventory.begin('raid-1', [
+      { instanceId: 'carried-key', itemId: 'siyuan-key', origin: { kind: 'carry-in' } },
+    ]);
+    s.inventory.addLoot(loot('rare-1'));
+    s.inventory.addLoot(loot('rare-2'));
+    s.inventory.addLoot(loot('rare-3'));
+    s.inventory.addLoot(loot('rare-4'));
+    expect(s.controller.getView().value).toBe(100);
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(5_000);
+    await flush();
+    expect(s.results[0]?.value).toBe(100);
+    expect(s.results[0]?.items).toHaveLength(5);
+  });
+
+  it('locks the value rules at controller construction', async () => {
+    const rules = { ...RAID_RULES, values: { ...RAID_RULES.values } };
+    const events = new EventBus();
+    const inventory = new ReferenceInventory(events, 6, ITEM_DEFINITIONS);
+    const results: RaidResult[] = [];
+    const controller = new RaidController(
+      inventory,
+      {
+        beginRaid: async () => [],
+        finalizeRaid: async (result) => {
+          results.push(result);
+        },
+      },
+      events,
+      rules,
+      ITEM_DEFINITIONS,
+      () => 0,
+      () => 'snapshot-raid',
+    );
+    await controller.start();
+    rules.values.uncommon = 1;
+    inventory.addLoot({
+      instanceId: 'loot',
+      itemId: 'school-badge',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'snapshot-raid' },
+    });
+    expect(controller.getView().value).toBe(25);
   });
 
   it.each(['damage', 'leave'] as const)('cancels on %s', async (cause) => {

@@ -41,6 +41,27 @@ describe('B reference inventory contract', () => {
     ).toBe(35);
     expect(() => value([loot('broken', 'unknown')])).toThrow('Unknown item');
   });
+  it('covers 95/100/110 boundaries and excludes a valuable carry-in item', () => {
+    expect(
+      value([loot('epic-1', 'gpa-charm'), loot('rare-1'), loot('common', 'scratch-paper')]),
+    ).toBe(95);
+    expect(value([loot('rare-1'), loot('rare-2'), loot('rare-3'), loot('rare-4')])).toBe(100);
+    expect(value([loot('epic-1', 'gpa-charm'), loot('rare-1'), loot('rare-2')])).toBe(110);
+    expect(
+      value([
+        { instanceId: 'carry', itemId: 'siyuan-key', origin: { kind: 'carry-in' } },
+        loot('rare-1'),
+      ]),
+    ).toBe(25);
+  });
+  it('rejects conflicting aliases that reuse one instanceId', () => {
+    expect(() =>
+      value([
+        loot('same', 'school-badge'),
+        { ...loot('same', 'gpa-charm'), origin: { kind: 'raid-loot', obtainedInRaidId: 'old' } },
+      ]),
+    ).toThrow('Conflicting item instance');
+  });
   it('six common items fill the bag but do not qualify; snapshots cannot mutate real inventory', () => {
     const inventory = new ReferenceInventory(new EventBus(), 6, ITEM_DEFINITIONS);
     inventory.begin('current', []);
@@ -95,5 +116,71 @@ describe('B reference inventory contract', () => {
     now += 2_000;
     expect(search.finish(loot('new'), (item) => inventory.addLoot(item)).ok).toBe(true);
     expect(search.begin('chest')).toBe(false);
+  });
+
+  it('equips weapons without consuming a bag slot and prevents duplicate slot occupancy', () => {
+    const inventory = new ReferenceInventory(new EventBus(), 1, ITEM_DEFINITIONS);
+    inventory.begin('current', [
+      { instanceId: 'weapon', itemId: 'training-bat', origin: { kind: 'carry-in' } },
+    ]);
+    expect(inventory.equip('weapon', 'primary').ok).toBe(true);
+    expect(inventory.equip('weapon', 'secondary')).toEqual({
+      ok: false,
+      error: 'ITEM_ALREADY_EQUIPPED',
+    });
+    expect(
+      inventory.addLoot({
+        instanceId: 'loot',
+        itemId: 'stun-baton',
+        origin: { kind: 'raid-loot', obtainedInRaidId: 'current' },
+      }).ok,
+    ).toBe(true);
+    expect(inventory.equip('loot', 'primary')).toEqual({
+      ok: false,
+      error: 'EQUIPMENT_SLOT_OCCUPIED',
+    });
+    expect(inventory.getEquipment().primary?.instanceId).toBe('weapon');
+  });
+
+  it('consumes healing only after the effect is accepted', () => {
+    const consumed: string[] = [];
+    const bus = new EventBus();
+    bus.on('ItemConsumed', ({ instanceId }) => consumed.push(instanceId));
+    const inventory = new ReferenceInventory(bus, 6, ITEM_DEFINITIONS);
+    inventory.begin('current', []);
+    inventory.addLoot(loot('coffee', 'morning-coffee'));
+    expect(inventory.consumeHealing('coffee', () => false)).toEqual({
+      ok: false,
+      error: 'INVALID_STATE',
+    });
+    expect(inventory.getCarriedItems()).toHaveLength(1);
+    expect(inventory.consumeHealing('coffee', () => true).ok).toBe(true);
+    expect(inventory.getCarriedItems()).toHaveLength(0);
+    expect(consumed).toEqual(['coffee']);
+  });
+
+  it('rejects using a non-healing item and does not consume it', () => {
+    const inventory = new ReferenceInventory(new EventBus(), 6, ITEM_DEFINITIONS);
+    inventory.begin('current', []);
+    inventory.addLoot(loot('badge'));
+    expect(inventory.consumeHealing('badge', () => true)).toEqual({
+      ok: false,
+      error: 'ITEM_NOT_USABLE',
+    });
+    expect(inventory.getCarriedItems()).toHaveLength(1);
+  });
+
+  it('refuses to unequip into a full bag and allows it after freeing a slot', () => {
+    const inventory = new ReferenceInventory(new EventBus(), 2, ITEM_DEFINITIONS);
+    inventory.begin('current', [
+      { instanceId: 'weapon', itemId: 'training-bat', origin: { kind: 'carry-in' } },
+      { instanceId: 'badge', itemId: 'school-badge', origin: { kind: 'carry-in' } },
+    ]);
+    expect(inventory.equip('weapon', 'primary').ok).toBe(true);
+    expect(inventory.addLoot(loot('new'))).toEqual({ ok: true, value: undefined });
+    expect(inventory.unequip('primary')).toEqual({ ok: false, error: 'BAG_FULL' });
+    inventory.remove('badge');
+    expect(inventory.unequip('primary').ok).toBe(true);
+    expect(inventory.getEquipment()).toEqual({});
   });
 });
