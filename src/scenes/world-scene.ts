@@ -66,7 +66,7 @@ export class WorldScene extends Phaser.Scene {
   private readonly enemyVisualStates = new Map<string, EnemyState>();
   private readonly enemyAnimationKeys = new Map<string, string>();
   private readonly enemyDeathFinished = new Set<string>();
-  private readonly rewardedHugs = new Set<string>();
+  private hugRewardCount = 0;
   private readonly enemyMutatedStates = new Map<string, boolean>();
   private readonly enemyLastPositions = new Map<string, Point>();
   private readonly ground = new Map<
@@ -617,16 +617,31 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const point = { ...position };
+    const definition = ITEM_DEFINITIONS[item.itemId];
+    const artifact = item.itemId === COMBAT_RULES.hug.rewardItemId;
+    const color = artifact ? 0xc792ff : 0xffcc7c;
     const sprite = this.add
       .container(point.x, point.y, [
-        this.add.circle(0, 0, 10, 0xffcc7c).setStrokeStyle(2, 0xffeed3),
-        this.add.text(-7, -8, '拾', {
-          fontFamily: 'Microsoft YaHei',
-          fontSize: '13px',
-          color: '#453d2d',
-        }),
+        this.add.circle(0, 0, 22, color, 0.2),
+        this.add.circle(0, 0, 14, artifact ? 0x4c237c : 0x453d2d).setStrokeStyle(2, color),
+        this.add
+          .text(0, 0, artifact ? '4.0' : '拾', {
+            fontFamily: 'Microsoft YaHei',
+            fontSize: '12px',
+            color: '#ffffff',
+          })
+          .setOrigin(0.5),
+        this.add
+          .text(0, 22, definition?.name ?? item.itemId, {
+            fontFamily: 'Microsoft YaHei',
+            fontSize: '13px',
+            color: artifact ? '#e4c7ff' : '#ffeed3',
+            backgroundColor: '#171221',
+            padding: { x: 5, y: 3 },
+          })
+          .setOrigin(0.5, 0),
       ])
-      .setDepth(12);
+      .setDepth(43);
     this.ground.set(item.instanceId, { item, position: point, sprite });
   }
 
@@ -660,20 +675,21 @@ export class WorldScene extends Phaser.Scene {
 
   private rewardCalmed(enemies: readonly Enemy[], raidId: string | null): void {
     for (const enemy of enemies) {
-      if (!raidId || this.rewardedHugs.has(enemy.id)) {
-        this.services.notify('安抚成功：抱抱怪平静 30 秒，这只的奖励已领取。');
+      if (!raidId) {
         continue;
       }
       const itemId = COMBAT_RULES.hug.rewardItemId;
       this.spawnLoot(
         {
-          instanceId: `${raidId}:hug:${enemy.id}`,
+          instanceId: `${raidId}:hug:${enemy.id}:${++this.hugRewardCount}`,
           itemId,
           origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
         },
-        enemy.position,
+        {
+          x: (enemy.position.x + this.position.x) / 2,
+          y: (enemy.position.y + this.position.y) / 2,
+        },
       );
-      this.rewardedHugs.add(enemy.id);
       const text = `安抚成功 · 掉落${ITEM_DEFINITIONS[itemId]?.name}，靠近后按 E 拾取`;
       this.banner = { text, untilMs: this.time.now + 3200 };
       this.services.notify(text);
@@ -704,10 +720,10 @@ export class WorldScene extends Phaser.Scene {
     if (loot) {
       this.search.cancel();
       if (bagFull) {
-        this.interaction = '背包已满 · 先丢弃或替换物品再拾取';
+        this.interaction = `背包已满 · ${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}留在地上，先腾出空间再拾取`;
         return;
       }
-      this.interaction = '按 E 拾取脚边物品';
+      this.interaction = `按 E 拾取：${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}`;
       if (held && !this.previousInteract) {
         // Carry-in drops retain provenance: only the inventory transfer method may reinsert them.
         const result = this.services.inventory.addLoot(loot.item);
@@ -849,7 +865,7 @@ export class WorldScene extends Phaser.Scene {
     this.enemyVisualStates.clear();
     this.enemyAnimationKeys.clear();
     this.enemyDeathFinished.clear();
-    this.rewardedHugs.clear();
+    this.hugRewardCount = 0;
     this.enemyMutatedStates.clear();
     this.enemyLastPositions.clear();
     const enemyIds = new Set(this.combat.enemies.map((enemy) => enemy.id));

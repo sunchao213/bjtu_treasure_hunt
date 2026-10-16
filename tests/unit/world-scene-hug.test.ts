@@ -11,10 +11,17 @@ import type { ItemInstance, Point } from '../../src/shared/types/game';
 
 vi.mock('phaser', () => {
   class DisplayObject {
+    depth = 0;
+    text = '';
+    list: DisplayObject[] = [];
+    setOrigin() {
+      return this;
+    }
     setStrokeStyle() {
       return this;
     }
-    setDepth() {
+    setDepth(depth: number) {
+      this.depth = depth;
       return this;
     }
     destroy = vi.fn();
@@ -26,8 +33,10 @@ vi.mock('phaser', () => {
         input = { activePointer: null };
         add = {
           circle: () => new DisplayObject(),
-          text: () => new DisplayObject(),
-          container: () => new DisplayObject(),
+          text: (_x: number, _y: number, text: string) =>
+            Object.assign(new DisplayObject(), { text }),
+          container: (_x: number, _y: number, list: DisplayObject[]) =>
+            Object.assign(new DisplayObject(), { list }),
         };
       },
     },
@@ -94,7 +103,11 @@ async function setup(touchLayout = false) {
   Object.assign(scene, { combat, keys, lastRaidId: 'hug-raid' });
   const ground = Reflect.get(scene, 'ground') as Map<
     string,
-    { item: ItemInstance; position: Point }
+    {
+      item: ItemInstance;
+      position: Point;
+      sprite: { depth: number; list: { text: string }[] };
+    }
   >;
   const step = (ms = 100) => {
     for (let elapsed = 0; elapsed < ms; elapsed += 100) {
@@ -153,6 +166,26 @@ describe('hug input, feedback and rewards in the world scene', () => {
     s.keys.Q!.isDown = true;
     s.step(700);
     expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('安抚抱抱怪'), 700 / 1500);
+  });
+
+  it('places a named artifact within ambient light and pickup range above the characters', async () => {
+    const s = await setup();
+    // A hug can complete outside the 62px ambient light radius without aiming at the monster.
+    s.hug.position = { x: WORLD.spawn.x + 100, y: WORLD.spawn.y };
+    s.keys.Q!.isDown = true;
+    s.step(2000);
+    const drop = [...s.ground.values()][0]!;
+    expect(
+      Math.hypot(drop.position.x - WORLD.spawn.x, drop.position.y - WORLD.spawn.y),
+    ).toBeLessThan(62);
+    expect(drop.position).not.toEqual(s.hug.position);
+    expect(drop.sprite.depth).toBeGreaterThan(40);
+    expect(drop.sprite.list.map((child) => child.text)).toContain('GPA4.0 神器');
+    expect(drop.sprite.list.map((child) => child.text)).toContain('4.0');
+    expect(s.ground.size).toBe(1);
+    s.keys.Q!.isDown = false;
+    s.step(3300);
+    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('按 E 拾取：GPA4.0 神器'), 0);
   });
 
   it.each(['E', 'Q'])(
@@ -220,7 +253,7 @@ describe('hug input, feedback and rewards in the world scene', () => {
     expect(s.save.view().codexIds).toContain('gpa-charm');
   });
 
-  it('does not duplicate the monster or award another artifact after calming it again', async () => {
+  it('awards one new artifact for each completed hug without duplicating the monster', async () => {
     const s = await setup();
     s.keys.Q!.isDown = true;
     s.step(1500);
@@ -235,8 +268,28 @@ describe('hug input, feedback and rewards in the world scene', () => {
     s.step(1500);
     expect(s.hug.state).toBe('calmed');
     expect(s.combat.enemies).toEqual([s.hug]);
-    expect(s.ground.size).toBe(0);
+    expect(s.ground.size).toBe(1);
     expect(s.inventory.getCarriedItems()).toHaveLength(1);
+    s.keys.Q!.isDown = false;
+    s.keys.E!.isDown = true;
+    s.step();
+    expect(s.ground.size).toBe(0);
+    const items = s.inventory.getCarriedItems();
+    expect(items).toHaveLength(2);
+    expect(new Set(items.map((item) => item.instanceId)).size).toBe(2);
+    expect(s.controller.getView().value).toBe(120);
+  });
+
+  it('keeps both uncollected artifacts when the same monster is hugged again', async () => {
+    const s = await setup();
+    s.keys.Q!.isDown = true;
+    s.step(2000);
+    expect(s.ground.size).toBe(1);
+    s.hug.timer = 100;
+    s.step(2000);
+    expect(s.ground.size).toBe(2);
+    expect([...s.ground.values()].every((drop) => drop.item.itemId === 'gpa-charm')).toBe(true);
+    expect(s.combat.enemies).toEqual([s.hug]);
   });
 
   it('does not drop a reward when damage interrupts the completion frame', async () => {
