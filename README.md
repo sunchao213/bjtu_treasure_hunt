@@ -70,6 +70,6 @@ npm.cmd run check
 
 ## 发布准备
 
-`npm run build` 输出 `dist/`，Vite 使用相对 base，适合静态子目录部署。CI 仅检查并生成构建附件，没有自动部署、推送或发布。Phaser 单独打包，其包体与实际校内网络加载应在 E 的性能检查中测量。
+`npm run build` 输出 `dist/`，Vite 使用相对 base，适合静态子目录部署。GitHub Pages 工作流在推送 `main`、推送 `v*` 标签或手动触发时运行完整检查，通过后发布 `dist/`。首次使用需在仓库 Settings → Pages 将 Source 设为 GitHub Actions，操作见 [GitHub Pages 发布说明](docs/github-pages.md)。Phaser 单独打包，其包体与实际校内网络加载应在 E 的性能检查中测量。
 
 当前地图、人物和物资为代码绘制，见 [素材清单](docs/assets-manifest.md)。正式开源前由全组确定许可证。不要上传真实试用者身份信息。
