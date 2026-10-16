@@ -3,9 +3,11 @@ import Phaser from 'phaser';
 import { COMBAT_RULES } from '../config/combat-config';
 import {
   MONSTER_ANIMATIONS,
+  MONSTER_FRAME_SIZE,
   MONSTER_SPRITE_SHEETS,
   monsterAnimationFor,
   monsterScaleFor,
+  monsterNameFor,
 } from '../config/monster-sprites';
 import { generateLootSpawns, type LootSpawn } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
@@ -100,8 +102,8 @@ export class WorldScene extends Phaser.Scene {
   preload(): void {
     for (const key of MONSTER_SPRITE_SHEETS) {
       this.load.spritesheet(key, `assets/characters/processed/${key}.png`, {
-        frameWidth: 128,
-        frameHeight: 128,
+        frameWidth: MONSTER_FRAME_SIZE,
+        frameHeight: MONSTER_FRAME_SIZE,
       });
     }
   }
@@ -532,12 +534,12 @@ export class WorldScene extends Phaser.Scene {
       if (visible && (!died || !this.enemyDeathFinished.has(enemy.id))) {
         this.flashlight
           .fillStyle(0x40202b)
-          .fillRect(enemy.position.x - 18, enemy.position.y - 54, 36, 4);
+          .fillRect(enemy.position.x - 18, enemy.position.y - 70, 36, 4);
         this.flashlight
           .fillStyle(enemy.mutated ? 0xff4e68 : 0xe4ae6b)
           .fillRect(
             enemy.position.x - 18,
-            enemy.position.y - 54,
+            enemy.position.y - 70,
             (36 * enemy.health) /
               (enemy.kind === 'hug' ? COMBAT_RULES.hug.health : COMBAT_RULES.enemy.patrol.health),
             4,
@@ -891,18 +893,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createEnemyAnimations(): void {
-    for (const [key, { texture, frameRate, repeat, frames }] of Object.entries(
-      MONSTER_ANIMATIONS,
-    )) {
+    for (const [key, { texture, frameRate, repeat }] of Object.entries(MONSTER_ANIMATIONS)) {
       if (!this.textures.exists(texture) || this.anims.exists(key)) {
         continue;
       }
       this.anims.create({
         key,
-        frames: this.anims.generateFrameNumbers(
-          texture,
-          frames ? { frames: [...frames] } : undefined,
-        ),
+        frames: this.anims.generateFrameNumbers(texture),
         frameRate,
         repeat,
       });
@@ -921,7 +918,7 @@ export class WorldScene extends Phaser.Scene {
       .setName('sprite')
       .setOrigin(0.5, 1);
     const warning = this.add
-      .text(0, -76, '即将变异 · 远离', {
+      .text(0, -108, '即将变异 · 远离', {
         fontFamily: 'Microsoft YaHei, sans-serif',
         fontSize: '18px',
         color: '#ffcc7c',
@@ -931,8 +928,18 @@ export class WorldScene extends Phaser.Scene {
       .setName('mutation-warning')
       .setOrigin(0.5, 1)
       .setVisible(false);
+    const name = this.add
+      .text(0, -80, monsterNameFor(enemy), {
+        fontFamily: 'Microsoft YaHei, sans-serif',
+        fontSize: '13px',
+        color: '#f4ead6',
+        stroke: '#10221b',
+        strokeThickness: 4,
+      })
+      .setName('monster-name')
+      .setOrigin(0.5, 1);
     const object = this.add
-      .container(enemy.position.x, enemy.position.y, [shadow, sprite, warning])
+      .container(enemy.position.x, enemy.position.y, [shadow, sprite, warning, name])
       .setName(`enemy-${enemy.id}`)
       .setDepth(25);
     this.enemyObjects.set(enemy.id, object);
@@ -953,6 +960,10 @@ export class WorldScene extends Phaser.Scene {
     const windup = enemy.state === 'windup';
     const mutationWarning = enemy.state === 'mutation-warning';
     (object.getByName('mutation-warning') as Phaser.GameObjects.Text).setVisible(mutationWarning);
+    (object.getByName('monster-name') as Phaser.GameObjects.Text)
+      .setText(monsterNameFor(enemy))
+      .setColor(isMutated ? '#ff9d9d' : isHug ? '#b9edba' : '#f4ead6')
+      .setVisible(enemy.state !== 'dead');
     const previousPosition = this.enemyLastPositions.get(enemy.id);
     const isMoving = !!previousPosition && distance(previousPosition, enemy.position) > 0.2;
     const mutatedNow = isMutated && !this.enemyMutatedStates.get(enemy.id);
@@ -961,25 +972,27 @@ export class WorldScene extends Phaser.Scene {
     const currentAnimation = this.enemyAnimationKeys.get(enemy.id);
 
     if (enemy.state === 'dead') {
-      if (!this.enemyDeathFinished.has(enemy.id) && currentAnimation !== desiredAnimation) {
+      if (currentAnimation !== desiredAnimation) {
         this.enemyAnimationKeys.set(enemy.id, desiredAnimation);
         sprite.anims.play(desiredAnimation, true);
-        sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
-          this.enemyDeathFinished.add(enemy.id);
-          object.setVisible(false);
-        });
+      } else if (!sprite.anims.isPlaying) {
+        this.enemyDeathFinished.add(enemy.id);
       }
     } else if (mutatedNow && this.anims.exists('squirrel-mutate')) {
       this.enemyAnimationKeys.set(enemy.id, 'squirrel-mutate');
       sprite.anims.play('squirrel-mutate', true);
-      sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
-        if (enemy.state !== 'dead' && enemy.mutated) {
-          this.enemyAnimationKeys.set(enemy.id, 'squirrel-mutant-idle');
-          sprite.anims.play('squirrel-mutant-idle', true);
-        }
-      });
       this.enemyMutatedStates.set(enemy.id, true);
-    } else if (currentAnimation !== desiredAnimation && this.anims.exists(desiredAnimation)) {
+    } else if (
+      currentAnimation !== desiredAnimation &&
+      this.anims.exists(desiredAnimation) &&
+      // Finish the transformation unless combat needs an attack/hurt/death pose.
+      !(
+        currentAnimation === 'squirrel-mutate' &&
+        sprite.anims.isPlaying &&
+        !windup &&
+        enemy.state !== 'stunned'
+      )
+    ) {
       this.enemyAnimationKeys.set(enemy.id, desiredAnimation);
       sprite.anims.play(desiredAnimation, true);
     }

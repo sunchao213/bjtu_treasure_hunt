@@ -4,8 +4,9 @@ export interface MonsterAnimationAsset {
   readonly texture: string;
   readonly frameRate: number;
   readonly repeat: number;
-  readonly frames?: readonly number[];
 }
+
+export const MONSTER_FRAME_SIZE = 176;
 
 const DUCK_ANIMATIONS = {
   idle: 'duck-idle',
@@ -20,7 +21,7 @@ const SQUIRREL_ANIMATIONS = {
   moving: 'squirrel-walk',
   request: 'squirrel-request',
   hurt: 'squirrel-idle',
-  death: 'duck-death',
+  death: 'squirrel-death',
 } as const;
 
 const MUTANT_ANIMATIONS = {
@@ -40,40 +41,44 @@ export const MONSTER_SPRITE_SHEETS = [
   'squirrel-idle',
   'squirrel-walk',
   'squirrel-request',
+  'squirrel-death',
   'squirrel-mutate',
   'squirrel-mutant-idle',
   'squirrel-mutant-walk',
   'squirrel-mutant-attack',
-  'squirrel-mutant-hurt-death',
+  'squirrel-mutant-hurt',
   'squirrel-mutant-death',
 ] as const;
 
 export const MONSTER_ANIMATIONS: Readonly<Record<string, MonsterAnimationAsset>> = {
   'duck-idle': { texture: 'duck-idle', frameRate: 5, repeat: -1 },
   'duck-walk': { texture: 'duck-walk', frameRate: 9, repeat: -1 },
-  'duck-attack': { texture: 'duck-attack', frameRate: 12, repeat: 0 },
+  'duck-attack': { texture: 'duck-attack', frameRate: 9, repeat: 0 },
   'duck-hurt': { texture: 'duck-hurt', frameRate: 10, repeat: 0 },
   'duck-death': { texture: 'duck-death', frameRate: 8, repeat: 0 },
-  // Frame 4 contains two miniature squirrels rather than a single idle pose.
-  'squirrel-idle': { texture: 'squirrel-idle', frameRate: 6, repeat: -1, frames: [0, 1, 2, 3, 5] },
+  'squirrel-idle': { texture: 'squirrel-idle', frameRate: 6, repeat: -1 },
   'squirrel-walk': { texture: 'squirrel-walk', frameRate: 10, repeat: -1 },
   'squirrel-request': { texture: 'squirrel-request', frameRate: 10, repeat: -1 },
-  'squirrel-mutate': { texture: 'squirrel-mutate', frameRate: 10, repeat: 0 },
+  'squirrel-death': { texture: 'squirrel-death', frameRate: 6, repeat: 0 },
+  'squirrel-mutate': { texture: 'squirrel-mutate', frameRate: 14, repeat: 0 },
   'squirrel-mutant-idle': { texture: 'squirrel-mutant-idle', frameRate: 6, repeat: -1 },
   'squirrel-mutant-walk': { texture: 'squirrel-mutant-walk', frameRate: 10, repeat: -1 },
-  'squirrel-mutant-attack': { texture: 'squirrel-mutant-attack', frameRate: 10, repeat: 0 },
-  'squirrel-mutant-hurt-death': {
-    texture: 'squirrel-mutant-hurt-death',
-    frameRate: 8,
-    repeat: 0,
-  },
+  'squirrel-mutant-attack': { texture: 'squirrel-mutant-attack', frameRate: 12, repeat: 0 },
   'squirrel-mutant-hurt': {
-    texture: 'squirrel-mutant-hurt-death',
+    texture: 'squirrel-mutant-hurt',
     frameRate: 8,
     repeat: 0,
   },
   'squirrel-mutant-death': { texture: 'squirrel-mutant-death', frameRate: 8, repeat: 0 },
 };
+
+export function monsterNameFor(enemy: Enemy): string {
+  return enemy.kind === 'patrol'
+    ? '巡游怪 · 灰鸭'
+    : enemy.mutated
+      ? '变异抱抱怪 · 红眼松鼠'
+      : '抱抱怪 · 棕色松鼠';
+}
 
 export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
   if (enemy.state === 'mutation-warning') {

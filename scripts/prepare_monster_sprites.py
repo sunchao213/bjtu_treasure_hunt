@@ -9,24 +9,29 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "public/assets/characters/monster-animals-source.png"
 OUTPUT = ROOT / "public/assets/characters/processed"
-FRAME_SIZE = 128
+FRAME_SIZE = 176
 ALPHA_THRESHOLD = 8
 BACKGROUND_TOLERANCE = 34
-ANIMATION_NAMES = {
-    "duck-idle",
-    "duck-walk",
-    "duck-attack",
-    "duck-hurt",
-    "duck-death",
-    "squirrel-idle",
-    "squirrel-walk",
-    "squirrel-request",
-    "squirrel-mutate",
-    "squirrel-mutant-idle",
-    "squirrel-mutant-walk",
-    "squirrel-mutant-attack",
-    "squirrel-mutant-hurt-death",
-    "squirrel-mutant-death",
+
+
+# Explicit cell boundaries in the supplied 1536x1024 source. Some neighboring
+# sprites touch through outlines/effect marks, so connected components alone
+# cannot identify animation frames or separate individual animals reliably.
+ROWS = {
+    "duck-idle": (20, 140, [16, 114, 200, 290, 379, 463, 560]),
+    "duck-walk": (20, 140, [575, 685, 780, 870, 960, 1053, 1149]),
+    "duck-attack": (20, 140, [1149, 1238, 1328, 1420, 1536]),
+    "duck-hurt": (145, 265, [8, 104, 196, 287, 379, 478, 592, 695]),
+    "duck-death": (145, 265, [695, 822, 960, 1114, 1285, 1460]),
+    "squirrel-idle": (330, 440, [16, 114, 207, 296, 382, 462, 545]),
+    "squirrel-walk": (330, 440, [545, 642, 744, 839, 932, 1035, 1130, 1213, 1293, 1382, 1490]),
+    "squirrel-request": (445, 580, [8, 112, 215, 314, 430, 560, 691, 811, 949, 1064, 1186, 1299, 1415, 1520]),
+    "squirrel-mutate": (610, 730, [8, 113, 207, 297, 382, 463, 542, 623, 702, 783, 875, 955, 1034, 1123, 1225]),
+    "squirrel-mutant-idle": (735, 855, [8, 103, 192, 276, 362, 445]),
+    "squirrel-mutant-walk": (735, 855, [445, 565, 678, 780, 866, 955, 1040, 1138, 1255]),
+    "squirrel-mutant-hurt": (870, 990, [8, 105, 192, 280, 369, 465]),
+    "squirrel-mutant-attack": (870, 990, [465, 578, 709, 855, 1017, 1164]),
+    "squirrel-mutant-death": (910, 990, [1164, 1290, 1400, 1530]),
 }
 
 
@@ -66,51 +71,6 @@ def remove_background(source: Image.Image) -> Image.Image:
     return Image.fromarray(rgba, "RGBA")
 
 
-def connected_sprites(alpha: np.ndarray) -> list[tuple[int, int, int, int]]:
-    """Find alpha-connected frame bounds using horizontal run-length labeling."""
-    parents: list[int] = []
-    bounds: list[list[int]] = []
-    previous: list[tuple[int, int, int]] = []
-
-    def find(label: int) -> int:
-        while parents[label] != label:
-            parents[label] = parents[parents[label]]
-            label = parents[label]
-        return label
-
-    def join(first: int, second: int) -> None:
-        a, b = find(first), find(second)
-        if a != b:
-            parents[b] = a
-
-    for y, row in enumerate(alpha > ALPHA_THRESHOLD):
-        edges = np.diff(np.pad(row.astype(np.int8), (1, 1)))
-        starts, ends = np.where(edges == 1)[0], np.where(edges == -1)[0] - 1
-        current: list[tuple[int, int, int]] = []
-        for left, right in zip(starts, ends):
-            label = len(parents)
-            parents.append(label)
-            bounds.append([int(left), y, int(right), y])
-            for old_left, old_right, old_label in previous:
-                if old_left <= right + 1 and old_right >= left - 1:
-                    join(label, old_label)
-            current.append((int(left), int(right), label))
-        previous = current
-
-    merged: dict[int, list[int]] = {}
-    for label, rect in enumerate(bounds):
-        root = find(label)
-        if root not in merged:
-            merged[root] = rect.copy()
-        else:
-            box = merged[root]
-            box[0] = min(box[0], rect[0])
-            box[1] = min(box[1], rect[1])
-            box[2] = max(box[2], rect[2])
-            box[3] = max(box[3], rect[3])
-    return [tuple(box) for box in merged.values() if box[2] - box[0] > 18 and box[3] - box[1] > 18]
-
-
 def make_frame(source: Image.Image, box: tuple[int, int, int, int]) -> Image.Image:
     frame = source.crop(box).convert("RGBA")
     alpha = frame.getchannel("A")
@@ -119,28 +79,68 @@ def make_frame(source: Image.Image, box: tuple[int, int, int, int]) -> Image.Ima
     canvas = Image.new("RGBA", (FRAME_SIZE, FRAME_SIZE), (0, 0, 0, 0))
     if bbox:
         sprite = frame.crop(bbox)
-        sprite.thumbnail((FRAME_SIZE - 12, FRAME_SIZE - 12), Image.Resampling.LANCZOS)
+        # Keep source pixels at the same scale across every pose. Resizing each
+        # tight crop separately makes animals grow/shrink as animations change.
+        if sprite.width > FRAME_SIZE - 8 or sprite.height > FRAME_SIZE - 8:
+            raise ValueError(f"Sprite does not fit the fixed frame: {box}")
         x = (FRAME_SIZE - sprite.width) // 2
         y = FRAME_SIZE - 4 - sprite.height
         canvas.alpha_composite(sprite, (x, y))
     return canvas
 
 
-def split_wide_box(alpha: np.ndarray, box: tuple[int, int, int, int], max_width: float) -> list[tuple[int, int, int, int]]:
-    """Split touching sprites at the lowest alpha-density valley."""
-    left, top, right, bottom = box
-    if right - left + 1 <= max_width:
-        return [box]
-    density = (alpha[top : bottom + 1, left : right + 1] > ALPHA_THRESHOLD).sum(axis=0)
-    margin = max(4, int(len(density) * 0.08))
-    candidates = range(margin, len(density) - margin)
-    split_at = min(candidates, key=lambda index: (int(density[index]), abs(index - len(density) / 2)))
-    split_x = left + split_at
-    if split_x <= left + 8 or split_x >= right - 8:
-        return [box]
-    return split_wide_box(alpha, (left, top, split_x - 1, bottom), max_width) + split_wide_box(
-        alpha, (split_x, top, right, bottom), max_width
-    )
+def frame_seam(alpha: np.ndarray, boundary: int) -> np.ndarray:
+    """Follow the gap between a preceding muzzle and the next animal's tail."""
+    height, width = alpha.shape
+    if boundary <= 0 or boundary >= width:
+        return np.full(height, min(width, max(0, boundary)))
+    left, right = max(0, boundary - 24), min(width, boundary + 25)
+    columns = np.arange(left, right)
+    cost = (alpha[:, left:right] > ALPHA_THRESHOLD).astype(float) * 100
+    cost += np.abs(columns - boundary) * 0.01
+    paths = np.zeros(cost.shape, dtype=np.int32)
+    total = cost[0].copy()
+    for y in range(1, height):
+        candidates = np.stack((np.r_[np.inf, total[:-1]], total, np.r_[total[1:], np.inf]))
+        step = candidates.argmin(axis=0)
+        paths[y] = columns - left + step - 1
+        total = cost[y] + candidates[step, np.arange(right - left)]
+    seam = np.empty(height, dtype=np.int32)
+    index = int(total.argmin())
+    for y in range(height - 1, -1, -1):
+        seam[y] = left + index
+        index = paths[y, index]
+    return seam
+
+
+def isolate_animal(cell: Image.Image) -> Image.Image:
+    """Keep the main animal, removing detached bits from adjacent poses."""
+    rgba = np.array(cell)
+    remaining = rgba[:, :, 3] > ALPHA_THRESHOLD
+    height, width = remaining.shape
+    largest = []
+    for y, x in zip(*np.where(remaining)):
+        if not remaining[y, x]:
+            continue
+        component = []
+        queue = deque([(int(x), int(y))])
+        remaining[y, x] = False
+        while queue:
+            px, py = queue.popleft()
+            component.append((py, px))
+            for ny in range(max(0, py - 1), min(height, py + 2)):
+                for nx in range(max(0, px - 1), min(width, px + 2)):
+                    if remaining[ny, nx]:
+                        remaining[ny, nx] = False
+                        queue.append((nx, ny))
+        if len(component) > len(largest):
+            largest = component
+    keep = np.zeros((height, width), dtype=bool)
+    if largest:
+        ys, xs = zip(*largest)
+        keep[ys, xs] = True
+    rgba[~keep, 3] = 0
+    return Image.fromarray(rgba)
 
 
 def verify_outputs(output_dir: Path, expected_counts: dict[str, int] | None = None) -> None:
@@ -163,49 +163,53 @@ def verify_outputs(output_dir: Path, expected_counts: dict[str, int] | None = No
                 raise ValueError(f"{path.name}: expected {expected_counts[path.stem]} frames, found {count}")
             if strip.getchannel("A").getbbox() is None:
                 raise ValueError(f"Strip is fully transparent: {path.name}")
+            for index in range(count):
+                frame = strip.crop((index * FRAME_SIZE, 0, (index + 1) * FRAME_SIZE, FRAME_SIZE))
+                box = frame.getchannel("A").getbbox()
+                if not box or box[0] < 3 or box[2] > FRAME_SIZE - 3 or box[3] != FRAME_SIZE - 4:
+                    raise ValueError(f"Empty, clipped or ungrounded frame: {path.name}:{index} {box}")
             print(f"{path.name}: {count} frames, {strip.mode}, {strip.width}x{strip.height}")
 
 
 def build_sheets(source_path: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    for name in ANIMATION_NAMES:
-        old_sheet = output_dir / f"{name}.png"
-        if old_sheet.exists():
-            old_sheet.unlink()
     source = remove_background(Image.open(source_path))
-    alpha = np.array(source.getchannel("A"))
-    boxes = connected_sprites(alpha)
-    groups = {
-        "duck-idle": (0, 150, 0, 565),
-        "duck-walk": (0, 150, 575, 1050),
-        "duck-attack": (0, 150, 1050, 1536),
-        "duck-hurt": (150, 310, 0, 680),
-        "duck-death": (150, 310, 680, 1536),
-        "squirrel-idle": (310, 450, 0, 700),
-        "squirrel-walk": (310, 450, 700, 1536),
-        "squirrel-request": (450, 590, 0, 1536),
-        "squirrel-mutate": (590, 735, 0, 1250),
-        "squirrel-mutant-idle": (735, 865, 0, 1536),
-        "squirrel-mutant-walk": (865, 1024, 0, 710),
-        "squirrel-mutant-attack": (865, 1024, 710, 1160),
-        "squirrel-mutant-hurt-death": (865, 1024, 1160, 1536),
-        "squirrel-mutant-death": (865, 1024, 1160, 1536),
-    }
-    for name, (y0, y1, x0, x1) in groups.items():
-        frames = sorted(
-            (box for box in boxes if box[0] >= x0 and box[2] <= x1 and box[1] >= y0 and box[3] <= y1),
-            key=lambda box: box[0],
-        )
-        if name in {"squirrel-mutant-hurt-death", "squirrel-mutant-death"}:
-            frames = [part for box in frames for part in split_wide_box(alpha, box, 180)]
-        frames = [box for box in frames if box[2] - box[0] < 190 and box[3] - box[1] < 170]
-        if not frames:
-            continue
+    if source.size != (1536, 1024):
+        raise ValueError("The explicit frame layout requires the supplied 1536x1024 source")
+    for name, (top, bottom, edges) in ROWS.items():
+        frames = []
+        band = np.array(source.crop((0, top, source.width, bottom)))
+        seams = [frame_seam(band[:, :, 3], edge) for edge in edges]
+        for left, right in zip(seams, seams[1:]):
+            x0, x1 = int(left.min()), int(right.max())
+            cell = band[:, x0:x1].copy()
+            columns = np.arange(x0, x1)[None, :]
+            cell[(columns < left[:, None]) | (columns >= right[:, None]), 3] = 0
+            animal = isolate_animal(Image.fromarray(cell))
+            if animal.getchannel("A").getbbox() is None:
+                raise ValueError(f"Missing animal in {name} cell {x0}:{x1}")
+            frames.append(make_frame(animal, (0, 0, animal.width, animal.height)))
         strip = Image.new("RGBA", (FRAME_SIZE * len(frames), FRAME_SIZE), (0, 0, 0, 0))
-        for index, box in enumerate(frames):
-            strip.alpha_composite(make_frame(source, box), (index * FRAME_SIZE, 0))
+        for index, frame in enumerate(frames):
+            strip.alpha_composite(frame, (index * FRAME_SIZE, 0))
         strip.save(output_dir / f"{name}.png", optimize=True)
         print(f"{name}: {len(frames)} frames")
+
+    # The source has no brown squirrel death row. Reuse that animal's own pose
+    # for a short fall/fade rather than changing it into a duck on lethal hits.
+    with Image.open(output_dir / "squirrel-idle.png") as idle:
+        pose = idle.crop((0, 0, FRAME_SIZE, FRAME_SIZE))
+        pose = pose.crop(pose.getchannel("A").getbbox())
+        strip = Image.new("RGBA", (FRAME_SIZE * 3, FRAME_SIZE))
+        for index, angle in enumerate((25, 55, 90)):
+            fallen = pose.rotate(angle, expand=True, resample=Image.Resampling.NEAREST)
+            fallen.putalpha(fallen.getchannel("A").point(lambda a: a * (3 - index) // 3))
+            fallen = fallen.crop(fallen.getchannel("A").getbbox())
+            strip.alpha_composite(fallen, (index * FRAME_SIZE + (FRAME_SIZE - fallen.width) // 2, FRAME_SIZE - 4 - fallen.height))
+        strip.save(output_dir / "squirrel-death.png", optimize=True)
+    obsolete = output_dir / "squirrel-mutant-hurt-death.png"
+    if obsolete.exists():
+        obsolete.unlink()
     print(f"Prepared animation strips in {output_dir}")
 
 
@@ -218,7 +222,9 @@ def main() -> None:
 
     if not args.verify_only:
         build_sheets(args.source, args.output)
-    verify_outputs(args.output, {name: None for name in ANIMATION_NAMES})
+    counts = {name: len(row[2]) - 1 for name, row in ROWS.items()}
+    counts["squirrel-death"] = 3
+    verify_outputs(args.output, counts)
 
 
 if __name__ == "__main__":
