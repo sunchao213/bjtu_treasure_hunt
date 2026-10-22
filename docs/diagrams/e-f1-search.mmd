@@ -1,0 +1,19 @@
+%% F1 搜索与地点调查 - 可编辑 Mermaid 源文件
+flowchart TD
+  A[玩家进入搜索点范围] --> B{地点可调查?}
+  B -- 否: 缺少前置证据/光线不足 --> X[显示原因并取消搜索]
+  B -- 是 --> C{持续按住 E 且未移动?}
+  C -- 否 --> X
+  C -- 是 --> D[SearchInteraction.begin(pointId)]
+  D --> E{达到 2 秒?}
+  E -- 否 --> C
+  E -- 是 --> F[生成 raid-loot 实例]
+  F --> G[InventoryPort.addLoot(instance)]
+  G -- 背包满/来源无效 --> H[保留搜索点并提示腾挪空间]
+  G -- 成功 --> I[标记地点已打开并发出 LocationInteracted]
+  I --> J{任务证据是否齐备?}
+  J -- 是 --> K[更新本局临时任务进度]
+  J -- 否 --> L[保持搜索结果]
+
+  classDef terminal fill:#173f32,stroke:#8ad6a5,color:#f4fff8;
+  class X,H,K,L terminal;

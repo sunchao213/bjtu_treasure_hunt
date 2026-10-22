@@ -72,7 +72,7 @@ export const FIRST_CHAPTER: ChapterContent = {
   ],
 };
 
-/** 图鉴条目描述：与 12 种目录物品一一对应，界面以提示形式展示。 */
+/** 图鉴条目描述：所有可入仓物品都有对应说明。 */
 export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
   'scratch-paper': '写满公式又划掉的草稿纸，边角还留着自习室的桌号。',
   'half-eraser': '用到只剩半块的橡皮，擦得最干净的一角写着「别放弃」。',
@@ -83,11 +83,12 @@ export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
   'morning-coffee': '早八不困咖啡，热气挡不住困意，但能让人撑过前三节。',
   'school-badge': '校训徽章，别在包带上，走夜路时反着光。',
   'anomalous-feather': '明湖石碑给的异常羽毛，凉、轻，且不属于任何一只已知鸟类。',
-  'gpa-charm': 'GPA 4.0 护符——据说只在通宵自习后才会出现。',
+  'gpa-charm': 'GPA4.0 神器——抱抱怪送给耐心陪伴者的祝福，据说能带来通宵自习后的好运。',
   'library-reward-ticket': '图书馆奖励券，背面印着借阅榜单，翻过去才看得见。',
   'siyuan-key': '思源楼金钥匙，握在手里比看起来沉，像是压着一整栋楼的记忆。',
   'anomalous-embrace-token': '安抚情绪怪后落下的护符，还带着一点温度（传说物，名称待确认）。',
   'training-bat': '训练棍：入场装备，挥不动人也挥不坏东西。',
+  'stun-baton': '电击器：短暂击晕怪物，电量只够使用十五次。',
   'reinforced-bat': '强化训练棍，缠了胶带，手感更稳。',
 };
 

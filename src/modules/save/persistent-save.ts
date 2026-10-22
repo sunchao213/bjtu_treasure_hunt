@@ -1,19 +1,26 @@
 import { ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
+import { chapterUnlockGranted, QUEST_CHAPTER_ID } from '../quests/quest-service';
 
+// Keep the storage key stable so existing browsers can migrate in place.
 export const FORMAL_SAVE_KEY = 'bjtu-treasure-hunt:save:v2';
-export const FORMAL_SCHEMA_VERSION = 2 as const;
+export const FORMAL_SCHEMA_VERSION = 3 as const;
 
 export interface FormalSaveData {
   schemaVersion: typeof FORMAL_SCHEMA_VERSION;
   warehouse: ItemInstance[];
   codexIds: string[];
   unlockedChapterIds: string[];
-  activeRaid: { raidId: string } | null;
+  activeRaid: { raidId: string; loadout: ItemInstance[] } | null;
   settledRaidIds: string[];
   lastResult: RaidResult | null;
 }
+
+type PreviousSaveData = Omit<FormalSaveData, 'schemaVersion' | 'activeRaid'> & {
+  schemaVersion: 1 | 2;
+  activeRaid: { raidId: string } | null;
+};
 
 export type SaveImportResult = {
   readonly sourceSchemaVersion: number;
@@ -62,11 +69,12 @@ function validResult(value: unknown): value is RaidResult {
     value.items.every(validItem) &&
     typeof value.value === 'number' &&
     Number.isSafeInteger(value.value) &&
-    value.value >= 0
+    value.value >= 0 &&
+    (value.questComplete === undefined || typeof value.questComplete === 'boolean')
   );
 }
 
-function validSettlementResult(result: RaidResult): boolean {
+function validSettlementResult(result: RaidResult, loadout: readonly ItemInstance[]): boolean {
   if (!validResult(result)) {
     return false;
   }
@@ -77,12 +85,19 @@ function validSettlementResult(result: RaidResult): boolean {
   if (result.outcome === 'failed') {
     return result.items.length === 0;
   }
-  return result.items.every(
-    (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === result.raidId,
+  return result.items.every((item) =>
+    item.origin.kind === 'carry-in'
+      ? loadout.some(
+          (entry) => entry.instanceId === item.instanceId && entry.itemId === item.itemId,
+        )
+      : item.origin.obtainedInRaidId === result.raidId &&
+        !loadout.some((entry) => entry.instanceId === item.instanceId),
   );
 }
 
-function validData(value: unknown, version: typeof FORMAL_SCHEMA_VERSION): value is FormalSaveData {
+function validData(value: unknown, version: 3): value is FormalSaveData;
+function validData(value: unknown, version: 1 | 2): value is PreviousSaveData;
+function validData(value: unknown, version: 1 | 2 | 3): value is FormalSaveData | PreviousSaveData {
   if (
     !record(value) ||
     value.schemaVersion !== version ||
@@ -107,6 +122,18 @@ function validData(value: unknown, version: typeof FORMAL_SCHEMA_VERSION): value
   if (warehouseIds.size !== value.warehouse.length) {
     return false;
   }
+  if (version === 3 && value.activeRaid !== null) {
+    const loadout = value.activeRaid.loadout;
+    if (
+      !Array.isArray(loadout) ||
+      loadout.length > RAID_RULES.bagCapacity ||
+      !loadout.every((item) => validItem(item) && item.origin.kind === 'carry-in') ||
+      new Set(loadout.map((item) => item.instanceId)).size !== loadout.length ||
+      loadout.some((item) => warehouseIds.has(item.instanceId))
+    ) {
+      return false;
+    }
+  }
   if (value.lastResult !== null && !value.settledRaidIds.includes(value.lastResult.raidId)) {
     return false;
   }
@@ -123,7 +150,8 @@ function validData(value: unknown, version: typeof FORMAL_SCHEMA_VERSION): value
       lastResult.outcome === 'success' &&
       !lastResult.items.every(
         (item) =>
-          item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === lastResult.raidId,
+          (version === 3 && item.origin.kind === 'carry-in') ||
+          (item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === lastResult.raidId),
       )
     ) {
       return false;
@@ -132,17 +160,20 @@ function validData(value: unknown, version: typeof FORMAL_SCHEMA_VERSION): value
   return true;
 }
 
-function decodeFormal(raw: string): FormalSaveData {
+function decodeFormal(raw: string): { data: FormalSaveData; sourceSchemaVersion: number } {
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
     throw new Error('Formal save is not valid JSON; preserve the original before recovery.');
   }
-  if (!validData(value, FORMAL_SCHEMA_VERSION)) {
-    throw new Error('Formal save is corrupt or uses an unsupported schema version.');
+  if (validData(value, FORMAL_SCHEMA_VERSION)) {
+    return { data: structuredClone(value), sourceSchemaVersion: FORMAL_SCHEMA_VERSION };
   }
-  return structuredClone(value);
+  if (validData(value, 2)) {
+    return { data: migratePrevious(value), sourceSchemaVersion: 2 };
+  }
+  throw new Error('Formal save is corrupt or uses an unsupported schema version.');
 }
 
 function decodeLegacy(raw: string): SaveData {
@@ -168,23 +199,34 @@ function decodeLegacy(raw: string): SaveData {
   ) {
     throw new Error('Reference save is corrupt or not a supported v1 save.');
   }
-  const data = { ...value, schemaVersion: 2 };
-  if (!validData(data, FORMAL_SCHEMA_VERSION)) {
+  if (!validData(value, 1)) {
     throw new Error('Reference save violates formal save invariants; import was not performed.');
   }
   return value as unknown as SaveData;
 }
 
-function migrateV1ToV2(legacy: SaveData): FormalSaveData {
-  return {
+function migratePrevious(legacy: PreviousSaveData): FormalSaveData {
+  const migrated: FormalSaveData = {
     schemaVersion: FORMAL_SCHEMA_VERSION,
     warehouse: structuredClone(legacy.warehouse),
     codexIds: [...legacy.codexIds],
     unlockedChapterIds: [...legacy.unlockedChapterIds],
-    activeRaid: legacy.activeRaid ? { ...legacy.activeRaid } : null,
+    activeRaid: null,
     settledRaidIds: [...legacy.settledRaidIds],
     lastResult: legacy.lastResult ? structuredClone(legacy.lastResult) : null,
   };
+  // Old active raids have no trustworthy carry-in manifest; never guess returns.
+  if (legacy.activeRaid) {
+    migrated.settledRaidIds.push(legacy.activeRaid.raidId);
+    migrated.lastResult = {
+      raidId: legacy.activeRaid.raidId,
+      outcome: 'failed',
+      reason: 'interrupted',
+      items: [],
+      value: 0,
+    };
+  }
+  return migrated;
 }
 
 /** Formal B persistence adapter. Writes are commit-after-storage and never mutate on failure. */
@@ -193,7 +235,15 @@ export class PersistentSave implements SavePort {
 
   constructor(private readonly storage: StoragePort) {
     const raw = storage.getItem(FORMAL_SAVE_KEY);
-    this.data = raw === null ? this.initial() : decodeFormal(raw);
+    this.data = this.initial();
+    if (raw !== null) {
+      const decoded = decodeFormal(raw);
+      if (decoded.sourceSchemaVersion !== FORMAL_SCHEMA_VERSION) {
+        this.commit(decoded.data);
+      } else {
+        this.data = decoded.data;
+      }
+    }
   }
 
   view(): FormalSaveData {
@@ -205,10 +255,10 @@ export class PersistentSave implements SavePort {
   }
 
   importRaw(raw: string): SaveImportResult {
-    const next = decodeFormal(raw);
-    this.commit(next);
+    const decoded = decodeFormal(raw);
+    this.commit(decoded.data);
     return {
-      sourceSchemaVersion: FORMAL_SCHEMA_VERSION,
+      sourceSchemaVersion: decoded.sourceSchemaVersion,
       targetSchemaVersion: FORMAL_SCHEMA_VERSION,
     };
   }
@@ -222,7 +272,7 @@ export class PersistentSave implements SavePort {
     if (raw === null) {
       throw new Error('No reference save exists to import.');
     }
-    const migrated = migrateV1ToV2(decodeLegacy(raw));
+    const migrated = migratePrevious(decodeLegacy(raw));
     this.commit(migrated);
     return { sourceSchemaVersion: 1, targetSchemaVersion: FORMAL_SCHEMA_VERSION };
   }
@@ -265,7 +315,7 @@ export class PersistentSave implements SavePort {
     });
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
-    next.activeRaid = { raidId };
+    next.activeRaid = { raidId, loadout: structuredClone(loadout) };
     this.commit(next);
     return loadout;
   }
@@ -274,7 +324,10 @@ export class PersistentSave implements SavePort {
     if (this.data.settledRaidIds.includes(result.raidId)) {
       return;
     }
-    if (this.data.activeRaid?.raidId !== result.raidId || !validSettlementResult(result)) {
+    if (
+      this.data.activeRaid?.raidId !== result.raidId ||
+      !validSettlementResult(result, this.data.activeRaid.loadout)
+    ) {
       throw new Error('Invalid settlement');
     }
     const next = this.view();
@@ -289,6 +342,9 @@ export class PersistentSave implements SavePort {
         if (!next.codexIds.includes(item.itemId)) {
           next.codexIds.push(item.itemId);
         }
+      }
+      if (chapterUnlockGranted(result) && !next.unlockedChapterIds.includes(QUEST_CHAPTER_ID)) {
+        next.unlockedChapterIds.push(QUEST_CHAPTER_ID);
       }
     }
     next.activeRaid = null;

@@ -21,13 +21,13 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['morning-coffee', '早八不困咖啡', 'uncommon', 'healing'],
     ['school-badge', '校训徽章', 'uncommon', 'collectible'],
     ['anomalous-feather', '异常羽毛', 'epic', 'quest'],
-    ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible'],
+    ['gpa-charm', 'GPA4.0 神器', 'epic', 'collectible'],
     ['library-reward-ticket', '图书馆奖励券', 'epic', 'collectible'],
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],
     // Product wording for L02 is pending team confirmation; keep its ID distinct from E01.
     ['anomalous-embrace-token', '抱抱机制关联传说物（待确认名称）', 'legendary', 'quest'],
     ['training-bat', '训练棍', 'common', 'weapon'],
-    ['reinforced-bat', '强化训练棍', 'uncommon', 'weapon'],
+    ['stun-baton', '电击器', 'uncommon', 'weapon'],
   ].map(([itemId, name, rarity, kind]) => {
     // Static configuration; the satisfies check belongs on the typed object below.
     const definition: ItemDefinition = {
@@ -40,12 +40,13 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
   }),
 );
 
-/** The 12 product-design codex entries; weapons and support placeholders are excluded. */
+/** Every item that can enter the permanent warehouse must have a gallery entry. */
 export const ITEM_CATALOG_IDS = [
   'scratch-paper',
   'half-eraser',
   'campus-map',
   'portable-medkit',
+  'morning-coffee',
   'torn-notebook',
   'window-seat',
   'school-badge',
@@ -54,6 +55,8 @@ export const ITEM_CATALOG_IDS = [
   'library-reward-ticket',
   'siyuan-key',
   'anomalous-embrace-token',
+  'training-bat',
+  'stun-baton',
 ] as const;
 
 /** Healing amounts are effects, not extraction values; values reflect current product rules. */

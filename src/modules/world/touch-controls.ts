@@ -1,9 +1,13 @@
+import { localTouchDelta } from '../ui/mobile-layout';
 import type { Point } from '../../shared/types/game';
 
-export type TouchAction = 'E' | 'SPACE' | 'L' | 'R' | 'G';
+export type TouchAction = 'E' | 'Q' | 'SPACE' | 'L' | 'R' | 'G';
 
 /** Pointer capture lets movement and an action stay held by separate fingers. */
 export class TouchControls {
+  aim: Point | null = null;
+  aimDirection: Point | null = null;
+  private aimPointer: number | null = null;
   movement: Point = { x: 0, y: 0 };
   private directionPointer: number | null = null;
   private readonly actions = new Map<number, TouchAction>();
@@ -68,6 +72,53 @@ export class TouchControls {
         button.addEventListener(event, release, options);
       }
     }
+    const aimStick = root.querySelector<HTMLElement>('.touch-aim');
+    if (aimStick) {
+      const point = (event: PointerEvent) => {
+        const box = aimStick.getBoundingClientRect();
+        const { x, y } = localTouchDelta(
+          event.clientX - box.left - box.width / 2,
+          event.clientY - box.top - box.height / 2,
+          document.documentElement.dataset.rotated === 'true',
+        );
+        const length = Math.hypot(x, y);
+        this.aim = length > 5 ? { x: x / length, y: y / length } : null;
+        if (this.aim) this.aimDirection = this.aim;
+        aimStick.style.setProperty('--stick-x', `${this.aim ? this.aim.x * 24 : 0}px`);
+        aimStick.style.setProperty('--stick-y', `${this.aim ? this.aim.y * 24 : 0}px`);
+      };
+      aimStick.addEventListener(
+        'pointerdown',
+        (event) => {
+          if (!this.enabled || this.aimPointer !== null) return;
+          event.preventDefault();
+          this.aimPointer = event.pointerId;
+          aimStick.setPointerCapture(event.pointerId);
+          point(event);
+        },
+        options,
+      );
+      aimStick.addEventListener(
+        'pointermove',
+        (event) => {
+          if (event.pointerId === this.aimPointer) point(event);
+        },
+        options,
+      );
+      for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+        aimStick.addEventListener(
+          type,
+          (event) => {
+            if (event.pointerId !== this.aimPointer) return;
+            this.aimPointer = null;
+            this.aim = null;
+            aimStick.style.setProperty('--stick-x', '0px');
+            aimStick.style.setProperty('--stick-y', '0px');
+          },
+          options,
+        );
+      }
+    }
     window.addEventListener('blur', () => this.reset(), options);
     window.addEventListener('pagehide', () => this.reset(), options);
     document.addEventListener(
@@ -103,6 +154,12 @@ export class TouchControls {
 
   reset(): void {
     this.directionPointer = null;
+    this.aimPointer = null;
+    this.aim = null;
+    this.aimDirection = null;
+    const aimStick = this.root.querySelector<HTMLElement>('.touch-aim');
+    aimStick?.style.setProperty('--stick-x', '0px');
+    aimStick?.style.setProperty('--stick-y', '0px');
     this.actions.clear();
     this.pressed.clear();
     this.movement = { x: 0, y: 0 };
@@ -118,8 +175,11 @@ export class TouchControls {
   private move(event: PointerEvent): void {
     const bounds = this.stick.getBoundingClientRect();
     const radius = bounds.width * 0.32;
-    const dx = (event.clientX - bounds.left - bounds.width / 2) / radius;
-    const dy = (event.clientY - bounds.top - bounds.height / 2) / radius;
+    const { x: dx, y: dy } = localTouchDelta(
+      (event.clientX - bounds.left - bounds.width / 2) / radius,
+      (event.clientY - bounds.top - bounds.height / 2) / radius,
+      document.documentElement.dataset.rotated === 'true',
+    );
     const length = Math.hypot(dx, dy);
     this.movement =
       length < 0.15

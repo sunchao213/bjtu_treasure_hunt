@@ -11,6 +11,7 @@ export class ReferenceInventory implements InventoryPort {
   private raidId = '';
   private items: ItemInstance[] = [];
   private readonly equipment = new Map<string, string>();
+  private readonly carryIn = new Map<string, ItemInstance>();
 
   constructor(
     private readonly bus: EventBus,
@@ -29,6 +30,11 @@ export class ReferenceInventory implements InventoryPort {
     }
     this.raidId = raidId;
     this.items = structuredClone([...loadout]);
+    this.equipment.clear();
+    this.carryIn.clear();
+    for (const item of this.items) {
+      this.carryIn.set(item.instanceId, structuredClone(item));
+    }
     this.changed();
   }
 
@@ -37,7 +43,12 @@ export class ReferenceInventory implements InventoryPort {
   }
 
   addLoot(item: ItemInstance): ActionResult {
-    if (!this.isValidItem(item, false)) {
+    if (
+      !this.isValidItem(item, true) ||
+      (item.origin.kind === 'carry-in'
+        ? this.carryIn.get(item.instanceId)?.itemId !== item.itemId
+        : this.carryIn.has(item.instanceId))
+    ) {
       return { ok: false, error: 'INVALID_ITEM' };
     }
     if (this.items.some((owned) => owned.instanceId === item.instanceId)) {
@@ -136,6 +147,7 @@ export class ReferenceInventory implements InventoryPort {
   clear(): void {
     this.items = [];
     this.equipment.clear();
+    this.carryIn.clear();
     this.changed();
   }
   private bagCount(): number {

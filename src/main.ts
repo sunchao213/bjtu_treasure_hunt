@@ -1,4 +1,6 @@
 import './style.css';
+import './mobile-layout.css';
+import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { createGame } from './app/create-game';
 import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
@@ -10,10 +12,12 @@ import { bindGameRules } from './modules/ui/game-rules';
 import { canStartRaid, shouldShowPrepView } from './modules/ui/prep-view';
 import { renderChapterUnlock, renderCodexPanel, renderQuestPanel } from './modules/ui/quest-view';
 import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
+import { renderCodex, exportCodexImage } from './modules/ui/codex';
 import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
+import { SoundManager } from './modules/ui/sound-manager';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -24,6 +28,11 @@ function element<T extends HTMLElement>(id: string): T {
 }
 const app = element('app');
 mountShell(app);
+const settings = document.createElement('section');
+settings.className = 'side-card settings';
+settings.innerHTML =
+  '<h2>设置</h2><label>游戏音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label>';
+document.querySelector('aside')?.append(settings);
 const notify = (message: string) => {
   element('notice').textContent = message;
 };
@@ -86,12 +95,26 @@ async function bootstrap(): Promise<void> {
   let interacted = '';
   let searchProgress = 0;
   const touch = new TouchControls(element('touch-controls'));
+  const sound = new SoundManager();
+  const volume = element<HTMLInputElement>('sound-volume');
+  let audibleVolume = sound.getSettings().volume || 0.8;
+  const brightness = element<HTMLInputElement>('screen-brightness');
+  const applySettings = () => {
+    sound.setSettings({ volume: Number(volume.value), brightness: Number(brightness.value) });
+    document.documentElement.style.setProperty('--screen-brightness', brightness.value);
+  };
+  volume.value = String(sound.getSettings().volume);
+  brightness.value = String(sound.getSettings().brightness);
+  volume.oninput = applySettings;
+  brightness.oninput = applySettings;
+  applySettings();
   const scene = new WorldScene({
     controller,
     inventory,
     events,
     notify,
     touch,
+    sound,
     onFrame: (interaction, progress) => {
       interacted = interaction;
       searchProgress = progress;
@@ -101,23 +124,141 @@ async function bootstrap(): Promise<void> {
       }
     },
   });
+  let rulesOpen = false;
+  let mapOpen = false;
+  let codexOpen = false;
+  const mobile = isTouchLayout;
+  const syncOrientation = () => {
+    const view = controller.getView();
+    const active = view.phase === 'active' || view.phase === 'extracting';
+    app.dataset.mobile = String(mobile());
+    element('rotate-phone').hidden = true;
+    if (active && (rulesOpen || mapOpen || codexOpen)) {
+      if (!controller.isPaused()) {
+        controller.pause();
+        scene.clearInteractions();
+      }
+    } else if (!rulesOpen && !mapOpen && !codexOpen) controller.resume();
+  };
+  const onResize = () => {
+    scene.clearInteractions();
+    render();
+  };
+  const disposeLayout = bindMobileLayout(app, () => queueMicrotask(onResize));
+  // Establish the logical landscape box before Phaser measures its canvas.
   const game = createGame(scene);
+  element('mobile-fullscreen').onclick = () => {
+    void requestLandscape();
+  };
+  element('mobile-rules').onclick = () => element('open-rules').click();
+  element('mobile-sound').onclick = () => {
+    if (sound.getMusicState() === 'playing') {
+      audibleVolume = sound.getSettings().volume;
+      volume.value = '0';
+      sound.setSettings({ volume: 0 });
+    } else {
+      if (sound.getSettings().volume === 0) {
+        volume.value = String(audibleVolume);
+        sound.setSettings({ volume: audibleVolume });
+      }
+      sound.setMusic(true);
+    }
+    render();
+  };
+  element('mobile-bag').onclick = () => {
+    scene.clearInteractions();
+    const target = element('mobile-bag').getAttribute('aria-controls')!;
+    app.scrollTo({ top: element(target).offsetTop - 12, behavior: 'smooth' });
+  };
+  const campusMap = element<HTMLDialogElement>('campus-map-dialog');
+  element('open-campus-map').onclick = () => {
+    if (campusMap.open) return;
+    mapOpen = true;
+    controller.pause();
+    scene.clearInteractions();
+    campusMap.showModal();
+    render();
+  };
+  element('close-campus-map').onclick = () => campusMap.close();
+  campusMap.addEventListener('close', () => {
+    mapOpen = false;
+    scene.clearInteractions();
+    render();
+  });
+  const codex = element<HTMLDialogElement>('codex-dialog');
+  const openCodex = () => {
+    if (codex.open) return;
+    codexOpen = true;
+    controller.pause();
+    scene.clearInteractions();
+    const archive = save.view();
+    renderCodex(archive.codexIds, archive.unlockedChapterIds);
+    element('codex-export-status').textContent = '';
+    codex.showModal();
+    render();
+  };
+  for (const id of ['open-codex', 'archive-codex', 'mobile-codex']) {
+    element(id).onclick = openCodex;
+  }
+  element('close-codex').onclick = () => codex.close();
+  codex.addEventListener('close', () => {
+    codexOpen = false;
+    scene.clearInteractions();
+    render();
+  });
+  element('export-codex').onclick = async () => {
+    const button = element<HTMLButtonElement>('export-codex');
+    button.disabled = true;
+    element('codex-export-status').textContent = '正在生成图鉴图片…';
+    try {
+      const archive = save.view();
+      await exportCodexImage(archive.codexIds, archive.unlockedChapterIds);
+      element('codex-export-status').textContent = '图鉴图片已生成，请查看浏览器下载。';
+    } catch (error) {
+      element('codex-export-status').textContent =
+        error instanceof Error ? error.message : '导出失败，请重试。';
+    } finally {
+      button.disabled = false;
+    }
+  };
   bindGameRules(
     () => {
+      rulesOpen = true;
       controller.pause();
       scene.clearInteractions();
       render();
     },
     () => {
       scene.clearInteractions();
-      controller.resume();
+      rulesOpen = false;
+      syncOrientation();
       render();
     },
   );
 
   function render(): void {
+    syncOrientation();
     const view = controller.getView();
     const lighting = scene.getLightingStatus();
+    const musicState = sound.getMusicState();
+    const soundButton = element('mobile-sound');
+    soundButton.textContent =
+      musicState === 'playing'
+        ? '静音'
+        : musicState === 'loading'
+          ? '加载声音'
+          : musicState === 'error'
+            ? '重试声音'
+            : '开启声音';
+    soundButton.setAttribute('aria-pressed', String(musicState === 'playing'));
+    const bagButton = element('mobile-bag');
+    const preparing = view.phase === 'preparing';
+    const finished = ['settling', 'success', 'failed'].includes(view.phase);
+    bagButton.textContent = preparing ? '出发' : finished ? '结算' : '背包';
+    bagButton.setAttribute(
+      'aria-controls',
+      preparing ? 'preparation' : finished ? 'result-panel' : 'inventory-panel',
+    );
     const playable =
       !controller.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
     touch.setEnabled(playable);
@@ -140,6 +281,8 @@ async function bootstrap(): Promise<void> {
                 ? '拾取'
                 : '交互';
     }
+    element('mobile-hud').textContent =
+      `价值 ${view.value}/${view.threshold} · 手电 ${lighting.battery}%`;
     element('phase-label').textContent = phaseNames[view.phase];
     element('health').textContent = String(view.health);
     const seconds = Math.ceil(view.remainingMs / 1000);
@@ -219,6 +362,7 @@ async function bootstrap(): Promise<void> {
     const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
     if (codexSignature !== lastCodex) {
       renderCodexPanel(element('codex-list'), element('story-archive'), archive);
+      if (codex.open) renderCodex(archive.codexIds, archive.unlockedChapterIds);
       lastCodex = codexSignature;
     }
   }
@@ -230,7 +374,7 @@ async function bootstrap(): Promise<void> {
     if (!items.length) {
       const li = document.createElement('li');
       li.className = 'empty';
-      li.textContent = '还没有物资，靠近金色搜索点试试。';
+      li.textContent = '还没有物资，用手电照亮附近，寻找物资箱。';
       list.append(li);
     }
     for (const item of items) {
@@ -290,31 +434,40 @@ async function bootstrap(): Promise<void> {
     if (!element<HTMLInputElement>('risk-consent').checked) {
       return;
     }
+    // Start playback within the click gesture, before fullscreen or save awaits.
+    sound.setMusic(true);
+    void requestLandscape();
     const selected = element<HTMLSelectElement>('loadout').value;
-    const result = await controller.start(selected ? [selected] : []);
+    const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
+    const result = await controller.start(selected ? [selected] : [], starterWeapon || undefined);
     notify(
       result.ok
         ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
         : '无法保存开局，请检查浏览器存储或刷新后重试。',
     );
     render();
-    if (result.ok && matchMedia('(max-width: 950px)').matches) {
-      element('game-canvas')
-        .closest('.map-panel')
-        ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    }
+    if (result.ok && mobile()) app.scrollTo(0, 0);
   };
   element('extract').onclick = () => {
-    controller.startExtraction();
+    const result = controller.startExtraction();
+    if (result.ok) {
+      sound.play('home');
+    }
     render();
   };
   element('abandon').onclick = () => {
+    if (!confirm('确定放弃本次探索吗？本局携带物（包括从仓库带入的物品）将全部损失。')) {
+      return;
+    }
     controller.abandon();
+    sound.setMusic(false);
     render();
   };
   element('next').onclick = () => {
     controller.prepareNext();
+    sound.setMusic(false);
     render();
+    if (mobile()) app.scrollTo(0, 0);
   };
   element('retry-save').onclick = async () => {
     await controller.retrySettlement();
@@ -340,7 +493,7 @@ async function bootstrap(): Promise<void> {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'bjtu-treasure-hunt-save-v2.json';
+    link.download = 'bjtu-treasure-hunt-save-v3.json';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -358,6 +511,8 @@ async function bootstrap(): Promise<void> {
   render();
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
+      sound.dispose();
+      disposeLayout();
       controller.dispose();
       touch.dispose();
       game.destroy(true);

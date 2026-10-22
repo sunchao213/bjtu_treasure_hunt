@@ -1,31 +1,33 @@
-# B 第六步正式存档事务与迁移
+# B 正式存档事务与迁移
 
-## 已实现
+更新日期：2026-10-15。
 
-- 新增正式存档适配器 `src/modules/save/persistent-save.ts`，实现 `SavePort`。
-- 正式存档使用独立 key `bjtu-treasure-hunt:save:v2`，schemaVersion 为 `2`；现有参考 key `bjtu-treasure-hunt:a-framework:v1` 保留不动。
-- `importReference()` 是显式 v1 -> v2 导入：只有参考存档通过严格校验后才写正式 key，导入成功不删除、不覆盖参考 key；正式存档已存在时拒绝重复导入。
-- `importRaw()` 只接受当前正式 schema；JSON 损坏、未知版本、字段/实例/对局状态不合法时先拒绝，不改当前正式内存或存储。
-- 所有提交采用“先构造/校验完整 next 对象 -> 写 storage -> 写入成功后替换内存”的顺序。写入失败时内存、正式存储和活动局状态保持原样。
-- `beginRaid()` 原子完成带入物扣除与 `activeRaid` 建立；缺少物品、重复 ID、重复 raid、并行活动局和容量超限都会在写入前拒绝。
-- `finalizeRaid()` 原子完成成功物品入仓、图鉴更新、清除活动局、记录已结算 raid 和保存结果；失败不把本局物品入仓；同一 raid 重试幂等。
-- `recoverInterrupted()` 将已持久化活动局转为一次中断失败提交；写失败不会部分修改。
-- `exportRaw()` 提供当前正式 JSON 备份文本；可以配合外部备份流程保存原始内容。
+## 当前版本
 
-## 当前版本与边界
+运行时 `main.ts` 使用 `PersistentSave` 实现 `SavePort`。schemaVersion 为 `3`，沿用正式 key `bjtu-treasure-hunt:save:v2`，使已有浏览器存档能原地迁移。参考 key `bjtu-treasure-hunt:a-framework:v1` 保留不动。
 
-v2 当前字段与参考 v1 相同，故迁移只提升 schemaVersion 并重新验证所有不变量。没有猜测 D 的章节证据字段，也没有把装备栏写入正式 schema；装备跨局持久化需后续确认字段后再增加 v3 迁移。
+v3 的 `activeRaid` 为 `{ raidId, loadout }`，记录已从仓库扣除的带入物实例清单。清单只接受合法、唯一的 `carry-in`，不能与剩余仓库实例重叠，也不能超过带入容量。装备栏不单独持久化。
 
-正式 key 与参考 key 分离，避免把联调档静默覆盖为正式档。当前 `main.ts` 仍组装 `ReferenceSave`，这是第 7 步“替换接线”的内容；本步先完成正式实现和测试，不提前改变 A 的运行时接线。
+## 迁移与导入
+
+- 构造适配器时严格校验正式存档；v2 校验通过后原子写回 v3，v3 直接加载。
+- `importRaw()` 接受 v2 / v3 正式备份；`importReference()` 显式将 v1 参考存档导入 v3，不改参考 key，已有正式存档时拒绝重复导入。
+- v1 / v2 保留永久仓库、图鉴、章节与结算记录。旧活动局没有可信的带入清单，迁移时记录为一次 `interrupted` 失败，清除活动局；不猜测返还物品，未带入的仓库物品保留。
+- JSON 损坏、未知版本、重复实例或不合法的活动局清单均拒绝；保留原始数据供备份和恢复。
+- 迁移或导入写入失败时，不替换内存，不覆盖原存档，可在恢复存储后重试。
 
 ## 事务不变量
 
-- 存储写入抛错时，不更新 `this.data`。
-- 成功写入前，不返回带入物，不进入 active，不显示结算成功。
-- 成功结算结果中的物品必须是当前 raid 生成的 `raid-loot`，实例 ID 唯一；失败结果物品必须为空。
-- formal save 中 `activeRaid` 不能同时出现在 `settledRaidIds`；已结算 raid 不能重新开始。
-- 损坏/未来版本始终保留原始文本，恢复动作由显式导入/备份/重置调用者决定。
+- 所有提交先构造并验证完整 next 对象，写 storage 成功后才替换内存。
+- `beginRaid()` 原子扣除仓库带入物并保存活动局清单。缺物、重复 ID、重复 raid、并行活动局或容量超限在写入前拒绝。
+- 成功结算只接受当前 raid 的 `raid-loot`，以及实例 ID 和物品 ID 均匹配本局清单的 `carry-in`；不能用新来源冒用带入物实例，结果中实例必须唯一且不能与仓库冲突。
+- 仅返还仍携带的带入物；已丢弃或使用的物品不会自动返还。带入物不计本局撤离价值，赠送的开局武器由控制器在结算前过滤。
+- `finalizeRaid()` 原子完成入库、图鉴、章节、清除活动局与记录结果。失败结果物品为空；同一 raid 重复结算幂等，写入失败后可重试。
+- `recoverInterrupted()` 原子记录活动局中断失败；不返还本局物品，不影响未带入的仓库物品。
+- `exportRaw()` 提供 v3 JSON 备份；下载文件名随 schema 更新，存储 key 保持兼容。
 
 ## 验证
 
-新增 `tests/integration/persistent-save.test.ts` 与 `tests/unit/single-writer.test.ts`，覆盖 v1 导入、原 key 保留、重复导入拒绝、begin/finalize 写失败、幂等结算、损坏/未知版本导入保护、中断恢复、导出/重置和 Web Locks 不可用/竞争标签页。已执行 `npm.cmd run check`，格式、lint、类型检查、48 项测试和生产构建全部通过。
+`tests/integration/persistent-save.test.ts` 覆盖 v1 导入、v2 原地迁移、原 key 保留、迁移写失败、永久进度保留、清单损坏和伪造物品拒绝、带入物返还与损失、幂等结算、中断恢复、导出与重置。
+
+控制器集成测试覆盖带入物丢弃后拾回、开局武器过滤、成功撤离首次写失败后重试、刷新重载和下一局失败损失。`tests/unit/single-writer.test.ts` 验证 Web Locks 不可用与竞争标签页行为。

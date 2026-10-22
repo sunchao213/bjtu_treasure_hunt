@@ -66,7 +66,7 @@ describe('第一章剧情内容', () => {
 });
 
 describe('图鉴条目描述', () => {
-  it('12 种目录物品全部有描述', () => {
+  it('所有图鉴物品都有描述', () => {
     for (const itemId of ITEM_CATALOG_IDS) {
       expect(CODEX_ENTRIES[itemId], `缺少图鉴描述：${itemId}`).toBeTruthy();
     }
