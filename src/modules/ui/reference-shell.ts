@@ -9,6 +9,42 @@ export function mountShell(root: HTMLElement): void {
       <div class="header-actions"><div class="build-label"><span class="status-dot"></span>海淀校区 · 夜巡</div><button id="open-rules" class="rules-button">游戏规则</button></div>
     </header>
     <main>
+      <section id="prep-view" class="prep-view" hidden aria-label="行前准备">
+        <div class="prep-card">
+          <p class="prep-kicker">思源密码 · 行前准备</p>
+          <h2>夜巡出发</h2>
+          <p class="prep-brief">今晚的目标：在图书馆外找到<b>残缺手记</b>，再去明湖石碑寻找<b>异常羽毛</b>；携带价值达到 100 后，回南门撤离点停留 5 秒完成撤离。</p>
+          <div class="prep-grid">
+            <section class="prep-block">
+              <h3>初始装备</h3>
+              <ul class="prep-equipment">
+                <li><b>手电筒</b><span>电量 100% · 默认开启，照亮搜索点</span></li>
+                <li><b>训练棍</b><span>免费初始武器 · 不计入撤离价值</span></li>
+              </ul>
+              <label class="field-label" for="loadout">从仓库带入一件物品（不计本局价值）</label>
+              <select id="loadout"><option value="">轻装出发 · 不带入物品</option></select>
+            </section>
+            <section class="prep-block">
+              <h3>出发前确认</h3>
+              <p class="prep-warning">失败、超时或刷新页面会<b>损失本局全部携带物（含带入装备）</b>；未带入的仓库物品保留。</p>
+              <label class="consent"><input id="risk-consent" type="checkbox" />我已了解上述风险，愿意出发。</label>
+              <button id="start" class="primary prep-start" disabled>开始探索 <span>↗</span></button>
+            </section>
+          </div>
+          <details class="prep-extra">
+            <summary>永久仓库 · 图鉴剧情 · 存档管理</summary>
+            <section class="side-card archive"><div class="section-kicker">永久仓库 <span id="warehouse-count">0 件</span></div>
+              <p id="archive-detail">成功撤离后，物品和图鉴会保存在此浏览器。</p>
+              <details class="codex-panel"><summary>图鉴与剧情档案</summary>
+                <ul id="codex-list" class="codex-list"></ul>
+                <div id="story-archive" class="story-archive"></div>
+              </details>
+              <details><summary>存档管理</summary>
+                <button id="export-save" class="secondary">导出存档备份</button><button id="reset-save" class="text-button">重置存档</button></details>
+            </section>
+          </details>
+        </div>
+      </section>
       <div class="play-layout">
         <section class="map-panel" aria-label="游戏地图">
           <div class="map-top"><span><i class="status-dot"></i><b id="phase-label">准备出发</b></span>
@@ -46,11 +82,6 @@ export function mountShell(root: HTMLElement): void {
             </ul>
             <p id="quest-status" class="muted">线索：图书馆外残缺手记</p>
           </section>
-          <section class="side-card" id="preparation"><h2>行前准备</h2>
-            <label class="field-label" for="loadout">从仓库带入一件物品（不计本局价值）</label><select id="loadout"><option value="">轻装出发 · 不带入物品</option></select>
-            <label class="consent"><input id="risk-consent" type="checkbox" />我已了解：失败或刷新会损失本局携带物，未带入的仓库物品保留。</label>
-            <button id="start" class="primary" disabled>开始探索 <span>↗</span></button>
-          </section>
           <section class="side-card" id="inventory-panel" hidden><div class="section-kicker">临时背包 <span id="bag-count">0 / 6</span></div>
             <ul id="inventory" class="inventory"></ul>
             <button id="extract" class="primary">在撤离点申请撤离</button>
@@ -59,15 +90,6 @@ export function mountShell(root: HTMLElement): void {
           <section class="side-card result-card" id="result-panel" hidden><h2 id="result-title">本次结算</h2><p id="result-detail"></p>
             <p id="quest-unlock" class="quest-unlock" hidden></p>
             <button id="retry-save" class="primary" hidden>重试保存</button><button id="next" class="primary" hidden>返回准备</button>
-          </section>
-          <section class="side-card archive"><div class="section-kicker">永久仓库 <span id="warehouse-count">0 件</span></div>
-            <p id="archive-detail">成功撤离后，物品和图鉴会保存在此浏览器。</p>
-            <details class="codex-panel"><summary>图鉴与剧情档案</summary>
-              <ul id="codex-list" class="codex-list"></ul>
-              <div id="story-archive" class="story-archive"></div>
-            </details>
-            <details><summary>存档管理</summary>
-              <button id="export-save" class="secondary">导出存档备份</button><button id="reset-save" class="text-button">重置存档</button></details>
           </section>
           <details id="debug-panel" class="debug" hidden><summary>开发调试</summary><button id="damage" class="secondary">模拟受到 25 点伤害</button><button id="fatal" class="text-button">模拟死亡</button></details>
         </aside>

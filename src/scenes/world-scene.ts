@@ -60,7 +60,7 @@ export class WorldScene extends Phaser.Scene {
   private hurtThisFrame = false;
   private lastNightDraw = -Infinity;
   private readonly bounds = { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 };
-  private interaction = '从右侧准备面板开始探索';
+  private interaction = '在准备页确认风险后开始探索';
   private releaseDamage?: () => void;
   /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
   private banner: { text: string; untilMs: number } | null = null;
