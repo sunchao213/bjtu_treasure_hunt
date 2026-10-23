@@ -3,7 +3,6 @@ import {
   MONSTER_ANIMATIONS,
   MONSTER_SPRITE_SHEETS,
   monsterAnimationFor,
-  monsterNameFor,
   monsterScaleFor,
 } from '../../src/config/monster-sprites';
 import type { Enemy } from '../../src/modules/world/night-systems';
@@ -68,12 +67,6 @@ describe('monster sprite manifest', () => {
     expect(monsterAnimationFor({ ...hug, mutated: true, state: 'dead' }, false)).toBe(
       'squirrel-mutant-death',
     );
-  });
-
-  it('identifies each supplied appearance in the monster label', () => {
-    expect(monsterNameFor(makeEnemy())).toBe('巡游怪 · 灰鸭');
-    expect(monsterNameFor(makeEnemy({ kind: 'hug' }))).toBe('抱抱怪 · 棕色松鼠');
-    expect(monsterNameFor(makeEnemy({ kind: 'hug', mutated: true }))).toBe('变异抱抱怪 · 红眼松鼠');
   });
 
   it('keeps the established relative scale for each visual variant', () => {

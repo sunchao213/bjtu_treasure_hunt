@@ -72,14 +72,6 @@ export const MONSTER_ANIMATIONS: Readonly<Record<string, MonsterAnimationAsset>>
   'squirrel-mutant-death': { texture: 'squirrel-mutant-death', frameRate: 8, repeat: 0 },
 };
 
-export function monsterNameFor(enemy: Enemy): string {
-  return enemy.kind === 'patrol'
-    ? '巡游怪 · 灰鸭'
-    : enemy.mutated
-      ? '变异抱抱怪 · 红眼松鼠'
-      : '抱抱怪 · 棕色松鼠';
-}
-
 export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
   if (enemy.state === 'mutation-warning') {
     return SQUIRREL_ANIMATIONS.request;

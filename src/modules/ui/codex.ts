@@ -20,10 +20,6 @@ const details: Record<string, { icon: string; description: string }> = {
     description: '使用后恢复 30 点生命并消耗；满血时不能使用，消耗后不再计入携带价值。',
   },
   'library-reward-ticket': { icon: 'paper', description: '图书馆主题的史诗收藏物。' },
-  'anomalous-embrace-token': {
-    icon: 'badge',
-    description: '抱抱机制关联的传说收藏物，名称待小组确认。',
-  },
   'scratch-paper': { icon: 'paper', description: '写满演算痕迹的草稿纸，校园里的普通收藏物。' },
   'half-eraser': { icon: 'eraser', description: '只剩半块的橡皮，普通收藏物。' },
   'campus-map': { icon: 'map', description: '一张校园地图线索，作为收藏物计入携带价值。' },
@@ -41,10 +37,7 @@ const details: Record<string, { icon: string; description: string }> = {
     icon: 'feather',
     description: '明湖石碑周边的主线线索；与本局残缺手记一起成功撤离可解锁章节。',
   },
-  'gpa-charm': {
-    icon: 'badge',
-    description: '成功安抚抱抱怪后必定掉落的神器，每只限一件，作为收藏物计分。',
-  },
+  'gpa-charm': { icon: 'badge', description: '校园传说中的护符，作为收藏物计分。' },
   'siyuan-key': { icon: 'key', description: '思源楼主题的传说收藏物，具有较高携带价值。' },
   'training-bat': {
     icon: 'bat',
