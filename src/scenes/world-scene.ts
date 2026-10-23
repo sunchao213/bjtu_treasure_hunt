@@ -135,7 +135,9 @@ export class WorldScene extends Phaser.Scene {
   create(): void {
     this.createEnemyAnimations();
     this.drawCampus();
-    this.textures.remove('night-mask');
+    if (this.textures.exists('night-mask')) {
+      this.textures.remove('night-mask');
+    }
     this.darkness = this.textures.createCanvas('night-mask', 1, 1) ?? undefined;
     this.darknessImage = this.add.image(0, 0, 'night-mask').setOrigin(0).setDepth(40);
     this.flashlight = this.add.graphics().setDepth(41);
