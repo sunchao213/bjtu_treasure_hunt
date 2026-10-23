@@ -9,6 +9,7 @@ import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save'
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
 import { bindGameRules } from './modules/ui/game-rules';
+import { canStartRaid, shouldShowPrepView } from './modules/ui/prep-view';
 import { renderChapterUnlock, renderCodexPanel, renderQuestPanel } from './modules/ui/quest-view';
 import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
@@ -302,11 +303,13 @@ async function bootstrap(): Promise<void> {
     element('interaction-label').textContent = interacted;
     element<HTMLProgressElement>('interaction-progress').value =
       view.phase === 'extracting' ? view.extractionProgress : searchProgress;
-    element('preparation').hidden = view.phase !== 'preparing';
+    element('prep-view').hidden = !shouldShowPrepView(view.phase);
     element('inventory-panel').hidden = !playable;
     element('result-panel').hidden = !['settling', 'success', 'failed'].includes(view.phase);
-    element<HTMLButtonElement>('start').disabled =
-      view.isBusy || !element<HTMLInputElement>('risk-consent').checked;
+    element<HTMLButtonElement>('start').disabled = !canStartRaid({
+      busy: view.isBusy,
+      consented: element<HTMLInputElement>('risk-consent').checked,
+    });
     element<HTMLButtonElement>('extract').disabled =
       !playable ||
       !view.inExtractionZone ||
