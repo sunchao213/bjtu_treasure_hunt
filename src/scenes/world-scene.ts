@@ -7,7 +7,6 @@ import {
   MONSTER_SPRITE_SHEETS,
   monsterAnimationFor,
   monsterScaleFor,
-  monsterNameFor,
 } from '../config/monster-sprites';
 import { generateLootSpawns, type LootSpawn } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
@@ -66,7 +65,6 @@ export class WorldScene extends Phaser.Scene {
   private readonly enemyVisualStates = new Map<string, EnemyState>();
   private readonly enemyAnimationKeys = new Map<string, string>();
   private readonly enemyDeathFinished = new Set<string>();
-  private hugRewardCount = 0;
   private readonly enemyMutatedStates = new Map<string, boolean>();
   private readonly enemyLastPositions = new Map<string, Point>();
   private readonly ground = new Map<
@@ -75,7 +73,6 @@ export class WorldScene extends Phaser.Scene {
   >();
   private lastRaidId: string | null = null;
   private previousInteract = false;
-  private huggingWithInteract = false;
   private previousAttack = false;
   private previousFlare = false;
   private previousLight = false;
@@ -124,7 +121,6 @@ export class WorldScene extends Phaser.Scene {
 
   clearInteractions(): void {
     this.search.cancel();
-    this.huggingWithInteract = false;
     this.services.touch.reset();
     this.input?.keyboard?.resetKeys();
     for (const enemy of this.combat.enemies) {
@@ -371,14 +367,11 @@ export class WorldScene extends Phaser.Scene {
           }
         }
       }
-      // Keep E assigned to this hug until release, including its completion frame.
-      this.huggingWithInteract =
-        down('E') && (this.huggingWithInteract || this.nearbyHug() !== undefined);
       const combat = this.combat.update(
         deltaMs,
         this.position,
         this.lighting.enabled,
-        (down('Q') || this.huggingWithInteract) && !down('SPACE'),
+        down('Q') && !down('SPACE'),
         !this.moving,
         WORLD.obstacles,
         this.bounds,
@@ -395,11 +388,11 @@ export class WorldScene extends Phaser.Scene {
       if (combat.damage) {
         this.services.controller.applyDamage(combat.damage);
       }
-      this.rewardCalmed(combat.calmed, view.raidId);
+      if (combat.calmed.length > 0) {
+        this.services.notify('抱抱成功，怪物平静约 30 秒，不会掉落物品。');
+      }
       this.services.controller.setExtractionPresence(contains(WORLD.extraction, this.position));
-      this.interact(
-        down('E') && !this.huggingWithInteract && !down('SPACE') && !this.hurtThisFrame,
-      );
+      this.interact(down('E') && !down('SPACE') && !this.hurtThisFrame);
       this.previousInteract = down('E');
       this.previousAttack = down('SPACE');
       this.previousLight = down('L');
@@ -428,7 +421,9 @@ export class WorldScene extends Phaser.Scene {
       if (combat.damage) {
         this.services.controller.applyDamage(combat.damage);
       }
-      this.rewardCalmed(combat.calmed, view.raidId);
+      if (combat.calmed.length > 0) {
+        this.services.notify('抱抱成功，怪物平静约 30 秒，不会掉落物品。');
+      }
     } else if (!playable) {
       this.services.sound.setLoop('footsteps', false);
       this.search.cancel();
@@ -618,14 +613,12 @@ export class WorldScene extends Phaser.Scene {
     }
     const point = { ...position };
     const definition = ITEM_DEFINITIONS[item.itemId];
-    const artifact = item.itemId === COMBAT_RULES.hug.rewardItemId;
-    const color = artifact ? 0xc792ff : 0xffcc7c;
     const sprite = this.add
       .container(point.x, point.y, [
-        this.add.circle(0, 0, 22, color, 0.2),
-        this.add.circle(0, 0, 14, artifact ? 0x4c237c : 0x453d2d).setStrokeStyle(2, color),
+        this.add.circle(0, 0, 22, 0xffcc7c, 0.2),
+        this.add.circle(0, 0, 14, 0x453d2d).setStrokeStyle(2, 0xffcc7c),
         this.add
-          .text(0, 0, artifact ? '4.0' : '拾', {
+          .text(0, 0, '拾', {
             fontFamily: 'Microsoft YaHei',
             fontSize: '12px',
             color: '#ffffff',
@@ -635,7 +628,7 @@ export class WorldScene extends Phaser.Scene {
           .text(0, 22, definition?.name ?? item.itemId, {
             fontFamily: 'Microsoft YaHei',
             fontSize: '13px',
-            color: artifact ? '#e4c7ff' : '#ffeed3',
+            color: '#ffeed3',
             backgroundColor: '#171221',
             padding: { x: 5, y: 3 },
           })
@@ -665,35 +658,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private hugInstruction(hug: Enemy): string {
-    const action = isTouchLayout() ? '长按抱抱按钮' : '长按 E / Q';
+    const action = isTouchLayout() ? '长按抱抱按钮' : '长按 Q';
     const inRange = distance(hug.position, this.position) < COMBAT_RULES.hug.calmRange;
     const instruction = inRange
       ? `${this.moving ? '停住后' : ''}${action}安抚抱抱怪`
       : '靠近抱抱怪，再停住长按抱抱';
-    return `${instruction} · 剩余 ${Math.ceil(hug.timer / 1000)} 秒 · 抱满 1.5 秒掉落 GPA4.0 神器`;
-  }
-
-  private rewardCalmed(enemies: readonly Enemy[], raidId: string | null): void {
-    for (const enemy of enemies) {
-      if (!raidId) {
-        continue;
-      }
-      const itemId = COMBAT_RULES.hug.rewardItemId;
-      this.spawnLoot(
-        {
-          instanceId: `${raidId}:hug:${enemy.id}:${++this.hugRewardCount}`,
-          itemId,
-          origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
-        },
-        {
-          x: (enemy.position.x + this.position.x) / 2,
-          y: (enemy.position.y + this.position.y) / 2,
-        },
-      );
-      const text = `安抚成功 · 掉落${ITEM_DEFINITIONS[itemId]?.name}，靠近后按 E 拾取`;
-      this.banner = { text, untilMs: this.time.now + 3200 };
-      this.services.notify(text);
-    }
+    return `${instruction} · 剩余 ${Math.ceil(hug.timer / 1000)} 秒 · 抱满 1.5 秒平静约 30 秒`;
   }
 
   private interact(held: boolean): void {
@@ -852,7 +822,6 @@ export class WorldScene extends Phaser.Scene {
 
   private resetRaid(raidId: string | null): void {
     this.lastRaidId = raidId;
-    this.huggingWithInteract = false;
     this.services.sound.setLoop('alarm', false);
     this.hurtFeedbackMs = 0;
     this.attackFeedbackMs = 0;
@@ -865,7 +834,6 @@ export class WorldScene extends Phaser.Scene {
     this.enemyVisualStates.clear();
     this.enemyAnimationKeys.clear();
     this.enemyDeathFinished.clear();
-    this.hugRewardCount = 0;
     this.enemyMutatedStates.clear();
     this.enemyLastPositions.clear();
     const enemyIds = new Set(this.combat.enemies.map((enemy) => enemy.id));
@@ -944,18 +912,8 @@ export class WorldScene extends Phaser.Scene {
       .setName('mutation-warning')
       .setOrigin(0.5, 1)
       .setVisible(false);
-    const name = this.add
-      .text(0, -80, monsterNameFor(enemy), {
-        fontFamily: 'Microsoft YaHei, sans-serif',
-        fontSize: '13px',
-        color: '#f4ead6',
-        stroke: '#10221b',
-        strokeThickness: 4,
-      })
-      .setName('monster-name')
-      .setOrigin(0.5, 1);
     const object = this.add
-      .container(enemy.position.x, enemy.position.y, [shadow, sprite, warning, name])
+      .container(enemy.position.x, enemy.position.y, [shadow, sprite, warning])
       .setName(`enemy-${enemy.id}`)
       .setDepth(25);
     this.enemyObjects.set(enemy.id, object);
@@ -976,10 +934,6 @@ export class WorldScene extends Phaser.Scene {
     const windup = enemy.state === 'windup';
     const mutationWarning = enemy.state === 'mutation-warning';
     (object.getByName('mutation-warning') as Phaser.GameObjects.Text).setVisible(mutationWarning);
-    (object.getByName('monster-name') as Phaser.GameObjects.Text)
-      .setText(monsterNameFor(enemy))
-      .setColor(isMutated ? '#ff9d9d' : isHug ? '#b9edba' : '#f4ead6')
-      .setVisible(enemy.state !== 'dead');
     const previousPosition = this.enemyLastPositions.get(enemy.id);
     const isMoving = !!previousPosition && distance(previousPosition, enemy.position) > 0.2;
     const mutatedNow = isMutated && !this.enemyMutatedStates.get(enemy.id);

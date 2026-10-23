@@ -58,7 +58,10 @@ describe('B reference inventory contract', () => {
     expect(() =>
       value([
         loot('same', 'school-badge'),
-        { ...loot('same', 'gpa-charm'), origin: { kind: 'raid-loot', obtainedInRaidId: 'old' } },
+        {
+          ...loot('same', 'gpa-charm'),
+          origin: { kind: 'raid-loot', obtainedInRaidId: 'old' },
+        },
       ]),
     ).toThrow('Conflicting item instance');
   });

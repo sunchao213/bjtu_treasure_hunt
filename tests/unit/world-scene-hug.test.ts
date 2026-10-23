@@ -117,11 +117,6 @@ async function setup(touchLayout = false) {
       scene.update(now, delta);
     }
   };
-  const loot = (id: string): ItemInstance => ({
-    instanceId: id,
-    itemId: 'school-badge',
-    origin: { kind: 'raid-loot', obtainedInRaidId: 'hug-raid' },
-  });
   step();
   return {
     scene,
@@ -136,23 +131,21 @@ async function setup(touchLayout = false) {
     inventory,
     controller,
     save,
-    loot,
   };
 }
 
-describe('hug input, feedback and rewards in the world scene', () => {
+describe('hug input, feedback and calming in the world scene', () => {
   it.each(['range', 'checkbox'])('accepts desktop Q with a focused %s control', async (type) => {
     const s = await setup();
     s.document.activeElement = new InputElement(type);
     s.keys.Q!.isDown = true;
     s.step(700);
     expect(s.hug.hugProgress).toBe(700);
-    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('长按 E / Q'), 700 / 1500);
+    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('长按 Q'), 700 / 1500);
     s.step(800);
     expect(s.hug.state).toBe('calmed');
     expect(s.combat.enemies).toEqual([s.hug]);
-    expect(s.ground.size).toBe(1);
-    expect([...s.ground.values()][0]!.item.itemId).toBe('gpa-charm');
+    expect(s.ground.size).toBe(0);
   });
 
   it('shows the nearest request progress even when an earlier enemy and an old banner exist', async () => {
@@ -168,45 +161,23 @@ describe('hug input, feedback and rewards in the world scene', () => {
     expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('安抚抱抱怪'), 700 / 1500);
   });
 
-  it('places a named artifact within ambient light and pickup range above the characters', async () => {
-    const s = await setup();
-    // A hug can complete outside the 62px ambient light radius without aiming at the monster.
-    s.hug.position = { x: WORLD.spawn.x + 100, y: WORLD.spawn.y };
-    s.keys.Q!.isDown = true;
+  it('accepts the held mobile hug button and calms without dropping loot', async () => {
+    const s = await setup(true);
+    s.held.add('Q');
     s.step(2000);
-    const drop = [...s.ground.values()][0]!;
-    expect(
-      Math.hypot(drop.position.x - WORLD.spawn.x, drop.position.y - WORLD.spawn.y),
-    ).toBeLessThan(62);
-    expect(drop.position).not.toEqual(s.hug.position);
-    expect(drop.sprite.depth).toBeGreaterThan(40);
-    expect(drop.sprite.list.map((child) => child.text)).toContain('GPA4.0 神器');
-    expect(drop.sprite.list.map((child) => child.text)).toContain('4.0');
-    expect(s.ground.size).toBe(1);
-    s.keys.Q!.isDown = false;
-    s.step(3300);
-    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('按 E 拾取：GPA4.0 神器'), 0);
+    expect(s.hug.state).toBe('calmed');
+    expect(s.combat.enemies).toEqual([s.hug]);
+    expect(s.ground.size).toBe(0);
+    expect(s.inventory.getCarriedItems()).toHaveLength(0);
   });
 
-  it.each(['E', 'Q'])(
-    'accepts the held mobile %s button and keeps the reward on the ground',
-    async (key) => {
-      const s = await setup(true);
-      s.held.add(key);
-      s.step(2000);
-      expect(s.hug.state).toBe('calmed');
-      expect(s.combat.enemies).toEqual([s.hug]);
-      expect(s.ground.size).toBe(1);
-      expect(s.inventory.getCarriedItems()).toHaveLength(0);
-      s.held.clear();
-      s.step();
-      s.held.add('E');
-      s.step();
-      expect(s.ground.size).toBe(0);
-      expect(s.inventory.getCarriedItems()).toHaveLength(1);
-      expect(s.controller.getView().value).toBe(60);
-    },
-  );
+  it('does not hug with the mobile interact button alone', async () => {
+    const s = await setup(true);
+    s.held.add('E');
+    s.step(2000);
+    expect(s.hug.state).toBe('request');
+    expect(s.ground.size).toBe(0);
+  });
 
   it('clears progress on release and movement, then permits a new continuous Q hug', async () => {
     const s = await setup();
@@ -223,76 +194,28 @@ describe('hug input, feedback and rewards in the world scene', () => {
     s.keys.D!.isDown = false;
     s.step(1500);
     expect(s.hug.state).toBe('calmed');
-    expect(s.ground.size).toBe(1);
-  });
-
-  it('retains a reward with a full bag and saves the picked-up artifact on extraction', async () => {
-    const s = await setup();
-    for (let i = 0; i < RAID_RULES.bagCapacity; i++) {
-      s.inventory.addLoot(s.loot(`bag-${i}`));
-    }
-    s.keys.Q!.isDown = true;
-    s.step(1500);
-    s.keys.Q!.isDown = false;
-    s.keys.E!.isDown = true;
-    s.step();
-    expect(s.ground.size).toBe(1);
-    s.inventory.remove('bag-0');
-    s.keys.E!.isDown = false;
-    s.step();
-    s.keys.E!.isDown = true;
-    s.step();
     expect(s.ground.size).toBe(0);
-    expect(s.inventory.getCarriedItems().some((item) => item.itemId === 'gpa-charm')).toBe(true);
-    expect(s.controller.startExtraction().ok).toBe(true);
-    s.keys.E!.isDown = false;
-    s.step(5000);
-    await Promise.resolve();
-    expect(s.controller.getView().phase).toBe('success');
-    expect(s.save.view().warehouse.some((item) => item.itemId === 'gpa-charm')).toBe(true);
-    expect(s.save.view().codexIds).toContain('gpa-charm');
   });
 
-  it('awards one new artifact for each completed hug without duplicating the monster', async () => {
+  it('calms the same monster again without duplicating it or dropping items', async () => {
     const s = await setup();
     s.keys.Q!.isDown = true;
     s.step(1500);
     s.keys.Q!.isDown = false;
-    s.keys.E!.isDown = true;
-    s.step();
+    expect(s.hug.state).toBe('calmed');
+    expect(s.combat.enemies).toEqual([s.hug]);
     expect(s.ground.size).toBe(0);
-    s.keys.E!.isDown = false;
     s.hug.timer = 100;
     s.step();
     s.keys.Q!.isDown = true;
     s.step(1500);
     expect(s.hug.state).toBe('calmed');
     expect(s.combat.enemies).toEqual([s.hug]);
-    expect(s.ground.size).toBe(1);
-    expect(s.inventory.getCarriedItems()).toHaveLength(1);
-    s.keys.Q!.isDown = false;
-    s.keys.E!.isDown = true;
-    s.step();
     expect(s.ground.size).toBe(0);
-    const items = s.inventory.getCarriedItems();
-    expect(items).toHaveLength(2);
-    expect(new Set(items.map((item) => item.instanceId)).size).toBe(2);
-    expect(s.controller.getView().value).toBe(120);
+    expect(s.inventory.getCarriedItems()).toHaveLength(0);
   });
 
-  it('keeps both uncollected artifacts when the same monster is hugged again', async () => {
-    const s = await setup();
-    s.keys.Q!.isDown = true;
-    s.step(2000);
-    expect(s.ground.size).toBe(1);
-    s.hug.timer = 100;
-    s.step(2000);
-    expect(s.ground.size).toBe(2);
-    expect([...s.ground.values()].every((drop) => drop.item.itemId === 'gpa-charm')).toBe(true);
-    expect(s.combat.enemies).toEqual([s.hug]);
-  });
-
-  it('does not drop a reward when damage interrupts the completion frame', async () => {
+  it('triggers a mutation warning instead of calming when damage lands on the completion frame', async () => {
     const s = await setup();
     s.keys.Q!.isDown = true;
     s.step(1400);
