@@ -79,7 +79,7 @@ describe('本局任务进度', () => {
       '线索二 · 去明湖石碑周边，用手电寻找异常羽毛',
     );
     const done = questProgress([notebook, feather], RAID_ID);
-    expect(done.statusText).toBe('线索齐备 · 带回南门撤离可解锁章节');
+    expect(done.statusText).toBe('线索齐备：带回南门撤离可解锁第一章。');
     expect(done.collected).toBe(2);
     expect(done.complete).toBe(true);
   });
@@ -113,9 +113,9 @@ describe('章节解锁判定（与 SavePort.finalizeRaid 规则一致）', () =>
   });
 });
 
-describe('文案契约', () => {
+describe('文案契约（剧情稿 v1.1 表 7）', () => {
   it('场景与界面使用同一组文案常量', () => {
-    expect(NOTEBOOK_PREREQUISITE_HINT).toBe('湖畔线索 · 缺少本局残缺手记');
-    expect(QUEST_COMPLETE_HINT).toBe('手记与异常羽毛已凑齐；带着它们成功撤离可解锁思源密码。');
+    expect(NOTEBOOK_PREREQUISITE_HINT).toBe('湖畔线索：缺少本局残缺手记。');
+    expect(QUEST_COMPLETE_HINT).toBe('线索齐备：带回南门撤离可解锁第一章。');
   });
 });

@@ -94,6 +94,12 @@ html[data-touch='true'] #app .map-viewport {
   min-height: 0;
   overflow: hidden;
 }
+html[data-touch='true'] #app .map-toast {
+  bottom: 76px;
+  max-width: calc(100% - 20px);
+  padding: 6px 10px;
+  font-size: 11px;
+}
 html[data-touch='true'] #app .interaction {
   grid-column: 1 / -1;
   min-width: 0;

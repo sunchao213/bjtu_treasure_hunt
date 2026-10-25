@@ -1,14 +1,18 @@
 import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS } from '../../config/game-config';
 import { CODEX_ENTRIES, FIRST_CHAPTER } from '../quests/chapter-content';
-import { EVIDENCE_FEATHER, EVIDENCE_NOTEBOOK } from '../quests/quest-service';
+import {
+  carriedEvidence,
+  chapterUnlockGranted,
+  EVIDENCE_FEATHER,
+  EVIDENCE_NOTEBOOK,
+} from '../quests/quest-service';
 import type { QuestProgressView } from '../quests/quest-service';
+import type { RaidResult } from '../../shared/types/game';
 
 /**
  * D 的界面渲染：任务进度卡与图鉴 / 剧情档案。
  * 只消费外部传入的快照并更新 DOM，不发起任何业务写入。
  */
-
-const UNLOCK_NOTICE = '思源密码 · 第一章已解锁，图鉴与剧情档案可回看。';
 
 type StepState = 'done' | 'active' | 'locked';
 
@@ -61,10 +65,6 @@ function itemName(itemId: string): string {
   return ITEM_DEFINITIONS[itemId]?.name ?? itemId;
 }
 
-function evidenceNames(evidenceIds: readonly string[]): string {
-  return evidenceIds.map(itemName).join('与');
-}
-
 export function renderCodexPanel(
   list: HTMLElement,
   story: HTMLElement,
@@ -98,30 +98,42 @@ export function renderCodexPanel(
     hint.className = 'muted';
     hint.textContent = FIRST_CHAPTER.unlockHint;
     story.append(hint);
-  }
-
-  for (const step of FIRST_CHAPTER.steps) {
-    const stepTitle = document.createElement('p');
-    stepTitle.className = 'story-step-title';
-    stepTitle.textContent = step.title;
-    story.append(stepTitle);
-    const body = document.createElement('p');
-    if (unlocked) {
-      body.className = 'story-body';
-      body.textContent = step.stepBody;
-    } else {
-      body.className = 'muted';
-      body.textContent = step.requiresEvidence.length
-        ? `未解锁：需先取得${evidenceNames(step.requiresEvidence)}并成功带出。`
-        : '未解锁：成功带出本章证据后开启。';
-    }
-    story.append(body);
+  } else {
+    // 已解锁：档案显示回看入口，完整第一章在剧情弹窗中呈现。
+    const summary = document.createElement('p');
+    summary.className = 'muted';
+    summary.textContent = '本章已回收入册：明湖边的异常羽毛。';
+    const button = document.createElement('button');
+    button.id = 'open-story';
+    button.className = 'secondary';
+    button.textContent = '回看第一章剧情';
+    story.append(summary, button);
   }
 }
 
 export function renderChapterUnlock(target: HTMLElement, granted: boolean): void {
   target.hidden = !granted;
   if (granted) {
-    target.textContent = UNLOCK_NOTICE;
+    target.textContent = FIRST_CHAPTER.settlementSummary;
   }
+}
+
+/**
+ * 撤离成功但主线没做完时，说明本章为什么没解锁（R07 验收要求「失败与缺口都要可读」）。
+ * 返回 null 表示不需要提示（非成功结算，或已解锁）。
+ */
+export function chapterLockHint(result: RaidResult | null): string | null {
+  if (result === null || result.outcome !== 'success') return null;
+  if (chapterUnlockGranted(result)) return null;
+  const evidence = carriedEvidence(result.items, result.raidId);
+  const missing: string[] = [];
+  if (!evidence.notebook) missing.push('「残缺手记」');
+  if (!evidence.feather) missing.push('「异常羽毛」');
+  return `本章未解锁：需同时带回${missing.join('和')}。`;
+}
+
+export function renderChapterLock(target: HTMLElement, result: RaidResult | null): void {
+  const hint = chapterLockHint(result);
+  target.hidden = hint === null;
+  target.textContent = hint ?? '';
 }
