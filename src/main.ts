@@ -810,6 +810,9 @@ async function bootstrap(): Promise<void> {
     };
     element('debug-grant-uncommon').onclick = () => grantLoot('window-seat');
     element('debug-grant-epic').onclick = () => grantLoot('gpa-charm');
+    // R07 验收需要稳定的证据组合，宝箱随机拿不到，这里同样只在 dev 提供发放入口。
+    element('debug-grant-notebook').onclick = () => grantLoot('torn-notebook');
+    element('debug-grant-feather').onclick = () => grantLoot('anomalous-feather');
   }
   render();
   if (import.meta.hot) {

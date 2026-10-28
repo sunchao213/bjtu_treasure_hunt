@@ -129,6 +129,10 @@ export function chapterLockHint(result: RaidResult | null): string | null {
   const missing: string[] = [];
   if (!evidence.notebook) missing.push('「残缺手记」');
   if (!evidence.feather) missing.push('「异常羽毛」');
+  if (missing.length === 0) {
+    // 两件都在却没解锁：理论上只在主线完成标志缺失时出现，给兜底文案而不是空句。
+    return '本章未解锁：主线条件未满足，请核对任务进度。';
+  }
   return `本章未解锁：需同时带回${missing.join('和')}。`;
 }
 

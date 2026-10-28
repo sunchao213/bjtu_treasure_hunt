@@ -48,6 +48,13 @@ describe('R07 撤离成功但未解锁时的说明', () => {
     expect(hint).toBe('本章未解锁：需同时带回「残缺手记」和「异常羽毛」。');
   });
 
+  it('两件都在但主线标志缺失时给兜底文案，不输出残缺句子', () => {
+    const hint = chapterLockHint(
+      result({ items: [loot('torn-notebook', 'a'), loot('anomalous-feather', 'b')] }),
+    );
+    expect(hint).toBe('本章未解锁：主线条件未满足，请核对任务进度。');
+  });
+
   it('两件证据齐全且任务完成时不再提示', () => {
     const hint = chapterLockHint(
       result({
