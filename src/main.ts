@@ -32,6 +32,8 @@ import {
 } from './modules/ui/extraction-feedback';
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
 import { WorldScene } from './scenes/world-scene';
+import { contains } from './modules/world/movement';
+import { WORLD } from './config/world-config';
 import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
@@ -813,6 +815,92 @@ async function bootstrap(): Promise<void> {
     // R07 验收需要稳定的证据组合，宝箱随机拿不到，这里同样只在 dev 提供发放入口。
     element('debug-grant-notebook').onclick = () => grantLoot('torn-notebook');
     element('debug-grant-feather').onclick = () => grantLoot('anomalous-feather');
+    // R07 验收还需要抵达随机生成的搜证点；人工探索太耗时，dev 提供传送（只读场景内部状态，不改玩法）。
+    type DebugSceneAccess = {
+      position: { x: number; y: number };
+      aim: number;
+      player?: {
+        setPosition(x: number, y: number): void;
+        body: { reset(x: number, y: number): void };
+      };
+      searchPoints: readonly { id: string; itemId: string; x: number; y: number }[];
+      lighting: { enabled: boolean };
+      combat?: {
+        enemies: readonly {
+          id: string;
+          kind: string;
+          state: string;
+          position: { x: number; y: number };
+        }[];
+      };
+      search?: { isOpened(id: string): boolean; current?(): string | null };
+      services?: {
+        inventory?: { getCarriedItems(): readonly { instanceId: string; itemId: string }[] };
+      };
+    };
+    const debugScene = scene as unknown as DebugSceneAccess;
+    const teleportTargets: Record<string, () => { x: number; y: number } | null> = {
+      'debug-tp-notebook': () =>
+        debugScene.searchPoints.find((point) => point.itemId === 'torn-notebook') ?? null,
+      'debug-tp-feather': () =>
+        debugScene.searchPoints.find((point) => point.itemId === 'anomalous-feather') ?? null,
+      'debug-tp-extract': () => ({ ...WORLD.spawn }),
+    };
+    const questPointNames: Record<string, string> = {
+      'debug-tp-notebook': '图书馆书架',
+      'debug-tp-feather': '明湖石碑',
+      'debug-tp-extract': '南门撤离点',
+    };
+    for (const [buttonId, resolveTarget] of Object.entries(teleportTargets)) {
+      element(buttonId).onclick = () => {
+        const target = resolveTarget();
+        if (!target) {
+          notify('调试：本局没有该目标点，或尚未开始探索。');
+          return;
+        }
+        // 优先落在目标西侧 48px（面朝东即对准目标），被障碍挡住就按东/北/南顺序挑空位。
+        const candidates = [
+          { x: target.x - 48, y: target.y },
+          { x: target.x + 48, y: target.y },
+          { x: target.x, y: target.y - 48 },
+          { x: target.x, y: target.y + 48 },
+          { x: target.x, y: target.y },
+        ];
+        const spot = candidates.find((p) => !WORLD.obstacles.some((w) => contains(w, p))) ?? target;
+        debugScene.position = { x: spot.x, y: spot.y };
+        debugScene.aim = 0;
+        debugScene.lighting.enabled = true;
+        debugScene.player?.setPosition(spot.x, spot.y);
+        notify(`调试：已传送到${questPointNames[buttonId] ?? buttonId}旁，手电已开启。`);
+        render();
+      };
+    }
+    // 供自动化验收读取场景内部状态（仅 dev）。
+    (window as unknown as { __debugSceneState?: () => unknown }).__debugSceneState = () => ({
+      position: { ...debugScene.position },
+      aim: debugScene.aim,
+      lightOn: debugScene.lighting.enabled,
+      points: debugScene.searchPoints.map((p) => ({ id: p.id, itemId: p.itemId, x: p.x, y: p.y })),
+      enemies: (debugScene.combat?.enemies ?? []).map((enemy) => ({
+        id: enemy.id,
+        kind: enemy.kind,
+        state: enemy.state,
+        x: enemy.position.x,
+        y: enemy.position.y,
+      })),
+      opened: debugScene.search
+        ? Array.from(
+            (debugScene.search as unknown as { opened?: Set<string> }).opened ?? new Set<string>(),
+          )
+        : [],
+      searchCurrent: debugScene.search?.current?.() ?? null,
+      hasSearch: debugScene.search !== undefined,
+      hasServices: debugScene.services !== undefined,
+      bag: (debugScene.services?.inventory?.getCarriedItems() ?? []).map((item) => ({
+        id: item.instanceId,
+        item: item.itemId,
+      })),
+    });
   }
   render();
   if (import.meta.hot) {
