@@ -474,6 +474,18 @@ html.prologue-open #app {
   gap: 12px;
   padding: 20px 24px;
   border-bottom: 1px solid #3b403d;
+  position: relative;
+}
+/* 滚到中段时内容会顶到标题栏下沿被硬切一行，这里同样用渐隐过渡。 */
+.rules-header::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, #191d1b 10%, transparent);
+  pointer-events: none;
 }
 .rules-header h1 {
   font-size: 24px;
@@ -494,7 +506,37 @@ html.prologue-open #app {
 .rules-content {
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 24px;
+  padding: 0 24px 10px;
+  /* 规则正文超过一屏时必须能滚，但默认滚动条几乎看不见，
+     文字又贴着底边被硬切一行，看起来像渲染坏了而不是「下面还有」。 */
+  scrollbar-width: thin;
+  scrollbar-color: #6d7c72 transparent;
+}
+.rules-content::-webkit-scrollbar {
+  width: 8px;
+}
+.rules-content::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background: #6d7c72;
+  background-clip: content-box;
+}
+.rules-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* 滚动区与固定底栏之间加一道渐隐，让被切掉的半行淡出而不是被一刀切断。 */
+.rules-footer {
+  position: relative;
+}
+.rules-footer::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  height: 26px;
+  background: linear-gradient(to top, #191d1b 10%, transparent);
+  pointer-events: none;
 }
 .rules-content section {
   padding: 20px 0;
@@ -1126,6 +1168,139 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   }
   .prep-warning {
     line-height: 1.6;
+  }
+}
+/* DEF-05：上一档只压到 850px，1100×640 实测仍溢出 77px、900×600 溢出 133px，
+   「开始探索」被推出视口底部，必须滚动才能点到——主操作不该藏在滚动区里。
+   这一档把消息栏以上的信息区进一步收紧，目标让 640px 高的窗口一屏装下；
+   760px 以下交给触屏布局，不在这里处理。 */
+@media (min-width: 761px) and (max-height: 730px) {
+  #app[data-phase='preparing'] main {
+    padding: 6px 2% 6px;
+  }
+  .lobby-weather {
+    display: none;
+  }
+  .lobby-commandbar {
+    min-height: 46px;
+  }
+  /* 18px 的余量靠底部内边距与按钮高度抹平，保证不出滚动条。 */
+  .lobby-panel {
+    padding-bottom: 8px;
+  }
+  .prep-start {
+    min-height: 44px;
+  }
+  .prep-tutorial {
+    padding-top: 4px;
+  }
+  .prep-hero {
+    padding: 7px 0;
+  }
+  .prep-kicker {
+    margin-bottom: 2px;
+    font-size: 10px;
+  }
+  .prep-hero h2 {
+    margin-bottom: 4px;
+    font-size: 22px;
+  }
+  .prep-brief {
+    margin-bottom: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .lobby-mission-strip {
+    margin-top: 6px;
+    padding: 4px 10px;
+  }
+  .prep-goals {
+    gap: 7px;
+  }
+  .prep-goals li {
+    padding: 3px 10px;
+    font-size: 12px;
+  }
+  .prep-main {
+    margin-top: 7px;
+  }
+  .prep-block {
+    padding: 10px 13px;
+  }
+  .prep-block h3 {
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .prep-equipment li {
+    margin-bottom: 5px;
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+  .prep-warning {
+    margin-bottom: 6px;
+    padding: 6px 9px;
+    line-height: 1.6;
+  }
+  .prep-block .consent {
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+}
+/* DEF-05 续：620px 以下再收一档。900×600 实测 .lobby-panel 仍高出可视区 45px，
+   左下「带入选择」下拉被裁掉一半——表单控件被切一半不可接受，比滚动更糟。
+   这一档只压间距与控件内边距，不删信息。 */
+@media (min-width: 761px) and (max-height: 620px) {
+  .prep-hero {
+    padding: 6px 0;
+  }
+  .lobby-mission-strip {
+    margin-top: 5px;
+    padding: 3px 9px;
+  }
+  .mission-number {
+    font-size: 16px;
+  }
+  .prep-goals li {
+    padding: 3px 9px;
+  }
+  .prep-main {
+    margin-top: 5px;
+  }
+  .prep-equipment li {
+    margin-bottom: 3px;
+    padding: 4px 8px;
+  }
+  .field-label {
+    margin: 6px 0 4px;
+  }
+  .prep-block select,
+  .prep-block input[type='text'] {
+    padding: 6px 5px;
+  }
+  /* 461px 的可用高度仍差约 50px。这里去掉与顶部命令栏重复的
+     「思源密码 · 行前准备」小标题，并压低主按钮高度，不删任何任务信息。 */
+  .lobby-panel {
+    padding-bottom: 4px;
+  }
+  .prep-kicker {
+    display: none;
+  }
+  .prep-hero h2 {
+    font-size: 20px;
+  }
+  .prep-brief {
+    line-height: 1.42;
+  }
+  .prep-warning {
+    padding: 5px 8px;
+    line-height: 1.5;
+  }
+  .prep-start {
+    min-height: 40px;
+    font-size: 15px;
+  }
+  .prep-tutorial {
+    padding-top: 3px;
   }
 }
 @media (max-width: 760px) {
