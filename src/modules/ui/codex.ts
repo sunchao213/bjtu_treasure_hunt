@@ -1,6 +1,7 @@
 import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import { CODEX_ENTRIES } from '../quests/chapter-content';
 import type { Rarity } from '../../shared/types/game';
+import { iconSvg } from './icons';
 
 const rarityNames: Record<Rarity, string> = {
   common: '普通',
@@ -116,7 +117,7 @@ export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
 export function codexMarkup(): string {
   return `<dialog id="codex-dialog" class="rules-dialog codex-dialog" aria-labelledby="codex-title">
     <header class="rules-header"><div><p class="rules-eyebrow">交大摸金录 · 收藏档案</p><h1 id="codex-title">物品图鉴 <small id="codex-count"></small></h1></div>
-      <button id="close-codex" class="rules-close" aria-label="关闭图鉴">×</button></header>
+      <button id="close-codex" class="rules-close" aria-label="关闭图鉴">${iconSvg('close', { size: 24 })}</button></header>
     <div class="codex-content"><p>成功撤离后永久点亮；带入、丢弃或消耗已收藏物品不会熄灭图鉴。未解锁物品显示剪影。</p>
       <p id="codex-chapter"></p><div id="codex-grid" class="codex-grid"></div></div>
     <footer class="rules-footer codex-footer"><button id="export-codex" class="primary">导出图鉴图片（PNG）</button><span id="codex-export-status" role="status" aria-live="polite"></span></footer>

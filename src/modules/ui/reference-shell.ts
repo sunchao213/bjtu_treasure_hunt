@@ -1,5 +1,6 @@
 import { gameRulesMarkup } from './game-rules';
 import { codexMarkup } from './codex';
+import { iconSvg } from './icons';
 import { storyDialogMarkup } from './story-dialog';
 import { tutorialMarkup } from './tutorial';
 
@@ -184,7 +185,7 @@ export function mountShell(root: HTMLElement): void {
       <p id="notice" class="notice" role="status" aria-live="polite">南门集合，等待出发。</p>
     </main><div id="rotate-phone" class="rotate-phone" hidden><strong>请将手机横过来</strong><p>横屏后继续探索；当前对局已暂停。</p></div>${gameRulesMarkup()}
       <dialog id="campus-map-dialog" class="campus-map-dialog" aria-labelledby="campus-map-title" aria-describedby="campus-map-note">
-        <header><h2 id="campus-map-title">海淀主校区 · 校园图</h2><button id="close-campus-map" aria-label="关闭校园图">×</button></header>
+        <header><h2 id="campus-map-title">海淀主校区 · 校园图</h2><button id="close-campus-map" aria-label="关闭校园图">${iconSvg('close', { size: 20 })}</button></header>
         <div class="campus-map-scroll" tabindex="0" aria-label="校园图，可滚动查看各区域"><canvas id="campus-map-expanded" width="1200" height="800" role="img" aria-label="海淀主校区简化布局，北朝上，金色圆点为玩家当前位置"></canvas></div>
         <p id="campus-map-note">金色圆点：当前位置 · 南门：唯一撤离点 · 查看时暂停 · 手机可滑动查看<br>依据小组提供的海淀主校区地图简化制作，非 1:1 测绘，不能用于现实导航。</p>
       </dialog>${codexMarkup()}${storyDialogMarkup()}`;

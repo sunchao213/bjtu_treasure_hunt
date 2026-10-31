@@ -484,10 +484,12 @@ html.prologue-open #app {
   color: #aab9b0;
 }
 .rules-close {
+  /* 图标顶替了原来的字符 ×：SVG 是行内元素，靠 flex 居中，不靠 font-size + line-height */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 44px;
   flex-shrink: 0;
-  font-size: 24px;
-  line-height: 1;
 }
 .rules-content {
   overflow-y: auto;
@@ -1403,10 +1405,18 @@ h1 span {
   font-size: 16px;
 }
 .campus-map-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 40px;
   height: 36px;
   padding: 0;
-  font-size: 24px;
+  /* 原来这块没写，走的是浏览器默认按钮样式：浅底黑字。字符 × 时期看着还像「方块按钮」，
+     换成 currentColor 的 SVG 就暴露出底色与暗场冲突了。补成与弹窗自身一套。 */
+  border: 1px solid #84917e;
+  background: transparent;
+  color: #f4f1df;
+  border-radius: 4px;
 }
 .campus-map-scroll {
   max-height: calc(100svh - 125px);
