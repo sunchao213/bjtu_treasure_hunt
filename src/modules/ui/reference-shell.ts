@@ -1,6 +1,7 @@
 import { gameRulesMarkup } from './game-rules';
 import { codexMarkup } from './codex';
 import { storyDialogMarkup } from './story-dialog';
+import { tutorialMarkup } from './tutorial';
 
 /**
  * R01 准备页整页首屏（与助教要求一致）：
@@ -54,6 +55,7 @@ export function prepViewMarkup(): string {
               <p class="prep-warning">失败、超时或刷新页面会<b>损失本局全部携带物（含带入装备）</b>；未带入的仓库物品保留。</p>
               <label class="consent"><input id="risk-consent" type="checkbox" />我已了解上述风险，愿意出发。</label>
               <button id="start" class="primary prep-start" disabled>开始探索 <span>↗</span></button>
+              <button id="tutorial-restart" class="text-button prep-tutorial" type="button">重看新手引导</button>
             </section>
           </div>
           </section>
@@ -129,6 +131,7 @@ export function mountShell(root: HTMLElement): void {
           <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-codex">图鉴</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="preparation">出发</button></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
+          ${tutorialMarkup()}
           <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-label="放大校园地图">
             <canvas id="campus-overview" class="campus-overview" width="600" height="400" aria-hidden="true"></canvas>
             <span>校园图 · 点击放大</span>

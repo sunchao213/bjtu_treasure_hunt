@@ -1064,6 +1064,14 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   font-weight: 700;
   letter-spacing: 2px;
 }
+/* R04：重看入口放在开始按钮下方，占一行小字，不抢首屏主内容。 */
+.prep-tutorial {
+  margin-top: 2px;
+  padding: 6px 0 0;
+  color: #8f9a86;
+  font-size: 11px;
+  text-align: center;
+}
 .prep-extra {
   margin-top: auto;
   border-top: 1px solid #363a39;
@@ -1290,6 +1298,58 @@ h1 span {
   text-align: center;
   transform: translateX(-50%);
   pointer-events: none;
+}
+/* R04：新手分步引导卡，贴在画面左上角，默认不拦鼠标（只有「跳过引导」可点），
+   不做居中遮罩，保证引导期间玩家仍能操作。 */
+.tutorial-card {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  width: min(320px, calc(100% - 250px));
+  padding: 10px 13px 8px;
+  border: 1px solid #46503c;
+  border-left: 3px solid #e6ac48;
+  border-radius: 6px;
+  background: #101614f2;
+  box-shadow: 0 12px 30px #0009;
+  color: #dfe6d6;
+  pointer-events: none;
+}
+.tutorial-card[hidden] {
+  display: none;
+}
+.tutorial-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 5px;
+  color: #b28c55;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.tutorial-card h3 {
+  margin: 0 0 5px;
+  color: #f2e7cd;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.tutorial-card p {
+  margin: 0 0 5px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.tutorial-card .tutorial-keys {
+  color: #e6ac48;
+  font-size: 11px;
+}
+.tutorial-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.tutorial-actions .text-button {
+  pointer-events: auto;
+  font-size: 11px;
 }
 .campus-map-button {
   position: absolute;

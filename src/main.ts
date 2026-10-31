@@ -31,6 +31,7 @@ import {
   type ExtractionSnapshot,
 } from './modules/ui/extraction-feedback';
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
+import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
 import { WorldScene } from './scenes/world-scene';
 import { contains } from './modules/world/movement';
 import { WORLD } from './config/world-config';
@@ -327,6 +328,52 @@ async function bootstrap(): Promise<void> {
   let mapOpen = false;
   let codexOpen = false;
   let storyOpen = false;
+  // R04：新手引导。只读局内状态与玩家位置，不写任何玩法数据。
+  const tutorial = createTutorial({ store: tutorialStore(window.localStorage) });
+  let tutorialRaidId: string | null = null;
+  let tutorialOrigin: { x: number; y: number } | null = null;
+  let tutorialMoved = false;
+  let tutorialSignature = '';
+  let tutorialWasVisible = false;
+  const scenePosition = (): { x: number; y: number } | null => {
+    // 场景把位置作为内部字段持有；这里只读一份坐标用于判断「是否已经走动」，
+    // 不改 world-scene（C）的实现，也不参与任何玩法计算。
+    const probe = scene as unknown as { position?: { x: number; y: number } };
+    const position = probe.position;
+    return position ? { x: position.x, y: position.y } : null;
+  };
+  function syncTutorial(view: ReturnType<typeof controller.getView>): void {
+    if (view.raidId !== tutorialRaidId) {
+      tutorialRaidId = view.raidId;
+      tutorialOrigin = null;
+      tutorialMoved = false;
+    }
+    const position = scenePosition();
+    if (position) {
+      if (tutorialOrigin === null) tutorialOrigin = position;
+      else if (Math.hypot(position.x - tutorialOrigin.x, position.y - tutorialOrigin.y) > 12) {
+        tutorialMoved = true;
+      }
+    }
+    const snapshot = tutorial.sync({
+      phase: view.phase,
+      value: view.value,
+      threshold: view.threshold,
+      inExtractionZone: view.inExtractionZone,
+      bagCount: inventory.getCarriedItems().length,
+      interacted,
+      moved: tutorialMoved,
+      nowMs: performance.now(),
+    });
+    const signature = `${snapshot.visible}:${snapshot.index}:${snapshot.step?.id ?? ''}`;
+    if (signature === tutorialSignature) return;
+    renderTutorial(snapshot);
+    tutorialSignature = signature;
+    if (tutorialWasVisible && !snapshot.visible && tutorial.isDone()) {
+      notify('新手引导已完成 · 可在准备页「重看新手引导」重新观看。');
+    }
+    tutorialWasVisible = snapshot.visible;
+  }
   const mobile = isTouchLayout;
   const syncOrientation = () => {
     const view = controller.getView();
@@ -497,6 +544,7 @@ async function bootstrap(): Promise<void> {
     touch.setEnabled(playable);
     app.dataset.phase = view.phase;
     document.documentElement.classList.toggle('lobby-open', view.phase === 'preparing');
+    syncTutorial(view);
     // R02：读条被价值跌破、受伤、离开区域或暂停打断时，在画面内说明原因。
     if (view.phase === 'extracting') {
       extractionSnapshot = {
@@ -755,6 +803,21 @@ async function bootstrap(): Promise<void> {
   };
   element('retry-save').onclick = async () => {
     await controller.retrySettlement();
+    render();
+  };
+  // R04：跳过与重看两个入口，配合引导卡一起满足「可跳过、可重看」的要求。
+  element('tutorial-skip').onclick = () => {
+    tutorial.skip();
+    tutorialSignature = '';
+    tutorialWasVisible = false;
+    notify('已跳过新手引导 · 可在准备页「重看新手引导」重新打开。');
+    render();
+  };
+  element('tutorial-restart').onclick = () => {
+    tutorial.restart();
+    tutorialSignature = '';
+    tutorialWasVisible = false;
+    notify('新手引导已重置 · 进入局内会从第一步重新提示。');
     render();
   };
   element('reset-save').onclick = () => {
