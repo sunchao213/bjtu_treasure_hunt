@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CANVAS, FONT_FAMILY, SEMANTIC, UI_TOKENS, hex } from '../../src/shared/tokens';
+import { CANVAS, EASING, FONT_FAMILY, SEMANTIC, UI_TOKENS, hex } from '../../src/shared/tokens';
 
 const css = readFileSync(new URL('../../src/tokens.css', import.meta.url), 'utf8');
 
@@ -32,7 +32,7 @@ const parseCssValue = (raw: string): number | string => {
     }
     return parseInt(body.slice(0, 6), 16);
   }
-  if (/^-?\d+(\.\d+)?(px)?$/.test(value)) {
+  if (/^-?\d+(\.\d+)?(px|ms|s)?$/.test(value)) {
     return Number.parseFloat(value);
   }
   return normalizeText(value);
@@ -42,13 +42,15 @@ const cssVars = new Map<string, string>();
 for (const match of css.matchAll(/--([a-z0-9-]+)\s*:\s*([^;]+);/g)) {
   const name = match[1];
   const value = match[2];
-  if (name !== undefined && value !== undefined) {
+  // 取第一次出现：文件尾部的 prefers-reduced-motion 块会把 --dur-* 重定义成 0ms，
+  // 那一组由单独的用例校验，不应污染与 TS 的基准值比对。
+  if (name !== undefined && value !== undefined && !cssVars.has(name)) {
     cssVars.set(name, value.trim());
   }
 }
 
 const numericTokens = UI_TOKENS as unknown as Record<string, number>;
-const textTokens = FONT_FAMILY as unknown as Record<string, string>;
+const textTokens = { ...FONT_FAMILY, ...EASING } as unknown as Record<string, string>;
 
 /**
  * 只在 CSS 侧成立、canvas 无法表达的令牌：复合阴影值（box-shadow 无整数形态）。
@@ -116,6 +118,42 @@ describe('tokens.ts 与 tokens.css 对齐（V1.0 冻结）', () => {
   it('键名双向可逆：camelCase 与 kebab-case 互转不丢字符', () => {
     for (const key of [...Object.keys(numericTokens), ...Object.keys(textTokens)]) {
       expect(toKebab(toCamel(toKebab(key)))).toBe(toKebab(key));
+    }
+  });
+});
+
+describe('动效令牌（V1.1 新增）', () => {
+  it('四档时长严格递增，且上限不超过 320ms', () => {
+    const ladder = [
+      numericTokens.durInstant,
+      numericTokens.durFast,
+      numericTokens.durBase,
+      numericTokens.durSlow,
+    ];
+    expect(ladder).toEqual([...ladder].sort((a, b) => (a ?? 0) - (b ?? 0)));
+    expect(new Set(ladder).size).toBe(4);
+    expect(ladder[3]).toBeLessThanOrEqual(320);
+  });
+
+  it('减少动效块把四档时长全部归零（不是缩短）', () => {
+    const block = css.match(/prefers-reduced-motion[\s\S]*$/);
+    expect(block).not.toBeNull();
+    const body = block?.[0] ?? '';
+    for (const entry of ['dur-instant', 'dur-fast', 'dur-base', 'dur-slow']) {
+      expect(body).toContain(`--${entry}: 0ms`);
+    }
+  });
+
+  it('缓动曲线的控制点合法（x 在 0–1，共 4 个数值）', () => {
+    for (const [name, curve] of Object.entries(EASING)) {
+      const match = /^cubic-bezier\(([^)]+)\)$/.exec(curve);
+      expect(match, `${name} 不是 cubic-bezier`).not.toBeNull();
+      const points = (match?.[1] ?? '').split(',').map((n) => Number.parseFloat(n.trim()));
+      expect(points).toHaveLength(4);
+      for (const x of [points[0], points[2]]) {
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(x).toBeLessThanOrEqual(1);
+      }
     }
   });
 });

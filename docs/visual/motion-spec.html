@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>交大摸金录 · 动效规范 V1.1</title>
+    <link rel="stylesheet" href="../../src/tokens.css" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px 32px 96px;
+        background: var(--bg-base);
+        color: var(--text-primary);
+        font-family: var(--font-ui);
+        font-size: var(--fs-body-sm);
+        line-height: var(--lh-normal);
+      }
+      .wrap {
+        max-width: 960px;
+        margin: 0 auto;
+      }
+      header {
+        padding-bottom: var(--space-6);
+        border-bottom: 1px solid var(--line);
+      }
+      .eyebrow {
+        margin: 0 0 var(--space-2);
+        color: var(--gold-deep);
+        font-size: var(--fs-micro);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0 0 var(--space-3);
+        color: var(--gold-warm);
+        font-size: var(--fs-display);
+        font-weight: var(--fw-semibold);
+        line-height: var(--lh-tight);
+        letter-spacing: 0.02em;
+      }
+      .lede {
+        max-width: 68ch;
+        margin: 0;
+        color: var(--text-body);
+        font-size: var(--fs-body);
+        line-height: var(--lh-loose);
+      }
+      .status {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-4);
+        margin-top: var(--space-4);
+        padding: var(--space-3) var(--space-4);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-tertiary);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: var(--fs-caption);
+      }
+      .status b {
+        color: var(--gold-soft);
+        font-weight: var(--fw-medium);
+      }
+      section {
+        margin-top: var(--space-12);
+      }
+      h2 {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-3);
+        margin: 0 0 var(--space-4);
+        padding-bottom: var(--space-3);
+        border-bottom: 1px solid var(--line-subtle);
+        color: var(--text-strong);
+        font-size: var(--fs-title);
+        font-weight: var(--fw-semibold);
+      }
+      h2 small {
+        color: var(--text-quiet);
+        font-size: var(--fs-caption);
+        font-weight: var(--fw-regular);
+      }
+      p.note {
+        max-width: 72ch;
+        margin: 0 0 var(--space-4);
+        color: var(--text-body);
+        line-height: var(--lh-relaxed);
+      }
+      /* ── 时长演示 ── */
+      .durs {
+        display: grid;
+        gap: var(--space-2);
+      }
+      .dur {
+        display: grid;
+        grid-template-columns: 168px 1fr 96px;
+        align-items: center;
+        gap: var(--space-4);
+        padding: var(--space-3) var(--space-4);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        cursor: pointer;
+        text-align: left;
+        color: inherit;
+        font: inherit;
+      }
+      .dur:hover {
+        border-color: var(--line-strong);
+      }
+      .dur code {
+        color: var(--text-tertiary);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: var(--fs-caption);
+      }
+      .track {
+        display: block; /* span 默认行内，不设 block 时 height 不生效，轨道会塌成 0 */
+        position: relative;
+        height: 32px;
+        border-radius: var(--radius-sm);
+        background: var(--bg-panel-soft);
+        overflow: hidden;
+      }
+      .puck {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        width: 20px;
+        height: 20px;
+        border-radius: var(--radius-sm);
+        background: var(--gold);
+        opacity: 0.35;
+        transform: translateX(0);
+        /* 时长与曲线都由容器上声明的 --d / --e 决定，两个演示区共用一套 puck */
+        transition:
+          transform var(--d, var(--dur-base)) var(--e, var(--ease-out)),
+          opacity var(--d, var(--dur-base)) var(--e, var(--ease-out));
+      }
+      .puck.on {
+        opacity: 1;
+        transform: translateX(calc(100% + 120px));
+      }
+      .dur em {
+        color: var(--text-quiet);
+        font-size: var(--fs-micro);
+        font-style: normal;
+        text-align: right;
+      }
+      /* ── 缓动演示 ── */
+      .eases {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: var(--space-3);
+        margin-bottom: var(--space-4);
+      }
+      .ease {
+        padding: var(--space-3);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        cursor: pointer;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+      }
+      .ease:hover {
+        border-color: var(--line-strong);
+      }
+      .ease b {
+        display: block;
+        color: var(--text-body);
+        font-size: var(--fs-label);
+        font-weight: var(--fw-medium);
+      }
+      .ease code {
+        display: block;
+        margin-top: 2px;
+        color: var(--text-tertiary);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: var(--fs-micro);
+      }
+      .ease .track {
+        margin-top: var(--space-3);
+      }
+      .ease .puck {
+        background: var(--jade);
+      }
+      .ease .puck.on {
+        transform: translateX(calc(100% + 60px));
+      }
+      .curves {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-4);
+      }
+      .curve {
+        flex: 0 0 148px;
+        padding: var(--space-3);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+      }
+      .curve svg {
+        display: block;
+        width: 96px;
+        height: 96px;
+        margin: 0 auto;
+      }
+      .curve span {
+        display: block;
+        margin-top: var(--space-2);
+        color: var(--text-tertiary);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: var(--fs-micro);
+      }
+      /* ── 规则与映射 ── */
+      ol.rules {
+        margin: 0;
+        padding-left: var(--space-6);
+        color: var(--text-body);
+        line-height: var(--lh-loose);
+      }
+      ol.rules li {
+        margin-bottom: var(--space-2);
+      }
+      ol.rules b {
+        color: var(--text-strong);
+        font-weight: var(--fw-medium);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--fs-caption);
+      }
+      th,
+      td {
+        padding: var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--line-subtle);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--text-tertiary);
+        font-weight: var(--fw-medium);
+        white-space: nowrap;
+      }
+      td {
+        color: var(--text-body);
+      }
+      td code {
+        color: var(--gold-soft);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+      }
+      footer {
+        margin-top: var(--space-12);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--line-subtle);
+        color: var(--text-quiet);
+        font-size: var(--fs-caption);
+        line-height: var(--lh-relaxed);
+      }
+      footer code {
+        color: var(--text-tertiary);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <p class="eyebrow">Motion Spec · V1.1</p>
+        <h1>动效规范</h1>
+        <p class="lede">
+          V1.0 冻结时全项目 0 条 transition、0 个 @keyframes、0 个 Phaser tween，界面状态全是瞬变。
+          所以这一节不是收敛旧值，是从零定义：四档时长、三档缓动、五条硬规则。
+          下面每一行都可以点，点了才会动 —— 静态截图看不出动效，只能现场跑。
+        </p>
+        <div class="status">
+          <span>--dur-base 实测 <b id="probe-base">读取中…</b></span>
+          <span>--ease-out 实测 <b id="probe-ease">读取中…</b></span>
+          <span id="probe-motion">动效偏好检测中…</span>
+        </div>
+      </header>
+
+      <section>
+        <h2>一、时长四档 <small>1.5 倍阶梯，上限 320ms</small></h2>
+        <p class="note">
+          点任意一行播放。四档之间必须能一眼分出快慢，否则档位没有意义；
+          但如果慢到让人等，就说明用错了档 —— 界面反馈永远不该成为等待。
+        </p>
+        <div class="durs">
+          <button class="dur" type="button" style="--d: var(--dur-instant)">
+            <code>--dur-instant</code>
+            <span class="track"><i class="puck"></i></span>
+            <em>80ms · 按下</em>
+          </button>
+          <button class="dur" type="button" style="--d: var(--dur-fast)">
+            <code>--dur-fast</code>
+            <span class="track"><i class="puck"></i></span>
+            <em>120ms · 悬停</em>
+          </button>
+          <button class="dur" type="button" style="--d: var(--dur-base)">
+            <code>--dur-base</code>
+            <span class="track"><i class="puck"></i></span>
+            <em>200ms · 面板</em>
+          </button>
+          <button class="dur" type="button" style="--d: var(--dur-slow)">
+            <code>--dur-slow</code>
+            <span class="track"><i class="puck"></i></span>
+            <em>320ms · 结算</em>
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <h2>二、缓动三档 <small>同样 200ms、同样距离，只换曲线</small></h2>
+        <p class="note">
+          三张卡片的时长和位移完全一致，差别只在曲线。点一下能看出：进入型「快出慢停」像落到位，
+          退出型「慢起快走」像被抽走，位移型两端都缓、看着最稳。选型按「动的东西往哪去」，不按手感。
+        </p>
+        <div class="eases">
+          <button class="ease" type="button" style="--d: var(--dur-base); --e: var(--ease-out)">
+            <b>进入 · --ease-out</b>
+            <code>cubic-bezier(0.16, 1, 0.3, 1)</code>
+            <span class="track"><i class="puck"></i></span>
+          </button>
+          <button class="ease" type="button" style="--d: var(--dur-base); --e: var(--ease-in)">
+            <b>退出 · --ease-in</b>
+            <code>cubic-bezier(0.4, 0, 1, 1)</code>
+            <span class="track"><i class="puck"></i></span>
+          </button>
+          <button class="ease" type="button" style="--d: var(--dur-base); --e: var(--ease-in-out)">
+            <b>位移 · --ease-in-out</b>
+            <code>cubic-bezier(0.4, 0, 0.2, 1)</code>
+            <span class="track"><i class="puck"></i></span>
+          </button>
+        </div>
+        <div class="curves" id="curves"></div>
+      </section>
+
+      <section>
+        <h2>三、五条硬规则</h2>
+        <ol class="rules">
+          <li>
+            <b>只动 opacity 与 transform。</b>不动 width / height / top / left ——
+            那些触发重排，低端安卓直接掉帧。
+          </li>
+          <li>
+            <b>不做回弹。</b>没有
+            overshoot、没有弹簧、没有弹跳。这套视觉是硬边档案感，一回弹立刻变廉价。
+          </li>
+          <li>
+            <b>上限 320ms。</b
+            >超过就不是界面反馈，是动画片。开局剧情那种「要看」的内容另算，但不走这套令牌。
+          </li>
+          <li><b>进入用 ease-out，退出用 ease-in，位移用 ease-in-out。</b>不按手感随手挑。</li>
+          <li>
+            <b>系统减少动效时全部归零。</b><code>--dur-*</code> 在
+            <code>prefers-reduced-motion: reduce</code> 下被重定义为 0ms，写了
+            <code>var(--dur-*)</code> 的组件自动退回瞬变，不需要逐个组件写媒体查询。
+          </li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>四、哪个交互用哪一档 <small>冻结后按此表取值，不自创时长</small></h2>
+        <table>
+          <thead>
+            <tr>
+              <th>交互</th>
+              <th>时长</th>
+              <th>缓动</th>
+              <th>动什么</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>按钮按下 / 松开</td>
+              <td><code>--dur-instant</code></td>
+              <td><code>--ease-out</code></td>
+              <td>底色明度、1px 内位移</td>
+            </tr>
+            <tr>
+              <td>勾选框打勾</td>
+              <td><code>--dur-instant</code></td>
+              <td><code>--ease-out</code></td>
+              <td>描边转填充</td>
+            </tr>
+            <tr>
+              <td>悬停、焦点环</td>
+              <td><code>--dur-fast</code></td>
+              <td><code>--ease-out</code></td>
+              <td>描边色、外发光透明度</td>
+            </tr>
+            <tr>
+              <td>标签页 / 分段控件切换</td>
+              <td><code>--dur-fast</code></td>
+              <td><code>--ease-in-out</code></td>
+              <td>滑块位移</td>
+            </tr>
+            <tr>
+              <td>抽屉、侧滑面板</td>
+              <td><code>--dur-base</code></td>
+              <td>进 ease-out / 退 ease-in</td>
+              <td>translateX</td>
+            </tr>
+            <tr>
+              <td>提示条、横幅</td>
+              <td><code>--dur-base</code></td>
+              <td><code>--ease-out</code></td>
+              <td>translateY + opacity</td>
+            </tr>
+            <tr>
+              <td>全屏遮罩、结算面板</td>
+              <td><code>--dur-slow</code></td>
+              <td>进 ease-out / 退 ease-in</td>
+              <td>opacity + 轻微 scale</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer>
+        本页所有时长、缓动、颜色均由
+        <code>src/tokens.css</code> 的变量驱动，不含硬编码动效值。<br />
+        令牌源文件 <code>src/tokens.css</code>｜配套 TS 常量
+        <code>src/shared/tokens.ts</code>｜规范文档 <code>docs/delivery/d-visual-tokens.md</code
+        ><br />
+        注意：必须通过 <code>npm run dev</code> 访问，直接双击以
+        <code>file://</code> 打开会因跨目录加载不到 <code>tokens.css</code> 而全部失样式。
+      </footer>
+    </div>
+
+    <script>
+      // 1) 把令牌实测值打到页面上——变量没加载成功时这里会空，比看颜色更早发现问题。
+      const root = getComputedStyle(document.documentElement);
+      const base = root.getPropertyValue('--dur-base').trim();
+      document.getElementById('probe-base').textContent = base || '未加载';
+      document.getElementById('probe-ease').textContent =
+        root.getPropertyValue('--ease-out').trim() || '未加载';
+
+      // 2) 显示系统动效偏好，方便评审时确认「归零」这条规则是否真生效。
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const probe = document.getElementById('probe-motion');
+      const paint = () => {
+        probe.textContent = reduce.matches
+          ? '系统减少动效：已开启，上面四档实测应为 0ms'
+          : '系统减少动效：未开启，四档按 80/120/200/320ms 播放';
+      };
+      paint();
+      reduce.addEventListener('change', paint);
+
+      // 3) 播放：加 .on 播完再摘掉，保证每次点击都能重播。时长从计算样式读，
+      //    这样「减少动效」归零后，等待时间也会跟着变成 0，不会卡住。
+      const play = (node) => {
+        const puck = node.querySelector('.puck');
+        const ms = Number.parseFloat(getComputedStyle(puck).transitionDuration) * 1000;
+        puck.classList.add('on');
+        window.setTimeout(() => puck.classList.remove('on'), (Number.isFinite(ms) ? ms : 200) + 80);
+      };
+      document.querySelectorAll('.dur, .ease').forEach((node) => {
+        node.addEventListener('click', () => play(node));
+      });
+
+      // 4) 把三条曲线画出来：y 轴要翻转，SVG 的 y 向下增长。
+      const CURVES = [
+        { name: '--ease-out', p: [0.16, 1, 0.3, 1], color: 'var(--gold)' },
+        { name: '--ease-in', p: [0.4, 0, 1, 1], color: 'var(--jade)' },
+        { name: '--ease-in-out', p: [0.4, 0, 0.2, 1], color: 'var(--gold-soft)' },
+      ];
+      const S = 100;
+      document.getElementById('curves').innerHTML = CURVES.map((c) => {
+        const [x1, y1, x2, y2] = c.p;
+        const d = `M 0 ${S} C ${x1 * S} ${S - y1 * S}, ${x2 * S} ${S - y2 * S}, ${S} 0`;
+        return `
+          <div class="curve">
+            <svg viewBox="-6 -6 ${S + 12} ${S + 12}" role="img" aria-label="${c.name} 曲线">
+              <path d="M 0 ${S} L ${S} ${S} L ${S} 0" fill="none" stroke="var(--line-subtle)" stroke-width="1" />
+              <path d="${d}" fill="none" stroke="${c.color}" stroke-width="2" />
+            </svg>
+            <span>${c.name}</span>
+          </div>`;
+      }).join('');
+    </script>
+  </body>
+</html>

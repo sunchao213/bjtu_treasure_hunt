@@ -13,9 +13,12 @@
  *      把魔法数字换成令牌**不会改变任何一个像素**——这是可以用肉眼回归验证的。
  *   3. `SEMANTIC` 是两端语义的对照与差异清单，不是调色板，用来回答
  *      「这个红到底该用 UI 的 #D65A4A 还是 canvas 的 #FF5668」。
+ *   4. `EASING` 是 V1.1 补的缓动曲线，值就是 CSS 里的 cubic-bezier 原文。
+ *
+ * 版本：V1.1（2026-10-31）。在 V1.0 基础上只增补动效时长与缓动，未改任何既有值。
  *
  * 当前状态：**只定义、未被任何模块 import**。合并方式见
- * docs/delivery/d-visual-tokens.md 第 6 节，替换顺序按「零视觉变化」优先。
+ * docs/delivery/d-visual-tokens.md 第 7 节，替换顺序按「零视觉变化」优先。
  */
 
 /** 24-bit RGB。Phaser 的 fillStyle / setTint / lineStyle 接受这种形态。 */
@@ -124,6 +127,25 @@ export const UI_TOKENS = {
   zDrawer: 41,
   zOverlay: 100,
   zModal: 1000,
+
+  // ── 动效时长 4 档（V1.1 新增，单位 ms）──
+  durInstant: 80,
+  durFast: 120,
+  durBase: 200,
+  durSlow: 320,
+} as const;
+
+/**
+ * 缓动曲线（V1.1 新增）。与 tokens.css 的 `--ease-*` 逐值一致。
+ *
+ * 选法：进入用 easeOut、退出用 easeIn、位移用 easeInOut。三档都无回弹。
+ * Phaser 侧可用 `Phaser.Math.Easing.Cubic.Out` 近似 easeOut，
+ * 但要与 DOM 严格对齐时，建议把这里的曲线交给 `Phaser.Tweens` 的 cubicBezier 配置。
+ */
+export const EASING = {
+  easeOut: 'cubic-bezier(0.16, 1, 0.3, 1)',
+  easeIn: 'cubic-bezier(0.4, 0, 1, 1)',
+  easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
 } as const;
 
 /** 字体族。不引网络字体，只用系统字体，避免首帧抖动。取值须与 tokens.css 一致。 */
