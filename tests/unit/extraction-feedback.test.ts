@@ -30,8 +30,8 @@ const snapshot = (overrides: Partial<ExtractionSnapshot> = {}): ExtractionSnapsh
   ...overrides,
 });
 
-describe('R02 撤离差额文案', () => {
-  it('价值 75 时给出当前值、门槛与差额（R02 验收原文）', () => {
+describe('F02 撤离差额文案', () => {
+  it('价值 75 时给出当前值、门槛与差额（F02 验收原文）', () => {
     expect(valueGapText(75, 100)).toBe('当前 75/100，还差 25，继续搜索');
   });
 
@@ -40,7 +40,7 @@ describe('R02 撤离差额文案', () => {
   });
 });
 
-describe('R02 申请撤离被拒绝的原因', () => {
+describe('F02 申请撤离被拒绝的原因', () => {
   it('不在撤离区提示回南门，而不是「价值不足」', () => {
     const text = refusalText('NOT_IN_RANGE', view({ inExtractionZone: false }), false);
     expect(text).toContain('不在撤离区');
@@ -61,7 +61,7 @@ describe('R02 申请撤离被拒绝的原因', () => {
   });
 });
 
-describe('R02 读条中断的原因', () => {
+describe('F02 读条中断的原因', () => {
   it('价值从 110 丢掉 25 后跌破门槛，说明差额并中断', () => {
     const text = interruptedText(snapshot({ value: 110 }), view({ value: 85 }), false);
     expect(text).toBe('当前 85/100，还差 15，继续搜索 · 撤离读条已中断');

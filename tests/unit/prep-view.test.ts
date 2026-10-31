@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canStartRaid, shouldShowPrepView } from '../../src/modules/ui/prep-view';
 import { prepViewMarkup } from '../../src/modules/ui/reference-shell';
 
-describe('R01 准备页独立视图 · 显隐逻辑', () => {
+describe('F01 准备页独立视图 · 显隐逻辑', () => {
   it('仅「准备出发」阶段整屏显示准备视图', () => {
     expect(shouldShowPrepView('preparing')).toBe(true);
   });
@@ -15,12 +15,12 @@ describe('R01 准备页独立视图 · 显隐逻辑', () => {
   });
 });
 
-describe('R01 准备页独立视图 · 开始按钮可用性', () => {
+describe('F01 准备页独立视图 · 开始按钮可用性', () => {
   it('勾选风险确认且控制器空闲时才能开局', () => {
     expect(canStartRaid({ busy: false, consented: true })).toBe(true);
   });
 
-  it('未勾选风险确认不能开局（R01 验收硬条件）', () => {
+  it('未勾选风险确认不能开局（F01 验收硬条件）', () => {
     expect(canStartRaid({ busy: false, consented: false })).toBe(false);
   });
 
@@ -30,7 +30,7 @@ describe('R01 准备页独立视图 · 开始按钮可用性', () => {
   });
 });
 
-describe('R01 准备页首屏主内容', () => {
+describe('F01 准备页首屏主内容', () => {
   const markup = prepViewMarkup();
   /** 折叠区起点：其后属于次要内容，不算首屏主内容。 */
   const firstDetails = markup.indexOf('<details');

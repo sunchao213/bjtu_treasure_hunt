@@ -5,7 +5,7 @@ import { storyDialogMarkup } from './story-dialog';
 import { tutorialMarkup } from './tutorial';
 
 /**
- * R01 准备页整页首屏（与助教要求一致）：
+ * F01 准备页整页首屏（与助教要求一致）：
  * 首屏主内容固定为「初始武器 / 带入选择 / 风险提示 / 勾选框 / 开始按钮」，
  * 仓库与存档等次要入口收在页面底部的折叠区，不占用首屏。
  */

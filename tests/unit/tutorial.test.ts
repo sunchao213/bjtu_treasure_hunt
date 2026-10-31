@@ -35,7 +35,7 @@ function fakeStore(initial = false) {
   };
 }
 
-describe('R04 新手引导 · 五步顺序与文案', () => {
+describe('F04 新手引导 · 五步顺序与文案', () => {
   it('按「移动 → 手电发现 → 长按搜索 → 价值差额 → 南门撤离」排列', () => {
     expect(TUTORIAL_STEPS.map((step) => step.id)).toEqual([
       'move',
@@ -62,7 +62,7 @@ describe('R04 新手引导 · 五步顺序与文案', () => {
   });
 });
 
-describe('R04 新手引导 · 单步推进条件', () => {
+describe('F04 新手引导 · 单步推进条件', () => {
   it('没有动作也不超时，停在当前步', () => {
     expect(advanceStep('move', idle)).toBeNull();
     expect(advanceStep('light', idle)).toBeNull();
@@ -114,7 +114,7 @@ describe('R04 新手引导 · 单步推进条件', () => {
   });
 });
 
-describe('R04 新手引导 · 状态机', () => {
+describe('F04 新手引导 · 状态机', () => {
   const tick = (patch: Partial<TutorialTick> = {}, nowMs = 0) => ({
     ...idle,
     ...patch,
@@ -200,7 +200,7 @@ describe('R04 新手引导 · 状态机', () => {
   });
 });
 
-describe('R04 新手引导 · 存储降级', () => {
+describe('F04 新手引导 · 存储降级', () => {
   it('localStorage 不可用时当作没看过，不抛出异常', () => {
     const broken = {
       getItem: () => {
@@ -228,7 +228,7 @@ describe('R04 新手引导 · 存储降级', () => {
   });
 });
 
-describe('R04 新手引导 · 页面入口', () => {
+describe('F04 新手引导 · 页面入口', () => {
   it('局内引导卡包含步序、标题、正文、键位与跳过按钮', () => {
     const markup = tutorialMarkup();
     for (const id of [

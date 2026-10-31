@@ -221,7 +221,7 @@ const notify = (message: string) => {
   element('notice').textContent = message;
 };
 let mapToastTimer: number | undefined;
-/** R02：撤离相关的拒绝与中断原因要落在画面内，侧栏状态行只作补充。 */
+/** F02：撤离相关的拒绝与中断原因要落在画面内，侧栏状态行只作补充。 */
 const showMapToast = (message: string, ms = 3200): void => {
   const toast = element('map-toast');
   toast.textContent = message;
@@ -289,7 +289,7 @@ async function bootstrap(): Promise<void> {
   let renderedAt = 0;
   let interacted = '';
   let searchProgress = 0;
-  // R02：记录读条开始时的状态，用来判断读条为什么被取消。
+  // F02：记录读条开始时的状态，用来判断读条为什么被取消。
   let extractionSnapshot: ExtractionSnapshot | null = null;
   let enteredExtractionZone = false;
   let leftExtractionZone = false;
@@ -328,7 +328,7 @@ async function bootstrap(): Promise<void> {
   let mapOpen = false;
   let codexOpen = false;
   let storyOpen = false;
-  // R04：新手引导。只读局内状态与玩家位置，不写任何玩法数据。
+  // F04：新手引导。只读局内状态与玩家位置，不写任何玩法数据。
   const tutorial = createTutorial({ store: tutorialStore(window.localStorage) });
   let tutorialRaidId: string | null = null;
   let tutorialOrigin: { x: number; y: number } | null = null;
@@ -545,7 +545,7 @@ async function bootstrap(): Promise<void> {
     app.dataset.phase = view.phase;
     document.documentElement.classList.toggle('lobby-open', view.phase === 'preparing');
     syncTutorial(view);
-    // R02：读条被价值跌破、受伤、离开区域或暂停打断时，在画面内说明原因。
+    // F02：读条被价值跌破、受伤、离开区域或暂停打断时，在画面内说明原因。
     if (view.phase === 'extracting') {
       extractionSnapshot = {
         value: view.value,
@@ -627,7 +627,7 @@ async function bootstrap(): Promise<void> {
       busy: view.isBusy,
       consented: element<HTMLInputElement>('risk-consent').checked,
     });
-    // R02：按钮不再因为「不在区域 / 价值不足」直接禁用，否则点了没有任何反馈。
+    // F02：按钮不再因为「不在区域 / 价值不足」直接禁用，否则点了没有任何反馈。
     element<HTMLButtonElement>('extract').disabled = !playable || view.phase === 'extracting';
     element('extract').textContent =
       view.phase === 'extracting'
@@ -805,7 +805,7 @@ async function bootstrap(): Promise<void> {
     await controller.retrySettlement();
     render();
   };
-  // R04：跳过与重看两个入口，配合引导卡一起满足「可跳过、可重看」的要求。
+  // F04：跳过与重看两个入口，配合引导卡一起满足「可跳过、可重看」的要求。
   element('tutorial-skip').onclick = () => {
     tutorial.skip();
     tutorialSignature = '';
@@ -854,7 +854,7 @@ async function bootstrap(): Promise<void> {
       controller.applyDamage(RAID_RULES.maxHealth);
       render();
     };
-    // R02 人工验收需要精确的价值（75 / 110 / 85），宝箱随机难以凑数，这里给个 dev 专用发放按钮。
+    // F02 人工验收需要精确的价值（75 / 110 / 85），宝箱随机难以凑数，这里给个 dev 专用发放按钮。
     const grantLoot = (itemId: string) => {
       const raidId = controller.getView().raidId;
       if (raidId === null) {

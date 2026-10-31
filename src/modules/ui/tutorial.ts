@@ -2,7 +2,7 @@ import { RAID_RULES } from '../../config/game-config';
 import type { RaidPhase } from '../../shared/types/game';
 
 /**
- * R04 · 新手分步引导（10-21 助教整改项，D 主责）。
+ * F04 · 新手分步引导（10-21 助教整改项，D 主责）。
  *
  * 问题：第一次进局内只有左下角一句「正在加载校园地图…」，玩家不知道该先动、
  * 该用手电找箱子、长按 E 搜、价值够了才能撤。
