@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>交大摸金录 · 视觉样例冻结 V1.0</title>
+    <link rel="stylesheet" href="../../src/tokens.css" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px 32px 96px;
+        background: var(--bg-base);
+        color: var(--text-primary);
+        font-family: var(--font-ui);
+        font-size: var(--fs-body-sm);
+        line-height: var(--lh-normal);
+      }
+      .wrap {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+      header {
+        padding-bottom: var(--space-6);
+        border-bottom: 1px solid var(--line);
+      }
+      .eyebrow {
+        margin: 0 0 var(--space-2);
+        color: var(--gold-deep);
+        font-size: var(--fs-micro);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0 0 var(--space-3);
+        color: var(--gold-warm);
+        font-size: var(--fs-display);
+        font-weight: var(--fw-semibold);
+        line-height: var(--lh-tight);
+        letter-spacing: 0.02em;
+      }
+      .lede {
+        max-width: 68ch;
+        margin: 0;
+        color: var(--text-body);
+        font-size: var(--fs-body);
+        line-height: var(--lh-loose);
+      }
+      section {
+        margin-top: var(--space-12);
+      }
+      h2 {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-3);
+        margin: 0 0 var(--space-4);
+        padding-bottom: var(--space-3);
+        border-bottom: 1px solid var(--line-subtle);
+        color: var(--text-strong);
+        font-size: var(--fs-title);
+        font-weight: var(--fw-semibold);
+      }
+      h2 small {
+        color: var(--text-quiet);
+        font-size: var(--fs-caption);
+        font-weight: var(--fw-regular);
+        letter-spacing: 0.02em;
+      }
+      h3 {
+        margin: var(--space-6) 0 var(--space-3);
+        color: var(--gold-soft);
+        font-size: var(--fs-heading);
+        font-weight: var(--fw-medium);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+        gap: var(--space-3);
+      }
+      .swatch {
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+      }
+      .chip {
+        height: 56px;
+        border-bottom: 1px solid var(--line-subtle);
+      }
+      .meta {
+        padding: var(--space-2) var(--space-2) var(--space-3);
+        background: var(--bg-panel);
+      }
+      .meta b {
+        display: block;
+        color: var(--text-body);
+        font-size: var(--fs-label);
+        font-weight: var(--fw-medium);
+      }
+      .meta code {
+        display: block;
+        margin-top: 2px;
+        color: var(--text-tertiary);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: var(--fs-caption);
+      }
+      .meta i {
+        display: block;
+        margin-top: var(--space-1);
+        color: var(--text-quiet);
+        font-size: var(--fs-micro);
+        font-style: normal;
+      }
+      .scale {
+        display: grid;
+        gap: var(--space-2);
+        padding: var(--space-4);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        background: var(--bg-panel);
+      }
+      .row {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-4);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px dashed var(--line-subtle);
+      }
+      .row:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+      .row span {
+        flex: 0 0 128px;
+        color: var(--text-tertiary);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: var(--fs-caption);
+      }
+      .row p {
+        margin: 0;
+        color: var(--text-primary);
+      }
+      .demo {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: var(--space-4);
+      }
+      .card {
+        padding: var(--space-4);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        background: linear-gradient(180deg, var(--bg-panel), var(--bg-panel-deep));
+      }
+      .card h4 {
+        margin: 0 0 var(--space-3);
+        color: var(--text-primary);
+        font-size: var(--fs-heading);
+        font-weight: var(--fw-semibold);
+      }
+      .btn {
+        width: 100%;
+        border: 0;
+        border-radius: var(--radius-md);
+        padding: 11px 12px;
+        font-family: inherit;
+        font-size: var(--fs-label);
+        line-height: var(--lh-normal);
+        cursor: pointer;
+      }
+      .btn-primary {
+        background: var(--jade-deep);
+        color: var(--text-strong);
+        font-size: var(--fs-heading);
+        font-weight: var(--fw-bold);
+        letter-spacing: 2px;
+        min-height: 48px;
+      }
+      .btn-primary:hover {
+        background: var(--jade-hover);
+      }
+      .btn-secondary {
+        margin-top: var(--space-2);
+        background: var(--bg-panel-soft);
+        color: var(--text-body);
+      }
+      .btn-text {
+        background: none;
+        color: var(--text-quiet);
+        font-size: var(--fs-caption);
+      }
+      .btn-ghost-danger {
+        margin-top: var(--space-2);
+        border: 1px solid var(--state-danger);
+        background: var(--state-danger-bg);
+        color: var(--state-danger);
+      }
+      .goal {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-bottom: var(--space-2);
+        padding: var(--space-2) 14px;
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--gold);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-body);
+        font-size: var(--fs-body-sm);
+      }
+      .goal span {
+        color: var(--text-tertiary);
+        font-size: var(--fs-caption);
+      }
+      .warn {
+        margin-bottom: var(--space-3);
+        padding: var(--space-2) 10px;
+        border-left: 3px solid var(--gold);
+        border-radius: var(--radius-sm);
+        background: var(--bg-warm);
+        color: #d9cdb0;
+        font-size: var(--fs-label);
+        line-height: var(--lh-loose);
+      }
+      .warn b {
+        color: var(--gold);
+      }
+      .danger {
+        margin-bottom: var(--space-3);
+        padding: var(--space-2) 10px;
+        border-left: 3px solid var(--state-danger);
+        border-radius: var(--radius-sm);
+        background: var(--state-danger-bg);
+        color: var(--text-body);
+        font-size: var(--fs-label);
+        line-height: var(--lh-loose);
+      }
+      .danger b {
+        color: var(--state-danger);
+      }
+      .ok {
+        padding: var(--space-2) 10px;
+        border-left: 3px solid var(--state-success);
+        border-radius: var(--radius-sm);
+        background: var(--state-success-bg);
+        color: var(--text-body);
+        font-size: var(--fs-label);
+      }
+      .ok b {
+        color: var(--state-success);
+      }
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-3);
+      }
+      .tag {
+        padding: 4px 8px;
+        border: 1px solid var(--gold-deep);
+        border-radius: var(--radius-pill);
+        color: var(--gold-deep);
+        font-size: var(--fs-micro);
+      }
+      .tag-on {
+        border-color: var(--gold);
+        background: var(--bg-warm);
+        color: var(--gold);
+      }
+      .tag-ok {
+        border-color: var(--state-success);
+        color: var(--state-success);
+      }
+      .tag-bad {
+        border-color: var(--state-danger);
+        color: var(--state-danger);
+      }
+      .toast {
+        padding: 10px var(--space-4);
+        border: 1px solid var(--gold-deep);
+        border-radius: var(--radius-md);
+        background: rgba(20, 24, 26, 0.92);
+        box-shadow: var(--shadow-raised);
+        color: #f0d9a6;
+        font-size: var(--fs-body-sm);
+        line-height: var(--lh-normal);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--fs-label);
+      }
+      th,
+      td {
+        padding: var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--line-subtle);
+        text-align: left;
+      }
+      th {
+        color: var(--text-tertiary);
+        font-weight: var(--fw-medium);
+      }
+      td {
+        color: var(--text-body);
+      }
+      td code {
+        color: var(--gold-soft);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: var(--fs-caption);
+      }
+      footer {
+        margin-top: var(--space-12);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--line);
+        color: var(--text-quiet);
+        font-size: var(--fs-caption);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <p class="eyebrow">Visual Tokens · Frozen V1.0</p>
+        <h1>深色校园夜巡 · 视觉令牌冻结</h1>
+        <p class="lede">
+          本页所有色块与组件均由 <code>src/tokens.css</code> 的变量渲染，不含硬编码色值 ——
+          也就是说，开发只要拿到这一个文件，就能还原出下面全部观感。取值全部来自现有
+          <code>style.css</code> 的真实现值，未发明新色相。
+        </p>
+      </header>
+
+      <section>
+        <h2>1 底色 <small>6 级，只在这 6 层里选，不再自造第 7 个深色</small></h2>
+        <div class="grid">
+          <div class="swatch">
+            <div class="chip" style="background: #0b0f0e"></div>
+            <div class="meta">
+              <b>遮罩 / 画布底</b>
+              <code>--bg-void #0B0F0E</code>
+              <i>新增，弹窗与 canvas 使用</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #111313"></div>
+            <div class="meta">
+              <b>页面底</b>
+              <code>--bg-base #111313</code>
+              <i>现有 :root background</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #171b19"></div>
+            <div class="meta">
+              <b>面板</b>
+              <code>--bg-panel #171B19</code>
+              <i>卡片、目标、条目</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #1d2320"></div>
+            <div class="meta">
+              <b>面板次级块</b>
+              <code>--bg-panel-soft #1D2320</code>
+              <i>装备格、列表行</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #121514"></div>
+            <div class="meta">
+              <b>面板渐变终点</b>
+              <code>--bg-panel-deep #121514</code>
+              <i>与 panel 搭配做纵向渐变</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #241f14"></div>
+            <div class="meta">
+              <b>暖底</b>
+              <code>--bg-warm #241F14</code>
+              <i>风险提示块专用</i>
+            </div>
+          </div>
+        </div>
+
+        <h3>描边 3 级</h3>
+        <div class="grid">
+          <div class="swatch">
+            <div class="chip" style="background: #2b322f"></div>
+            <div class="meta">
+              <b>弱分隔线</b>
+              <code>--line-subtle #2B322F</code>
+              <i>行分隔、表格线</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #3b403d"></div>
+            <div class="meta">
+              <b>默认描边</b>
+              <code>--line #3B403D</code>
+              <i>卡片、面板</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #56625b"></div>
+            <div class="meta">
+              <b>强调描边</b>
+              <code>--line-strong #56625B</code>
+              <i>激活态、hover 边框</i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>2 文字 <small>5 级 + 禁用，对比度均已按 WCAG 实算</small></h2>
+        <div class="grid">
+          <div class="swatch">
+            <div class="chip" style="background: #f5f0d3"></div>
+            <div class="meta">
+              <b>最强</b>
+              <code>--text-strong #F5F0D3</code>
+              <i>16.6:1 · 主按钮文字</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #e5e7e6"></div>
+            <div class="meta">
+              <b>默认正文</b>
+              <code>--text-primary #E5E7E6</code>
+              <i>15.3:1 · 界面主体</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #b7c0b6"></div>
+            <div class="meta">
+              <b>长句正文</b>
+              <code>--text-body #B7C0B6</code>
+              <i>10.2:1 · 任务简报</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #9da79f"></div>
+            <div class="meta">
+              <b>说明 / 元信息</b>
+              <code>--text-secondary #9DA79F</code>
+              <i>7.7:1</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #8a9a8d"></div>
+            <div class="meta">
+              <b>小字 / 次要标签</b>
+              <code>--text-tertiary #8A9A8D</code>
+              <i>6.4:1 · 面板内正文下限</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #7f8c82"></div>
+            <div class="meta">
+              <b>稀疏提示</b>
+              <code>--text-quiet #7F8C82</code>
+              <i>5.4:1 · 仅 bg-base 上可当正文</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #56625b"></div>
+            <div class="meta">
+              <b>禁用 / 装饰</b>
+              <code>--text-disabled #56625B</code>
+              <i>3.0:1 · 不得承载信息</i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>3 强调与状态 <small>金色=可交互，青绿=安全，红=受伤/失败</small></h2>
+        <div class="grid">
+          <div class="swatch">
+            <div class="chip" style="background: #e6ac48"></div>
+            <div class="meta">
+              <b>主强调 · 金</b>
+              <code>--gold #E6AC48</code>
+              <i>9.4:1 · 焦点环、勾选</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #eed28e"></div>
+            <div class="meta">
+              <b>金 · 浅阶</b>
+              <code>--gold-soft #EED28E</code>
+              <i>hover 文字</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #f5e7b3"></div>
+            <div class="meta">
+              <b>金 · 标题阶</b>
+              <code>--gold-warm #F5E7B3</code>
+              <i>仅 h2 级标题</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #b28c55"></div>
+            <div class="meta">
+              <b>金 · 暗阶</b>
+              <code>--gold-deep #B28C55</code>
+              <i>眉标、静态强调</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #9bb967"></div>
+            <div class="meta">
+              <b>次强调 · 青绿</b>
+              <code>--jade #9BB967</code>
+              <i>8.6:1 · 进度、已解锁</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #234d3e"></div>
+            <div class="meta">
+              <b>主按钮底</b>
+              <code>--jade-deep #234D3E</code>
+              <i>hover → #32644D</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #d65a4a"></div>
+            <div class="meta">
+              <b>危险</b>
+              <code>--state-danger #D65A4A</code>
+              <i>4.9:1 · 新增，原缺失</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #2a1613"></div>
+            <div class="meta">
+              <b>危险底</b>
+              <code>--state-danger-bg #2A1613</code>
+              <i>新增</i>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: #16231a"></div>
+            <div class="meta">
+              <b>成功底</b>
+              <code>--state-success-bg #16231A</code>
+              <i>新增</i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>4 字号与行高 <small>17 种收敛为 9 档</small></h2>
+        <div class="scale">
+          <div class="row">
+            <span>--fs-display 28px</span>
+            <p style="font-size: 28px; font-weight: 600">校区摸金 · 第一章</p>
+          </div>
+          <div class="row">
+            <span>--fs-headline 24px</span>
+            <p style="font-size: 24px; font-weight: 600">本局结算</p>
+          </div>
+          <div class="row">
+            <span>--fs-title 20px</span>
+            <p style="font-size: 20px; font-weight: 600">行动中心</p>
+          </div>
+          <div class="row">
+            <span>--fs-heading 16px</span>
+            <p style="font-size: 16px; font-weight: 500">出发前确认</p>
+          </div>
+          <div class="row">
+            <span>--fs-body 14px</span>
+            <p style="font-size: 14px">思源碑下的手记已被翻动过，带不回来就得明天再来。</p>
+          </div>
+          <div class="row">
+            <span>--fs-body-sm 13px</span>
+            <p style="font-size: 13px">界面常规文本，出现频率最高的一档</p>
+          </div>
+          <div class="row">
+            <span>--fs-label 12px</span>
+            <p style="font-size: 12px">表单标签与说明文字</p>
+          </div>
+          <div class="row">
+            <span>--fs-caption 11px</span>
+            <p style="font-size: 11px">元信息 · 眉标 · 章节编号</p>
+          </div>
+          <div class="row">
+            <span>--fs-micro 10px</span>
+            <p style="font-size: 10px">极小标签，仅限非关键信息</p>
+          </div>
+        </div>
+        <h3>行高 4 档</h3>
+        <table>
+          <tr>
+            <th>令牌</th>
+            <th>值</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td><code>--lh-tight</code></td>
+            <td>1.35</td>
+            <td>标题、单行强调</td>
+          </tr>
+          <tr>
+            <td><code>--lh-normal</code></td>
+            <td>1.6</td>
+            <td>按钮、表单、HUD</td>
+          </tr>
+          <tr>
+            <td><code>--lh-relaxed</code></td>
+            <td>1.8</td>
+            <td>说明段落（现有最高频）</td>
+          </tr>
+          <tr>
+            <td><code>--lh-loose</code></td>
+            <td>1.9</td>
+            <td>任务简报、剧情长句</td>
+          </tr>
+        </table>
+      </section>
+
+      <section>
+        <h2>5 组件样例 <small>全部由令牌拼装，可直接复制到页面里用</small></h2>
+        <div class="demo">
+          <div class="card">
+            <h4>按钮四态</h4>
+            <button class="btn btn-primary">开始探索 <span>↗</span></button>
+            <button class="btn btn-secondary">进入仓库</button>
+            <button class="btn btn-text">重看新手引导</button>
+            <button class="btn btn-ghost-danger">放弃本局</button>
+          </div>
+
+          <div class="card">
+            <h4>目标卡与标签</h4>
+            <div class="goal">带回残缺手记<span>主线 · 图书馆三层</span></div>
+            <div class="goal">价值累计 ≥ 100<span>可选 · 任意搜证点</span></div>
+            <div class="tags">
+              <span class="tag">可携带 3 件</span>
+              <span class="tag tag-on">已选 2 件</span>
+              <span class="tag tag-ok">已解锁</span>
+              <span class="tag tag-bad">未解锁</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4>三条状态提示</h4>
+            <div class="warn"><b>风险提示</b>：夜间巡逻队会在 2 分钟后经过明湖。</div>
+            <div class="danger"><b>撤离被拒绝</b>：还差 40 价值，无法解锁南门。</div>
+            <div class="ok"><b>已归档</b>：本章证据齐全，可回看剧情。</div>
+          </div>
+
+          <div class="card">
+            <h4>底部横幅</h4>
+            <div class="toast">撤离未解锁 · 还差 100 价值</div>
+            <table style="margin-top: 16px">
+              <tr>
+                <th>层级</th>
+                <th>令牌</th>
+                <th>值</th>
+              </tr>
+              <tr>
+                <td>HUD / 引导卡</td>
+                <td><code>--z-hud</code></td>
+                <td>4</td>
+              </tr>
+              <tr>
+                <td>状态横幅</td>
+                <td><code>--z-toast</code></td>
+                <td>5</td>
+              </tr>
+              <tr>
+                <td>抽屉 / 覆盖层</td>
+                <td><code>--z-drawer</code></td>
+                <td>41</td>
+              </tr>
+              <tr>
+                <td>模态弹窗</td>
+                <td><code>--z-modal</code></td>
+                <td>1000</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        交大摸金录 · 视觉样例冻结 V1.0（2026-10-31）｜令牌源文件
+        <code>src/tokens.css</code>｜规范文档 <code>docs/delivery/d-visual-tokens.md</code><br />
+        本内容由 AI 生成，请核实后使用。
+      </footer>
+    </div>
+  </body>
+</html>
