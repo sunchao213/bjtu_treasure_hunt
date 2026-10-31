@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>交大摸金录 · 图标规范 V1.0</title>
+    <link rel="stylesheet" href="../../src/tokens.css" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px 32px 96px;
+        background: var(--bg-base);
+        color: var(--text-primary);
+        font-family: var(--font-ui);
+        font-size: var(--fs-body-sm);
+        line-height: var(--lh-normal);
+      }
+      .wrap {
+        max-width: 1040px;
+        margin: 0 auto;
+      }
+      header {
+        padding-bottom: var(--space-6);
+        border-bottom: 1px solid var(--line);
+      }
+      .eyebrow {
+        margin: 0 0 var(--space-2);
+        color: var(--gold-deep);
+        font-size: var(--fs-micro);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0 0 var(--space-3);
+        color: var(--gold-warm);
+        font-size: var(--fs-display);
+        font-weight: var(--fw-semibold);
+        line-height: var(--lh-tight);
+      }
+      .lede {
+        max-width: 70ch;
+        margin: 0;
+        color: var(--text-body);
+        font-size: var(--fs-body);
+        line-height: var(--lh-loose);
+      }
+      .status {
+        margin-top: var(--space-4);
+        padding: var(--space-3) var(--space-4);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-tertiary);
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: var(--fs-caption);
+      }
+      section {
+        margin-top: var(--space-12);
+      }
+      h2 {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-3);
+        margin: 0 0 var(--space-4);
+        padding-bottom: var(--space-3);
+        border-bottom: 1px solid var(--line-subtle);
+        color: var(--text-strong);
+        font-size: var(--fs-title);
+        font-weight: var(--fw-semibold);
+      }
+      h2 small {
+        color: var(--text-quiet);
+        font-size: var(--fs-caption);
+        font-weight: var(--fw-regular);
+      }
+      p.note {
+        max-width: 72ch;
+        margin: 0 0 var(--space-4);
+        color: var(--text-body);
+        line-height: var(--lh-relaxed);
+      }
+      code {
+        font-family: ui-monospace, 'Cascadia Mono', monospace;
+        font-size: 0.94em;
+        color: var(--gold-soft);
+      }
+      /* 两颗对照：24 网格 vs 图鉴 64 网格 */
+      .duo {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: var(--space-4);
+      }
+      .class-card {
+        padding: var(--space-4);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-lg);
+        background: var(--bg-panel);
+      }
+      .class-card h3 {
+        margin: 0 0 var(--space-2);
+        color: var(--gold-soft);
+        font-size: var(--fs-heading);
+        font-weight: var(--fw-medium);
+      }
+      .class-card p {
+        margin: 0 0 var(--space-3);
+        color: var(--text-secondary);
+        font-size: var(--fs-label);
+        line-height: var(--lh-relaxed);
+      }
+      .class-card ul {
+        margin: 0;
+        padding-left: var(--space-5);
+        color: var(--text-body);
+        font-size: var(--fs-label);
+        line-height: var(--lh-loose);
+      }
+      .demo-row {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--space-5);
+        margin-top: var(--space-4);
+        padding: var(--space-4);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel-soft);
+      }
+      .demo-row figure {
+        margin: 0;
+        text-align: center;
+      }
+      .demo-row figcaption {
+        margin-top: var(--space-2);
+        color: var(--text-quiet);
+        font-size: var(--fs-micro);
+      }
+      /* 网格解剖图 */
+      .anatomy {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-6);
+        align-items: flex-start;
+      }
+      .anatomy svg {
+        display: block;
+        background: var(--bg-panel);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+      }
+      .anatomy ol {
+        flex: 1 1 320px;
+        margin: 0;
+        padding-left: var(--space-6);
+        color: var(--text-body);
+        line-height: var(--lh-loose);
+      }
+      .anatomy li {
+        margin-bottom: var(--space-2);
+      }
+      .anatomy b {
+        color: var(--text-strong);
+        font-weight: var(--fw-medium);
+      }
+      /* 图标网格 */
+      .icons {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+        gap: var(--space-3);
+      }
+      .icon-card {
+        padding: var(--space-3);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+      }
+      .icon-card .sizes {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--space-3);
+        color: var(--text-primary);
+      }
+      .icon-card .sizes span {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        color: var(--text-quiet);
+        font-size: var(--fs-micro);
+      }
+      .icon-card .meta {
+        margin-top: var(--space-3);
+        padding-top: var(--space-2);
+        border-top: 1px dashed var(--line-subtle);
+      }
+      .icon-card .meta b {
+        display: block;
+        color: var(--text-body);
+        font-size: var(--fs-label);
+        font-weight: var(--fw-medium);
+      }
+      .icon-card .meta code {
+        font-size: var(--fs-micro);
+        color: var(--text-quiet);
+      }
+      /* 对错示例 */
+      .pairs {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: var(--space-3);
+      }
+      .pair {
+        padding: var(--space-3) var(--space-4);
+        border: 1px solid var(--line-subtle);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+      }
+      .pair b {
+        display: block;
+        margin-bottom: var(--space-2);
+        font-size: var(--fs-label);
+        font-weight: var(--fw-medium);
+      }
+      .pair.ok b {
+        color: var(--jade);
+      }
+      .pair.no b {
+        color: var(--state-danger);
+      }
+      .pair p {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: var(--fs-label);
+        line-height: var(--lh-relaxed);
+      }
+      .pair .sample {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-bottom: var(--space-2);
+        color: var(--text-primary);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--fs-caption);
+      }
+      th,
+      td {
+        padding: var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--line-subtle);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--text-tertiary);
+        font-weight: var(--fw-medium);
+        white-space: nowrap;
+      }
+      td {
+        color: var(--text-body);
+      }
+      td code {
+        color: var(--text-tertiary);
+        word-break: break-all;
+      }
+      footer {
+        margin-top: var(--space-12);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--line-subtle);
+        color: var(--text-quiet);
+        font-size: var(--fs-caption);
+        line-height: var(--lh-relaxed);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <p class="eyebrow">Icon Spec · V1.0</p>
+        <h1>图标规范</h1>
+        <p class="lede">
+          现状是两套都不完整：图鉴里有 11 个画得不错的 64×64 描边图标，但界面按钮全是纯文字；
+          唯一的「图标」是 3 处关闭按钮，直接拿字符 <code>×</code> 顶替。项目里其实没有
+          emoji——之前文档写成「SVG 与 emoji 混用」是错的，已订正。本页把两类图标分开定死——
+          图鉴那种大图继续用 64 网格，界面按钮用 24 网格，各自绑定自己的描边宽度。
+        </p>
+        <div class="status" id="status">
+          图标模块加载中…（必须经 npm run dev 访问，file:// 下无法加载 TS 模块）
+        </div>
+      </header>
+
+      <section>
+        <h2>一、两类图标 <small>不是缩放关系，是两套</small></h2>
+        <p class="note">
+          常见错误是「先画一个 64 的，再缩到 20 用」。缩放会让描边一起变小：64 网格上的 3px 描边缩到
+          20px 只剩 0.94px，在暗底上直接糊掉。正确做法是每个渲染尺寸单独算描边，所以按尺寸分成两类。
+        </p>
+        <div class="duo">
+          <div class="class-card">
+            <h3>UI / 功能性</h3>
+            <p>24 网格 · 2px 描边 · 渲染 16–32px。跟着按钮和标签走，单色 currentColor。</p>
+            <ul>
+              <li>可视区域 2–22，四周留 2px 安全边</li>
+              <li>只有描边，没有填充</li>
+              <li>圆头圆角（round / round）</li>
+              <li>本页 14 个全部属于这一类</li>
+            </ul>
+            <div class="demo-row" id="demo-ui"></div>
+          </div>
+          <div class="class-card">
+            <h3>图鉴 / 说明性</h3>
+            <p>
+              64 网格 · 3px 描边 · 渲染 56–96px。<strong>保持现状不改</strong>，避免无意义返工。
+            </p>
+            <ul>
+              <li>已存在于 <code>ui/codex.ts</code> 的 <code>iconPaths</code></li>
+              <li>11 个：医疗箱、纸张、橡皮、地图、座位、咖啡、徽章、羽毛、钥匙、蝙蝠、锁</li>
+              <li>未来新增图鉴物品图沿用这套，不要混进 24 网格</li>
+            </ul>
+            <div class="demo-row" id="demo-codex"></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>二、24 网格怎么画 <small>五条几何硬规则</small></h2>
+        <div class="anatomy">
+          <svg width="240" height="240" viewBox="-12 -12 48 48" aria-label="24 网格解剖图">
+            <defs>
+              <pattern id="g" width="2" height="2" patternUnits="userSpaceOnUse">
+                <path d="M2 0H0V2" fill="none" stroke="var(--line-subtle)" stroke-width="0.08" />
+              </pattern>
+            </defs>
+            <rect x="0" y="0" width="24" height="24" fill="url(#g)" />
+            <rect
+              x="0.04"
+              y="0.04"
+              width="23.92"
+              height="23.92"
+              fill="none"
+              stroke="var(--line)"
+              stroke-width="0.1"
+            />
+            <rect
+              x="2"
+              y="2"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="var(--state-danger)"
+              stroke-width="0.12"
+              stroke-dasharray="0.6 0.4"
+            />
+            <path
+              d="M12 3V21 M3 12H21"
+              stroke="var(--line-strong)"
+              stroke-width="0.1"
+              stroke-dasharray="0.5 0.5"
+            />
+            <circle cx="12" cy="12" r="0.35" fill="var(--gold)" />
+            <text x="12" y="-3.4" fill="var(--text-tertiary)" font-size="2.4" text-anchor="middle">
+              24
+            </text>
+            <text x="2" y="26.6" fill="var(--state-danger)" font-size="2">2</text>
+          </svg>
+          <ol>
+            <li>
+              <b>画布 24×24，可视区 2–22。</b>四周 2px 安全边，避免图标和容器描边相切（UI
+              里按钮描边就是 1px，贴边会粘在一起）。
+            </li>
+            <li>
+              <b>描边 2px，不缩放。</b>24 格配 2px 的视觉重量，约等于 64 格配 5.3px；跟现有 64/3
+              相比更「厚」，这是小尺寸必须的补偿。
+            </li>
+            <li>
+              <b>圆头圆角。</b><code>stroke-linecap: round</code> +
+              <code>stroke-linejoin: round</code>。方头在 16px 下会出现毛刺。
+            </li>
+            <li>
+              <b>只用 currentColor。</b>图标跟随文字色，状态色（危险/成功）由父级
+              <code>color</code> 决定，不用给图标单独配色。
+            </li>
+            <li>
+              <b>单条 path，多段用空格分隔。</b>不写 <code>fill</code>，不写
+              <code>style</code>，便于统一替换与批量校验。
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section>
+        <h2>三、14 个图标 <small>16 / 20 / 24 / 32 四档实渲染</small></h2>
+        <p class="note">
+          下面每一格都是真实渲染，不是图片。字号档位对应关系：16 用于行内小图标，20 用于按钮内图标，
+          24 用于导航栏，32
+          用于空状态插图。中间值（18、22）不要用——多一档就多一套需要人眼复核的东西。
+        </p>
+        <div class="icons" id="icons"></div>
+      </section>
+
+      <section>
+        <h2>四、对与错</h2>
+        <div class="pairs" id="pairs"></div>
+      </section>
+
+      <section>
+        <h2>五、路径数据 <small>可直接复制到代码里</small></h2>
+        <p class="note">
+          表格由
+          <code>src/modules/ui/icons.ts</code>
+          实时读取，改源码这里就变，不存在文档与代码对不上的情况。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>键名</th>
+              <th>中文</th>
+              <th>d（24 网格，2px 描边）</th>
+            </tr>
+          </thead>
+          <tbody id="path-table"></tbody>
+        </table>
+      </section>
+
+      <footer>
+        图标源文件 <code>src/modules/ui/icons.ts</code>（草稿，未被任何模块 import）｜令牌
+        <code>src/tokens.css</code>｜规范文档 <code>docs/delivery/d-visual-tokens.md</code><br />
+        本页通过 <code>../src/modules/ui/icons.ts</code> 直接导入真实数据渲染，因此必须经
+        <code>npm run dev</code> 访问。
+      </footer>
+    </div>
+
+    <script type="module">
+      import { ICON_GRID, ICON_STROKE, UI_ICONS, iconSvg } from '../../src/modules/ui/icons.ts';
+
+      const status = document.getElementById('status');
+      status.textContent =
+        `已从源码读取 ${UI_ICONS.length} 个图标 ｜ 网格 ${ICON_GRID} ｜ 描边 ${ICON_STROKE}px ｜ ` +
+        `取色 currentColor`;
+
+      // 两类图标的尺寸对照
+      document.getElementById('demo-ui').innerHTML = [16, 20, 24, 32]
+        .map(
+          (size) =>
+            `<figure>${iconSvg('flashlight', { size })}<figcaption>${size}px</figcaption></figure>`,
+        )
+        .join('');
+      // 图鉴那套用原样的 64 网格图，画三个做对照
+      const CODEX = [
+        {
+          d: 'M10 18H54V54H10Z M24 18V10H40V18 M28 28H36V34H42V42H36V48H28V42H22V34H28Z',
+          size: 32,
+        },
+        {
+          d: 'M12 54L46 14 M18 46Q8 28 32 12Q44 4 54 10Q60 26 42 42Q30 52 18 46 M26 38L24 22 M34 29L49 28',
+          size: 48,
+        },
+        { d: 'M18 27V19A14 14 0 0 1 46 19V27 M12 27H52V56H12Z M32 37V46', size: 64 },
+      ];
+      document.getElementById('demo-codex').innerHTML = CODEX.map(
+        (icon) =>
+          `<figure><svg viewBox="0 0 64 64" width="${icon.size}" height="${icon.size}" fill="none" ` +
+          `stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ` +
+          `style="color: var(--text-body)"><path d="${icon.d}"/></svg>` +
+          `<figcaption>${icon.size}px</figcaption></figure>`,
+      ).join('');
+
+      // 14 个图标 × 4 档
+      document.getElementById('icons').innerHTML = UI_ICONS.map((icon) => {
+        const sizes = [16, 20, 24, 32]
+          .map((size) => `<span>${iconSvg(icon.name, { size })}${size}</span>`)
+          .join('');
+        return (
+          `<div class="icon-card"><div class="sizes">${sizes}</div>` +
+          `<div class="meta"><b>${icon.label}</b><code>${icon.name}</code></div></div>`
+        );
+      }).join('');
+
+      // 对错对照
+      const pairs = [
+        {
+          ok: true,
+          title: '尺寸取四档之一',
+          sample: `${iconSvg('search', { size: 20 })}<span>搜索</span>`,
+          text: '20px 配 13px 文字，视觉重量相当。',
+        },
+        {
+          ok: false,
+          title: '不要用 18 / 22 这种中间值',
+          sample: `${iconSvg('search', { size: 18 })}<span>搜索</span>`,
+          text: '多一档就要多一轮人眼复核，收益为零。',
+        },
+        {
+          ok: true,
+          title: '颜色交给父级',
+          sample: `<span style="color: var(--jade)">${iconSvg('extract', { size: 20 })}</span><span>可撤离</span>`,
+          text: 'currentColor 随文字变，模板里换个 class 就是成功态。',
+        },
+        {
+          ok: false,
+          title: '不要给图标单独写颜色',
+          sample: `<span style="color: var(--state-danger)">${iconSvg('close', { size: 20 })}</span><span>关闭</span>`,
+          text: '图标写死红色后，「关闭」这个中性动作会被误读成危险操作。',
+        },
+        {
+          ok: true,
+          title: '纯文字按钮不必硬加图标',
+          sample: `<span>开始探索</span>`,
+          text: '按钮文案已经说清楚了，加图标只会增加噪声。',
+        },
+        {
+          ok: false,
+          title: '不要用字符当图标',
+          sample: `<span style="font-size: 20px">×</span><span>关闭</span>`,
+          text: '字符基线、粗细、光学大小都不可控，也是现在关闭按钮的问题。',
+        },
+      ];
+      document.getElementById('pairs').innerHTML = pairs
+        .map(
+          (pair) =>
+            `<div class="pair ${pair.ok ? 'ok' : 'no'}"><b>${pair.ok ? '✓ 对' : '✕ 错'} · ${pair.title}</b>` +
+            `<div class="sample">${pair.sample}</div><p>${pair.text}</p></div>`,
+        )
+        .join('');
+
+      // 路径表
+      document.getElementById('path-table').innerHTML = UI_ICONS.map(
+        (icon) =>
+          `<tr><td><code>${icon.name}</code></td><td>${icon.label}</td><td><code>${icon.d}</code></td></tr>`,
+      ).join('');
+    </script>
+  </body>
+</html>
