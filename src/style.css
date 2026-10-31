@@ -614,6 +614,15 @@ main {
     radial-gradient(1100px 460px at 12% -14%, rgba(230, 172, 72, 0.1), transparent 62%),
     radial-gradient(860px 420px at 100% 0%, rgba(155, 185, 103, 0.07), transparent 58%);
 }
+/* DEF-04：桌面窗口高度不足（实测 900×500、844×390）时，准备页内容会超出主区，
+   被上面的 overflow:hidden 裁掉且整页无滚动路径 → 「开始探索」点不到。
+   这里只给桌面端放开主区纵向滚动兜底（触屏端由 mobile-layout.css 的 #app 滚动负责），
+   内容放得下时不产生滚动条，常规尺寸的观感不变。 */
+html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .prep-view {
   display: flex;
   flex: 1 1 auto;
@@ -622,6 +631,9 @@ main {
 .prep-page {
   display: grid;
   grid-template-columns: 218px minmax(0, 1fr);
+  /* DEF-04：显式约束行高，让 .lobby-panel 的 overflow:auto 真正生效；
+     否则行高按内容撑开、越过 .prep-page 后再被 main 的 overflow:hidden 裁掉。 */
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   width: 100%;
   max-width: 1220px;
