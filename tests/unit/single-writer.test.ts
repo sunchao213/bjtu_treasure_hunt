@@ -24,4 +24,16 @@ describe('single-writer save lock', () => {
     release?.();
     expect(request).toHaveBeenCalledTimes(2);
   });
+
+  it('uses the account-specific lock so different accounts do not block each other', async () => {
+    const request = vi.fn(async (_name, _options, callback) => callback({ name: 'account' }));
+    vi.stubGlobal('navigator', { locks: { request } });
+    const release = await acquireSaveLock('bjtu-treasure-hunt:account:alice');
+    expect(request).toHaveBeenCalledWith(
+      'bjtu-treasure-hunt:account:alice',
+      { ifAvailable: true },
+      expect.any(Function),
+    );
+    release?.();
+  });
 });
