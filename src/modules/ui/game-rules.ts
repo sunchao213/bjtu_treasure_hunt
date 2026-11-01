@@ -1,10 +1,11 @@
 import { RAID_RULES } from '../../config/game-config';
+import { iconSvg } from './icons';
 
 export function gameRulesMarkup(): string {
   return `
     <dialog id="game-rules" class="rules-dialog" aria-labelledby="rules-title">
       <header class="rules-header"><div><p class="rules-eyebrow">海淀校区 · 夜巡</p><h1 id="rules-title">游戏规则</h1></div>
-        <button id="close-rules" class="rules-close" aria-label="关闭游戏规则" title="关闭">×</button></header>
+        <button id="close-rules" class="rules-close" aria-label="关闭游戏规则" title="关闭">${iconSvg('close', { size: 24 })}</button></header>
       <div class="rules-content">
         <section><h2>搜集物资，活着撤离</h2>
           <p>每局 ${RAID_RULES.durationMs / 60_000} 分钟，初始生命 ${RAID_RULES.maxHealth}，背包 ${RAID_RULES.bagCapacity} 格。搜到并仍携带的本局物资价值达到 <strong>${RAID_RULES.threshold}</strong> 后，回到南门撤离点申请撤离。</p>

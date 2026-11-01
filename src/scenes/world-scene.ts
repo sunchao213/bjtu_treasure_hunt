@@ -137,7 +137,7 @@ export class WorldScene extends Phaser.Scene {
   private hitStopMs = 0;
   private lastNightDraw = -Infinity;
   private readonly bounds = { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 };
-  private interaction = '从右侧准备面板开始探索';
+  private interaction = '在准备页确认风险后开始探索';
   private releaseDamage?: () => void;
   /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
   private banner: { text: string; untilMs: number } | null = null;
@@ -228,7 +228,9 @@ export class WorldScene extends Phaser.Scene {
     this.createEnemyAnimations();
     this.drawCampus();
     this.createCampusForeground();
-    this.textures.remove('night-mask');
+    if (this.textures.exists('night-mask')) {
+      this.textures.remove('night-mask');
+    }
     this.darkness = this.textures.createCanvas('night-mask', 1, 1) ?? undefined;
     this.darknessImage = this.add.image(0, 0, 'night-mask').setOrigin(0).setDepth(NIGHT_MASK_DEPTH);
     this.flashlight = this.add.graphics().setDepth(EFFECTS_DEPTH);
