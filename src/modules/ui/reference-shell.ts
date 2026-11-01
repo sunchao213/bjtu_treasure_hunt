@@ -59,6 +59,14 @@ export function mountShell(root: HTMLElement): void {
             <label class="consent"><input id="risk-consent" type="checkbox" />我已了解：失败或刷新会损失本局携带物，未带入的仓库物品保留。</label>
             <button id="start" class="primary" disabled>开始探索 <span>↗</span></button>
           </section>
+          <section class="side-card room-card" id="room-panel"><div class="section-kicker">联机房间 <span id="room-connection">未连接</span></div>
+            <p id="room-status" class="muted">开发环境可用双标签页联机演示；配置服务器后自动使用 WebSocket。</p>
+            <label class="field-label" for="room-name">玩家名称</label><input id="room-name" class="room-input" value="探险者" maxlength="12" />
+            <label class="field-label" for="room-code">房间号</label><input id="room-code" class="room-input" placeholder="创建后分享给队友" maxlength="12" />
+            <div class="room-actions"><button id="room-create" class="secondary">创建房间</button><button id="room-join" class="secondary">加入房间</button></div>
+            <div id="room-members" class="room-members" hidden></div>
+            <div class="room-actions" id="room-controls" hidden><button id="room-ready" class="secondary">准备</button><button id="room-start" class="primary">开始房间</button><button id="room-leave" class="text-button">离开</button></div>
+          </section>
           <section class="side-card" id="inventory-panel" hidden><div class="section-kicker">临时背包 <span id="bag-count">0 / 6</span></div>
             <ul id="inventory" class="inventory"></ul>
             <button id="extract" class="primary">在撤离点申请撤离</button>
