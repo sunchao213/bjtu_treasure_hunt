@@ -14,9 +14,14 @@ import { chapterUnlockGranted, questProgress } from './modules/quests/quest-serv
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
 import { WorldScene } from './scenes/world-scene';
 import { EventBus } from './shared/events/game-events';
-import type { ItemInstance } from './shared/types/game';
+import type { InventoryClientPort, ItemInstance, RaidControllerPort } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
 import { SoundManager } from './modules/ui/sound-manager';
+import { RoomSession } from './modules/network/room-session';
+import { BroadcastRoomTransport, WebSocketTransport } from './modules/network/realtime-transport';
+import { GameSession } from './modules/network/game-session';
+import { OnlineInventory } from './modules/network/online-inventory';
+import { OnlineRaidController } from './modules/network/online-raid-controller';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -85,6 +90,11 @@ async function bootstrap(): Promise<void> {
     notify('检测到上次未结束的探索，已按中断失败处理；未带入仓库的物品不受影响。');
   }
   const events = new EventBus();
+  const realtimeUrl = import.meta.env.VITE_REALTIME_URL;
+  const realtimeTransport = realtimeUrl
+    ? new WebSocketTransport(realtimeUrl)
+    : new BroadcastRoomTransport();
+  const roomSession = new RoomSession(realtimeTransport);
   const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
   const controller = new RaidController(inventory, save, events, RAID_RULES, ITEM_DEFINITIONS);
   let lastInventory = '';
@@ -95,6 +105,30 @@ async function bootstrap(): Promise<void> {
   let searchProgress = 0;
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
+  let onlineMode = Boolean(realtimeUrl);
+  const gameSession = new GameSession(realtimeTransport, {
+    onSnapshot: (snapshot) => {
+      const localPlayerId = roomSession.playerId;
+      onlineController.applySnapshot(snapshot);
+      onlineInventory.applySnapshot(snapshot);
+      scene.setOnlineSnapshot(snapshot);
+      scene.setRemotePlayers(
+        snapshot.players.filter((player) => player.playerId !== localPlayerId),
+      );
+      render();
+    },
+    onEvent: (event) => {
+      if (event.kind === 'damage-taken') {
+        notify('收到服务端伤害事件。');
+      }
+    },
+    onNotice: notify,
+    onStateChange: () => render(),
+  });
+  const onlineInventory = new OnlineInventory(events, gameSession, ITEM_DEFINITIONS);
+  const onlineController = new OnlineRaidController(gameSession, events, RAID_RULES);
+  const activeInventory: InventoryClientPort = realtimeUrl ? onlineInventory : inventory;
+  const activeController: RaidControllerPort = realtimeUrl ? onlineController : controller;
   const volume = element<HTMLInputElement>('sound-volume');
   let audibleVolume = sound.getSettings().volume || 0.8;
   const brightness = element<HTMLInputElement>('screen-brightness');
@@ -108,12 +142,14 @@ async function bootstrap(): Promise<void> {
   brightness.oninput = applySettings;
   applySettings();
   const scene = new WorldScene({
-    controller,
-    inventory,
+    controller: activeController,
+    inventory: activeInventory,
     events,
     notify,
     touch,
     sound,
+    onInput: (input) => gameSession.sendInput(input),
+    isOnline: () => onlineMode,
     onFrame: (interaction, progress) => {
       interacted = interaction;
       searchProgress = progress;
@@ -123,21 +159,103 @@ async function bootstrap(): Promise<void> {
       }
     },
   });
+  const renderRoom = (): void => {
+    const connection = element('room-connection');
+    const status = element('room-status');
+    const code = element<HTMLInputElement>('room-code');
+    const name = element<HTMLInputElement>('room-name');
+    const create = element<HTMLButtonElement>('room-create');
+    const join = element<HTMLButtonElement>('room-join');
+    const controls = element('room-controls');
+    const members = element('room-members');
+    const ready = element<HTMLButtonElement>('room-ready');
+    const start = element<HTMLButtonElement>('room-start');
+    const snapshot = roomSession.snapshot;
+    const connectionNames = {
+      idle: '未连接',
+      connecting: '连接中',
+      connected: '已连接',
+      'in-room': '房间中',
+      started: '已开始',
+      closed: '已关闭',
+      error: '连接异常',
+    } as const;
+    connection.textContent = connectionNames[roomSession.state];
+    status.textContent =
+      roomSession.error ??
+      (snapshot
+        ? `房间 ${snapshot.roomId} · ${snapshot.members.length}/${snapshot.maxPlayers} 人`
+        : realtimeUrl
+          ? `服务器：${realtimeUrl}`
+          : '开发演示通道：可用两个浏览器标签页共享房间。');
+    const connected = roomSession.state === 'connected' || roomSession.state === 'in-room';
+    create.disabled = !connected || !!snapshot;
+    join.disabled = !connected || !!snapshot;
+    name.disabled = !!snapshot;
+    code.disabled = !!snapshot;
+    controls.hidden = !snapshot;
+    members.hidden = !snapshot;
+    if (!snapshot) return;
+    if (document.activeElement !== code) code.value = snapshot.roomId;
+    members.replaceChildren();
+    for (const member of snapshot.members) {
+      const row = document.createElement('div');
+      row.className = 'room-member';
+      const label = document.createElement('span');
+      label.textContent = `${member.displayName}${member.playerId === snapshot.hostId ? ' · 房主' : ''}`;
+      const state = document.createElement('span');
+      state.textContent = member.connected ? (member.ready ? '已准备' : '未准备') : '已断线';
+      row.append(label, state);
+      members.append(row);
+    }
+    const own = snapshot.members.find((member) => member.playerId === roomSession.playerId);
+    ready.textContent = own?.ready ? '取消准备' : '准备';
+    ready.disabled = snapshot.status !== 'lobby';
+    start.disabled = snapshot.hostId !== roomSession.playerId || snapshot.status !== 'lobby';
+  };
+  roomSession.subscribe(renderRoom);
+  roomSession.subscribe(() => {
+    const snapshot = roomSession.snapshot;
+    gameSession.setContext(snapshot?.roomId ?? null, roomSession.raidId);
+    onlineMode = Boolean(realtimeUrl && roomSession.state === 'started');
+    render();
+  });
+  void roomSession.connect().catch(() => renderRoom());
+  element('room-create').onclick = () => {
+    const roomId = `BJTU-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
+    element<HTMLInputElement>('room-code').value = roomId;
+    roomSession.createRoom(element<HTMLInputElement>('room-name').value.trim() || '探险者', roomId);
+  };
+  element('room-join').onclick = () => {
+    const roomId = element<HTMLInputElement>('room-code').value.trim().toUpperCase();
+    if (!roomId) {
+      notify('请输入房间号。');
+      return;
+    }
+    roomSession.joinRoom(element<HTMLInputElement>('room-name').value.trim() || '探险者', roomId);
+  };
+  element('room-ready').onclick = () => {
+    const snapshot = roomSession.snapshot;
+    const own = snapshot?.members.find((member) => member.playerId === roomSession.playerId);
+    if (own) roomSession.setReady(!own.ready);
+  };
+  element('room-start').onclick = () => roomSession.startRoom();
+  element('room-leave').onclick = () => roomSession.leaveRoom();
   let rulesOpen = false;
   let mapOpen = false;
   let codexOpen = false;
   const mobile = isTouchLayout;
   const syncOrientation = () => {
-    const view = controller.getView();
+    const view = activeController.getView();
     const active = view.phase === 'active' || view.phase === 'extracting';
     app.dataset.mobile = String(mobile());
     element('rotate-phone').hidden = true;
     if (active && (rulesOpen || mapOpen || codexOpen)) {
-      if (!controller.isPaused()) {
-        controller.pause();
+      if (!activeController.isPaused()) {
+        activeController.pause();
         scene.clearInteractions();
       }
-    } else if (!rulesOpen && !mapOpen && !codexOpen) controller.resume();
+    } else if (!rulesOpen && !mapOpen && !codexOpen) activeController.resume();
   };
   const onResize = () => {
     scene.clearInteractions();
@@ -173,7 +291,7 @@ async function bootstrap(): Promise<void> {
   element('open-campus-map').onclick = () => {
     if (campusMap.open) return;
     mapOpen = true;
-    controller.pause();
+    activeController.pause();
     scene.clearInteractions();
     campusMap.showModal();
     render();
@@ -188,7 +306,7 @@ async function bootstrap(): Promise<void> {
   const openCodex = () => {
     if (codex.open) return;
     codexOpen = true;
-    controller.pause();
+    activeController.pause();
     scene.clearInteractions();
     const archive = save.view();
     renderCodex(archive.codexIds, archive.unlockedChapterIds);
@@ -223,7 +341,7 @@ async function bootstrap(): Promise<void> {
   bindGameRules(
     () => {
       rulesOpen = true;
-      controller.pause();
+      activeController.pause();
       scene.clearInteractions();
       render();
     },
@@ -237,7 +355,8 @@ async function bootstrap(): Promise<void> {
 
   function render(): void {
     syncOrientation();
-    const view = controller.getView();
+    renderRoom();
+    const view = activeController.getView();
     const lighting = scene.getLightingStatus();
     const musicState = sound.getMusicState();
     const soundButton = element('mobile-sound');
@@ -259,7 +378,7 @@ async function bootstrap(): Promise<void> {
       preparing ? 'preparation' : finished ? 'result-panel' : 'inventory-panel',
     );
     const playable =
-      !controller.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
+      !activeController.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
     touch.setEnabled(playable);
     app.dataset.phase = view.phase;
     const lightButton =
@@ -329,7 +448,7 @@ async function bootstrap(): Promise<void> {
         : view.result?.outcome === 'success'
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
-    const carried = inventory.getCarriedItems();
+    const carried = activeInventory.getCarriedItems();
     renderQuestPanel(questProgress(carried, view.raidId));
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
@@ -394,7 +513,7 @@ async function bootstrap(): Promise<void> {
         use.className = 'mini';
         use.textContent = '使用';
         use.onclick = () => {
-          const state = controller.getView();
+          const state = activeController.getView();
           if (state.phase !== 'active' && state.phase !== 'extracting') {
             return;
           }
@@ -403,7 +522,9 @@ async function bootstrap(): Promise<void> {
             notify('该恢复物尚未配置效果，物品没有消耗。');
             return;
           }
-          const consumed = inventory.consumeHealing(item.instanceId, () => controller.heal(amount));
+          const consumed = activeInventory.consumeHealing(item.instanceId, () =>
+            activeController.heal(amount),
+          );
           if (consumed.ok) {
             notify('恢复物已消耗，当前携带价值已重算。');
           } else if (consumed.error === 'INVALID_STATE') {
@@ -436,7 +557,10 @@ async function bootstrap(): Promise<void> {
     void requestLandscape();
     const selected = element<HTMLSelectElement>('loadout').value;
     const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
-    const result = await controller.start(selected ? [selected] : [], starterWeapon || undefined);
+    const result = await activeController.start(
+      selected ? [selected] : [],
+      starterWeapon || undefined,
+    );
     notify(
       result.ok
         ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
@@ -446,7 +570,7 @@ async function bootstrap(): Promise<void> {
     if (result.ok && mobile()) app.scrollTo(0, 0);
   };
   element('extract').onclick = () => {
-    const result = controller.startExtraction();
+    const result = activeController.startExtraction();
     if (result.ok) {
       sound.play('home');
     }
@@ -456,22 +580,22 @@ async function bootstrap(): Promise<void> {
     if (!confirm('确定放弃本次探索吗？本局携带物（包括从仓库带入的物品）将全部损失。')) {
       return;
     }
-    controller.abandon();
+    activeController.abandon();
     sound.setMusic(false);
     render();
   };
   element('next').onclick = () => {
-    controller.prepareNext();
+    activeController.prepareNext();
     sound.setMusic(false);
     render();
     if (mobile()) app.scrollTo(0, 0);
   };
   element('retry-save').onclick = async () => {
-    await controller.retrySettlement();
+    await activeController.retrySettlement();
     render();
   };
   element('reset-save').onclick = () => {
-    if (controller.getView().phase !== 'preparing') {
+    if (activeController.getView().phase !== 'preparing') {
       notify('请先结束本局并返回准备页。');
       return;
     }
@@ -497,11 +621,11 @@ async function bootstrap(): Promise<void> {
   if (import.meta.env.DEV) {
     element('debug-panel').hidden = false;
     element('damage').onclick = () => {
-      controller.applyDamage(25);
+      activeController.applyDamage(25);
       render();
     };
     element('fatal').onclick = () => {
-      controller.applyDamage(RAID_RULES.maxHealth);
+      activeController.applyDamage(RAID_RULES.maxHealth);
       render();
     };
   }
@@ -511,6 +635,8 @@ async function bootstrap(): Promise<void> {
       sound.dispose();
       disposeLayout();
       controller.dispose();
+      roomSession.close();
+      gameSession.close();
       touch.dispose();
       game.destroy(true);
       unlock();

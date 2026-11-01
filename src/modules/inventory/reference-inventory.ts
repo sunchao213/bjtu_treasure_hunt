@@ -1,13 +1,13 @@
 import { EventBus } from '../../shared/events/game-events';
 import type {
   ActionResult,
-  InventoryPort,
   ItemDefinition,
   ItemInstance,
+  InventoryClientPort,
 } from '../../shared/types/game';
 
 /** Runnable B reference adapter. Production equipment/stacking remains B's responsibility. */
-export class ReferenceInventory implements InventoryPort {
+export class ReferenceInventory implements InventoryClientPort {
   private raidId = '';
   private items: ItemInstance[] = [];
   private readonly equipment = new Map<string, string>();
