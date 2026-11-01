@@ -96,6 +96,11 @@ describe('A extraction lifecycle', () => {
         origin: { kind: 'carry-in' },
       },
     ]);
+    expect(s.inventory.getEquipment().primary?.instanceId).toBe('raid-1:starter:training-bat');
+    for (let i = 0; i < RAID_RULES.bagCapacity; i++) {
+      expect(s.inventory.addLoot(loot(`capacity-${i}`)).ok).toBe(true);
+    }
+    expect(s.inventory.getCarriedItems()).toHaveLength(RAID_RULES.bagCapacity + 1);
     s.fill();
     s.controller.setExtractionPresence(true);
     expect(s.controller.startExtraction().ok).toBe(true);

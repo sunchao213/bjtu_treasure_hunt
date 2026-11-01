@@ -17,6 +17,7 @@ import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
 import { SoundManager } from './modules/ui/sound-manager';
+import { NetworkSession, type NetworkStatus } from './modules/network/network-session';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -30,7 +31,7 @@ mountShell(app);
 const settings = document.createElement('section');
 settings.className = 'side-card settings';
 settings.innerHTML =
-  '<h2>设置</h2><label>游戏音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label>';
+  '<h2>设置</h2><label>游戏音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label><h3>联机房间</h3><p id="network-status" role="status">正在检查联机服务…</p><label>昵称 <input id="network-name" maxlength="18" value="校园探索者"></label><label>房间号 <input id="network-room" maxlength="32" value="校园夜巡"></label><div class="network-actions"><button id="network-connect" class="secondary">连接</button><button id="network-join" class="secondary" disabled>加入房间</button><button id="network-leave" class="text-button" disabled>离开房间</button></div>';
 document.querySelector('aside')?.append(settings);
 const notify = (message: string) => {
   element('notice').textContent = message;
@@ -95,6 +96,66 @@ async function bootstrap(): Promise<void> {
   let searchProgress = 0;
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
+  const networkUrl = import.meta.env.VITE_GAME_WS_URL;
+  const networkStatusLabel: Record<NetworkStatus, string> = {
+    offline: networkUrl ? '未连接' : '联机服务未配置',
+    connecting: '正在连接…',
+    connected: '已连接，尚未加入房间',
+    reconnecting: '连接中断，正在重连…',
+  };
+  const network = networkUrl
+    ? new NetworkSession({
+        url: networkUrl,
+        sessionId: crypto.randomUUID(),
+        displayName: element<HTMLInputElement>('network-name').value,
+      })
+    : null;
+  let networkStatus: NetworkStatus = 'offline';
+  let onlineCount = 0;
+  network?.onStatus((status) => {
+    networkStatus = status;
+    if (status !== 'connected') {
+      onlineCount = 0;
+      scene.clearRemotePlayers();
+    }
+    render();
+  });
+  network?.onMessage((message) => {
+    if (message.type === 'room-state') {
+      onlineCount = message.players.length;
+      scene.syncRemotePlayers(message.players);
+      element('network-status').textContent = `房间 ${message.roomId} · ${onlineCount} 人在线`;
+    } else if (message.type === 'player-left') {
+      scene.removeRemotePlayer(message.playerId);
+    } else if (message.type === 'error') {
+      element('network-status').textContent = message.message;
+    }
+  });
+  element('network-status').textContent = networkStatusLabel.offline;
+  element<HTMLButtonElement>('network-connect').disabled = !network;
+  element('network-connect').title = network
+    ? '连接到联机服务'
+    : '部署 WebSocket 房间服务后配置 VITE_GAME_WS_URL';
+  element('network-connect').onclick = () => {
+    if (!network) return;
+    network.setDisplayName(element<HTMLInputElement>('network-name').value);
+    network.connect();
+    render();
+  };
+  element('network-join').onclick = () => {
+    const roomId = element<HTMLInputElement>('network-room').value.trim();
+    if (network?.join(roomId)) {
+      onlineCount = 0;
+      element('network-status').textContent = `正在加入房间 ${roomId}…`;
+    }
+  };
+  element('network-leave').onclick = () => {
+    network?.leave();
+    onlineCount = 0;
+    scene.clearRemotePlayers();
+    render();
+  };
+  window.addEventListener('beforeunload', () => network?.close(), { once: true });
   const volume = element<HTMLInputElement>('sound-volume');
   let audibleVolume = sound.getSettings().volume || 0.8;
   const brightness = element<HTMLInputElement>('screen-brightness');
@@ -114,6 +175,7 @@ async function bootstrap(): Promise<void> {
     notify,
     touch,
     sound,
+    network,
     onFrame: (interaction, progress) => {
       interacted = interaction;
       searchProgress = progress;
@@ -238,6 +300,14 @@ async function bootstrap(): Promise<void> {
   function render(): void {
     syncOrientation();
     const view = controller.getView();
+    if (network && networkStatus !== 'connected') {
+      element('network-status').textContent = networkStatusLabel[networkStatus];
+    }
+    element<HTMLButtonElement>('network-connect').disabled =
+      !network || networkStatus === 'connecting' || networkStatus === 'connected';
+    element<HTMLButtonElement>('network-join').disabled = !network || networkStatus !== 'connected';
+    element<HTMLButtonElement>('network-leave').disabled =
+      !network || networkStatus !== 'connected' || !network.isInRoom();
     const lighting = scene.getLightingStatus();
     const musicState = sound.getMusicState();
     const soundButton = element('mobile-sound');
@@ -331,9 +401,9 @@ async function bootstrap(): Promise<void> {
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = inventory.getCarriedItems();
     renderQuestPanel(questProgress(carried, view.raidId));
-    const signature = JSON.stringify(carried);
+    const signature = JSON.stringify([carried, inventory.getEquipment()]);
     if (signature !== lastInventory) {
-      renderInventory(carried);
+      renderInventory(carried, inventory.getEquipment());
       lastInventory = signature;
     }
     const archive = save.view();
@@ -364,8 +434,14 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  function renderInventory(items: readonly ItemInstance[]): void {
-    element('bag-count').textContent = `${items.length} / ${RAID_RULES.bagCapacity}`;
+  function renderInventory(
+    items: readonly ItemInstance[],
+    equipment: ReturnType<typeof inventory.getEquipment>,
+  ): void {
+    const equippedIds = new Set(Object.values(equipment).map((item) => item.instanceId));
+    const bagItems = items.filter((item) => !equippedIds.has(item.instanceId));
+    element('bag-count').textContent =
+      `${bagItems.length} / ${RAID_RULES.bagCapacity} · 装备 ${equippedIds.size}`;
     const list = element('inventory');
     list.replaceChildren();
     if (!items.length) {
@@ -383,8 +459,9 @@ async function bootstrap(): Promise<void> {
       const label = document.createElement('span');
       label.textContent = definition.name;
       const sub = document.createElement('small');
-      sub.textContent =
-        item.origin.kind === 'carry-in'
+      sub.textContent = equippedIds.has(item.instanceId)
+        ? '已装备 · 不占背包格'
+        : item.origin.kind === 'carry-in'
           ? '带入物 · 不计本局价值'
           : `本局搜得 · ${RAID_RULES.values[definition.rarity]} 价值`;
       label.append(sub);

@@ -10,6 +10,8 @@ export interface ItemDefinition {
 export type ItemOrigin =
   { readonly kind: 'carry-in' } | { readonly kind: 'raid-loot'; readonly obtainedInRaidId: string };
 
+export type EquipmentSlot = 'primary' | 'secondary';
+
 export interface ItemInstance {
   readonly instanceId: string;
   readonly itemId: string;
@@ -68,8 +70,16 @@ export interface RaidView {
 
 /** B replaces the reference inventory behind this port; never expose mutable arrays. */
 export interface InventoryPort {
-  begin(raidId: string, loadout: readonly ItemInstance[]): void;
+  begin(
+    raidId: string,
+    loadout: readonly ItemInstance[],
+    equipment?: Readonly<Partial<Record<EquipmentSlot, ItemInstance>>>,
+  ): void;
   getCarriedItems(): readonly ItemInstance[];
+  getEquipment(): Readonly<Partial<Record<EquipmentSlot, ItemInstance>>>;
+  equip(instanceId: string, slotId: EquipmentSlot): ActionResult;
+  unequip(slotId: EquipmentSlot): ActionResult<ItemInstance>;
+  consumeHealing(instanceId: string, applyEffect: () => boolean): ActionResult<ItemInstance>;
   addLoot(item: ItemInstance): ActionResult;
   remove(instanceId: string): ActionResult<ItemInstance>;
   clear(): void;

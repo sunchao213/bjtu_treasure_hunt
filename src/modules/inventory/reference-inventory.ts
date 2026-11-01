@@ -1,6 +1,7 @@
 import { EventBus } from '../../shared/events/game-events';
 import type {
   ActionResult,
+  EquipmentSlot,
   InventoryPort,
   ItemDefinition,
   ItemInstance,
@@ -19,21 +20,33 @@ export class ReferenceInventory implements InventoryPort {
     private readonly definitions: Readonly<Record<string, ItemDefinition>>,
   ) {}
 
-  begin(raidId: string, loadout: readonly ItemInstance[]): void {
+  begin(
+    raidId: string,
+    loadout: readonly ItemInstance[],
+    equipment: Readonly<Partial<Record<EquipmentSlot, ItemInstance>>> = {},
+  ): void {
+    const equipped = Object.values(equipment).filter(
+      (item): item is ItemInstance => item !== undefined,
+    );
+    const allItems = [...loadout, ...equipped];
     if (
       !raidId ||
       loadout.length > this.capacity ||
-      new Set(loadout.map((item) => item.instanceId)).size !== loadout.length ||
-      loadout.some((item) => !this.isValidItem(item, true) || item.origin.kind !== 'carry-in')
+      new Set(allItems.map((item) => item.instanceId)).size !== allItems.length ||
+      allItems.some((item) => !this.isValidItem(item, true) || item.origin.kind !== 'carry-in') ||
+      equipped.some((item) => this.definitions[item.itemId]?.kind !== 'weapon')
     ) {
       throw new Error('Loadout exceeds capacity');
     }
     this.raidId = raidId;
-    this.items = structuredClone([...loadout]);
+    this.items = structuredClone(allItems);
     this.equipment.clear();
     this.carryIn.clear();
     for (const item of this.items) {
       this.carryIn.set(item.instanceId, structuredClone(item));
+    }
+    for (const [slotId, item] of Object.entries(equipment)) {
+      if (item) this.equipment.set(slotId as EquipmentSlot, item.instanceId);
     }
     this.changed();
   }
@@ -79,7 +92,7 @@ export class ReferenceInventory implements InventoryPort {
     return { ok: true, value: structuredClone(item) };
   }
 
-  equip(instanceId: string, slotId: string): ActionResult {
+  equip(instanceId: string, slotId: EquipmentSlot): ActionResult {
     const item = this.items.find((candidate) => candidate.instanceId === instanceId);
     if (!item || this.definitions[item.itemId]?.kind !== 'weapon' || !slotId.trim()) {
       return { ok: false, error: item ? 'ITEM_NOT_USABLE' : 'ITEM_NOT_FOUND' };
@@ -95,7 +108,7 @@ export class ReferenceInventory implements InventoryPort {
     return { ok: true, value: undefined };
   }
 
-  unequip(slotId: string): ActionResult<ItemInstance> {
+  unequip(slotId: EquipmentSlot): ActionResult<ItemInstance> {
     const instanceId = this.equipment.get(slotId);
     if (!instanceId) {
       return { ok: false, error: 'ITEM_NOT_FOUND' };
@@ -112,7 +125,7 @@ export class ReferenceInventory implements InventoryPort {
     return { ok: true, value: structuredClone(item) };
   }
 
-  getEquipment(): Readonly<Record<string, ItemInstance>> {
+  getEquipment(): Readonly<Partial<Record<EquipmentSlot, ItemInstance>>> {
     return structuredClone(
       Object.fromEntries(
         [...this.equipment].flatMap(([slotId, instanceId]) => {

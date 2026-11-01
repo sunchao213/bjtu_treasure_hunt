@@ -74,7 +74,15 @@ export class RaidController {
             },
           ]
         : [];
-      this.inventory.begin(raidId, [...loadout, ...starterWeapon]);
+      this.inventory.begin(
+        raidId,
+        loadout,
+        starterWeapon.length > 0
+          ? { primary: starterWeapon[0] }
+          : {
+              primary: loadout.find((item) => this.definitions[item.itemId]?.kind === 'weapon'),
+            },
+      );
       this.raidId = raidId;
       this.health = this.rules.maxHealth;
       this.startedAtMs = this.clock();

@@ -9,8 +9,8 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "prettier --write src tests docs README.md index.html package.json vite.config.ts tsconfig.json eslint.config.js .github",
+    "format:check": "prettier --check src tests docs README.md index.html package.json vite.config.ts tsconfig.json eslint.config.js .github",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",

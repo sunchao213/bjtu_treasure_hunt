@@ -8,3 +8,6 @@ coverage/
 .DS_Store
 Thumbs.db
 artifacts/
+.dotnet-home/
+server/bin/
+server/obj/

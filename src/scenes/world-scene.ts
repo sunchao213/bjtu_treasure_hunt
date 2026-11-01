@@ -31,6 +31,7 @@ import type { EventBus } from '../shared/events/game-events';
 import type { InventoryPort, ItemInstance, Point } from '../shared/types/game';
 import type { TouchControls } from '../modules/world/touch-controls';
 import type { SoundManager } from '../modules/ui/sound-manager';
+import type { NetworkSession, PlayerSnapshot } from '../modules/network/network-session';
 import {
   isQuestComplete,
   prerequisiteHint,
@@ -45,6 +46,7 @@ interface SceneServices {
   notify: (message: string) => void;
   touch: TouchControls;
   sound: SoundManager;
+  network?: NetworkSession | null;
   onFrame: (interaction: string, progress: number) => void;
 }
 
@@ -70,6 +72,11 @@ export class WorldScene extends Phaser.Scene {
     string,
     { item: ItemInstance; position: Point; sprite: Phaser.GameObjects.Container }
   >();
+  private readonly remotePlayers = new Map<
+    string,
+    { target: Point; object: Phaser.GameObjects.Container }
+  >();
+  private networkInputElapsed = 0;
   private lastRaidId: string | null = null;
   private previousInteract = false;
   private previousAttack = false;
@@ -125,6 +132,58 @@ export class WorldScene extends Phaser.Scene {
     for (const enemy of this.combat.enemies) {
       enemy.hugProgress = 0;
     }
+  }
+
+  syncRemotePlayers(players: readonly PlayerSnapshot[]): void {
+    const localId = this.services.network?.getPlayerId();
+    const received = new Set<string>();
+    for (const snapshot of players) {
+      if (snapshot.playerId === localId || !snapshot.connected) continue;
+      received.add(snapshot.playerId);
+      const existing = this.remotePlayers.get(snapshot.playerId);
+      if (existing) {
+        existing.target = { ...snapshot.position };
+        existing.object.setRotation(snapshot.aim);
+        continue;
+      }
+      const marker = this.add
+        .container(snapshot.position.x, snapshot.position.y, [
+          this.add.ellipse(0, 13, 30, 12, 0x061f23, 0.3),
+          this.add.rectangle(0, 0, 22, 28, 0x78c4ee).setStrokeStyle(2, 0xe6f5ff),
+          this.add.circle(0, -16, 10, 0xd7efff),
+          this.add
+            .text(0, -38, snapshot.displayName.slice(0, 18), {
+              fontFamily: 'Microsoft YaHei',
+              fontSize: '12px',
+              color: '#f4fbff',
+              backgroundColor: '#16323fcc',
+              padding: { x: 4, y: 2 },
+            })
+            .setOrigin(0.5),
+        ])
+        .setDepth(29);
+      marker.setRotation(snapshot.aim);
+      this.remotePlayers.set(snapshot.playerId, {
+        target: { ...snapshot.position },
+        object: marker,
+      });
+    }
+    for (const [playerId, remote] of this.remotePlayers) {
+      if (received.has(playerId)) continue;
+      remote.object.destroy();
+      this.remotePlayers.delete(playerId);
+    }
+  }
+
+  removeRemotePlayer(playerId: string): void {
+    const remote = this.remotePlayers.get(playerId);
+    remote?.object.destroy();
+    this.remotePlayers.delete(playerId);
+  }
+
+  clearRemotePlayers(): void {
+    for (const remote of this.remotePlayers.values()) remote.object.destroy();
+    this.remotePlayers.clear();
   }
 
   create(): void {
@@ -235,6 +294,11 @@ export class WorldScene extends Phaser.Scene {
     if (view.raidId !== this.lastRaidId) {
       this.resetRaid(view.raidId);
     }
+
+    for (const remote of this.remotePlayers.values()) {
+      remote.object.x += (remote.target.x - remote.object.x) * 0.28;
+      remote.object.y += (remote.target.y - remote.object.y) * 0.28;
+    }
     const playable =
       !this.services.controller.isPaused() &&
       (view.phase === 'active' || view.phase === 'extracting');
@@ -255,6 +319,15 @@ export class WorldScene extends Phaser.Scene {
           Number(down('W') || down('UP')) +
           this.services.touch.movement.y,
       };
+      this.networkInputElapsed += deltaMs;
+      if (this.networkInputElapsed >= 50) {
+        this.networkInputElapsed %= 50;
+        this.services.network?.sendInput(movement, this.aim, [
+          ...(down('E') ? (['interact'] as const) : []),
+          ...(down('SPACE') ? (['attack'] as const) : []),
+          ...(down('Q') ? (['hug'] as const) : []),
+        ]);
+      }
       this.moving = Math.hypot(movement.x, movement.y) > 0.1;
       this.services.sound.setLoop('footsteps', this.moving);
       if (this.moving) {
@@ -301,9 +374,11 @@ export class WorldScene extends Phaser.Scene {
       if (down('SPACE')) {
         this.search.cancel();
         const carriedItems = this.services.inventory.getCarriedItems();
-        const weaponItem = carriedItems.find(
-          (item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon',
-        );
+        const equippedWeapon = this.services.inventory.getEquipment().primary;
+        const weaponItem =
+          equippedWeapon && ITEM_DEFINITIONS[equippedWeapon.itemId]?.kind === 'weapon'
+            ? equippedWeapon
+            : carriedItems.find((item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon');
         if (!weaponItem) {
           if (!this.previousAttack) {
             this.services.notify('未携带武器，无法攻击。');
@@ -477,9 +552,13 @@ export class WorldScene extends Phaser.Scene {
     }
     this.flashlight.clear();
     if (this.combat.swingMs > 0) {
-      const carriedWeapon = this.services.inventory
-        .getCarriedItems()
-        .find((item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon');
+      const equippedWeapon = this.services.inventory.getEquipment().primary;
+      const carriedWeapon =
+        equippedWeapon && ITEM_DEFINITIONS[equippedWeapon.itemId]?.kind === 'weapon'
+          ? equippedWeapon
+          : this.services.inventory
+              .getCarriedItems()
+              .find((item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon');
       const swingWeapon =
         carriedWeapon?.itemId === 'stun-baton'
           ? COMBAT_RULES.player.attack.weapons.stunBaton
