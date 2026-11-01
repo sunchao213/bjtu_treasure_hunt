@@ -4,7 +4,9 @@ import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'artifacts/**'] },
+  {
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'artifacts/**', 'godot/**'],
+  },
   js.configs.recommended,
   tseslint.configs.recommended,
   {

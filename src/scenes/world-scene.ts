@@ -1344,10 +1344,8 @@ export class WorldScene extends Phaser.Scene {
         // outer arch remains part of the background so a player above it can
         // appear on top, as marked by the white outline.
         const signBand = x >= 158 && x <= 322 && y >= 1638 && y <= 1678;
-        const outerInnerArch =
-          (x - 240) ** 2 / 100 ** 2 + (y - 1710) ** 2 / 78 ** 2 <= 1;
-        const doorwayCutout =
-          (x - 240) ** 2 / 72 ** 2 + (y - 1714) ** 2 / 55 ** 2 <= 1;
+        const outerInnerArch = (x - 240) ** 2 / 100 ** 2 + (y - 1710) ** 2 / 78 ** 2 <= 1;
+        const doorwayCutout = (x - 240) ** 2 / 72 ** 2 + (y - 1714) ** 2 / 55 ** 2 <= 1;
         const innerArchRim = outerInnerArch && !doorwayCutout && y >= 1668 && y <= 1732;
         const leftPillar = x >= 142 && x <= 181 && y >= 1650 && y <= 1788;
         const rightPillar = x >= 299 && x <= 338 && y >= 1650 && y <= 1788;
