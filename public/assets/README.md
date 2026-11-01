@@ -1,7 +1,9 @@
 # 素材说明
 
-当前校园、人物和物资全部由 Phaser 图形 API 绘制，没有下载或引用商业游戏素材。
-后续 D 添加地图／图像／音效时，在 `docs/assets-manifest.md` 记录来源、作者、许可和署名。
+校园夜景底图 `maps/campus-night/campus-base.png` 由用户自制。人物和物资仍由 Phaser 绘制或使用独立精灵素材。
+玩家动作源图位于 `characters/player/player-source.png`，运行 `scripts/prepare_player_sprites.ps1` 可重新生成透明精灵条。
+宝箱动画精灵条位于 `props/treasure-chest.png`，包含闭合与开启状态。
+后续添加地图／图像／音效时，在 `docs/assets-manifest.md` 记录来源、作者、许可和署名。
 
 `characters/monster-animals-source.png` 及其 `processed/` 动画条来自用户提供的 `怪物动物像素动画精灵表.png`，用于鸭子普通怪、平静抱抱怪和变异抱抱怪的游戏内动画。作者、许可和署名信息未随素材提供，当前仅限本地开发；发布或部署前必须补齐来源与再分发授权。
 

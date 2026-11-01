@@ -114,7 +114,7 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
 
 export function monsterScaleFor(enemy: Enemy): number {
   if (enemy.kind === 'hug' && enemy.mutated) {
-    return 0.62;
+    return 0.48;
   }
-  return enemy.kind === 'hug' ? 0.48 : 0.5;
+  return enemy.kind === 'hug' ? 0.38 : 0.4;
 }

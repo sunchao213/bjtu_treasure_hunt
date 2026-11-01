@@ -69,9 +69,9 @@ describe('monster sprite manifest', () => {
     );
   });
 
-  it('keeps the established relative scale for each visual variant', () => {
-    expect(monsterScaleFor(makeEnemy())).toBe(0.5);
-    expect(monsterScaleFor(makeEnemy({ kind: 'hug' }))).toBe(0.48);
-    expect(monsterScaleFor(makeEnemy({ kind: 'hug', mutated: true }))).toBe(0.62);
+  it('keeps the reduced relative scale for each visual variant', () => {
+    expect(monsterScaleFor(makeEnemy())).toBe(0.4);
+    expect(monsterScaleFor(makeEnemy({ kind: 'hug' }))).toBe(0.38);
+    expect(monsterScaleFor(makeEnemy({ kind: 'hug', mutated: true }))).toBe(0.48);
   });
 });

@@ -11,22 +11,25 @@ function seeded(seed: number): () => number {
   };
 }
 
-describe('expanded main campus', () => {
-  it('matches the supplied relative landmarks and grows exploration area', () => {
-    const library = WORLD.buildings.find((b) => b.name === '图书馆')!;
-    const siyuan = WORLD.buildings.find((b) => b.name === '思源楼')!;
-    expect(siyuan.x + siyuan.width).toBeLessThan(WORLD.lake.x);
-    expect(WORLD.lake.x + WORLD.lake.width).toBeLessThan(library.x);
-    expect(library.x + library.width).toBeLessThan(WORLD.sportsFields[1]!.x);
-    expect(WORLD.sportsFields[0]!.x).toBeLessThan(siyuan.x);
-    expect(WORLD.width * WORLD.height).toBeGreaterThanOrEqual(1280 * 900 * 7);
+describe('portrait campus image map', () => {
+  it('uses the source image proportions and keeps its landmarks in world bounds', () => {
+    expect(WORLD.width).toBe(1280);
+    expect(WORLD.height).toBe(1824);
+    expect(WORLD.width / WORLD.height).toBeCloseTo(1280 / 1824);
+    expect(WORLD.buildings.some((b) => b.name === '北京交通大学')).toBe(true);
+    expect(WORLD.buildings[0]!.x).toBeLessThan(WORLD.lake.x);
+    expect(WORLD.lake.x + WORLD.lake.width).toBeLessThan(WORLD.width);
+    expect(WORLD.sportsFields[0]!.y).toBeLessThan(WORLD.sportsFields[1]!.y);
+    expect(WORLD.width * WORLD.height).toBe(1280 * 1824);
     expect(WORLD.gates.filter((g) => g.role === 'extraction')).toHaveLength(1);
   });
 
   it('randomizes each raid with enough value, both clues and clear spaced positions', () => {
     for (let seed = 0; seed < 100; seed++) {
       const points = generateLootSpawns(seeded(seed));
-      expect(points).toHaveLength(34);
+      expect(points).toHaveLength(
+        WORLD.lootZones.reduce((count, zone) => count + (zone.id === 'lake' ? 1 : 3), 0),
+      );
       expect(new Set(points.map((p) => p.zoneId)).size).toBe(WORLD.lootZones.length);
       expect(points.filter((p) => p.itemId === 'torn-notebook')).toHaveLength(1);
       expect(points.filter((p) => p.itemId === 'anomalous-feather')).toHaveLength(1);
@@ -40,8 +43,12 @@ describe('expanded main campus', () => {
       }
     }
     expect(generateLootSpawns(seeded(1))).not.toEqual(generateLootSpawns(seeded(2)));
-    expect(generateLootSpawns(() => 0)).toHaveLength(34);
-    expect(generateLootSpawns(() => 1)).toHaveLength(34);
+    const spawnCount = WORLD.lootZones.reduce(
+      (count, zone) => count + (zone.id === 'lake' ? 1 : 3),
+      0,
+    );
+    expect(generateLootSpawns(() => 0)).toHaveLength(spawnCount);
+    expect(generateLootSpawns(() => 1)).toHaveLength(spawnCount);
   });
 
   it('keeps loot, lamps and patrols connected to the south gate without wall crossings', () => {

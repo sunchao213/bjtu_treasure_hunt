@@ -375,7 +375,7 @@ h1 span {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 220px;
+  width: 150px;
   padding: 0;
   border: 1px solid #84917e;
   border-radius: 4px;
@@ -391,7 +391,7 @@ h1 span {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 3 / 2;
+  aspect-ratio: 1280 / 1824;
   pointer-events: none;
 }
 .campus-map-button span {
@@ -436,7 +436,7 @@ h1 span {
 .campus-map-dialog canvas {
   display: block;
   width: 100%;
-  min-width: 760px;
+  min-width: 0;
   height: auto;
 }
 .campus-map-dialog p {

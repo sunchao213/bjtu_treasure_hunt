@@ -212,8 +212,26 @@ export function createEnemies(random: () => number = Math.random): Enemy[] {
       position = candidatePosition;
       break;
     }
-    // The map has ample valid space; this fallback only protects against an
-    // unusually unlucky deterministic random source in tests.
+    if (!position) {
+      for (let y = bounds.y + 24; y < bounds.y + bounds.height - 24 && !position; y += 32) {
+        for (let x = bounds.x + 24; x < bounds.x + bounds.width - 24; x += 32) {
+          const candidate = { x, y };
+          if (
+            WORLD.obstacles.some((obstacle) => overlaps(candidate, 18, obstacle)) ||
+            distanceToRect(candidate, WORLD.extraction) <
+              COMBAT_RULES.spawning.extractionSafeDistance ||
+            distance(candidate, WORLD.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
+            usedPositions.some(
+              (used) => distance(candidate, used) < COMBAT_RULES.spawning.minEnemyDistance,
+            )
+          ) {
+            continue;
+          }
+          position = candidate;
+          break;
+        }
+      }
+    }
     const spawnPosition = position ?? {
       x: bounds.x + bounds.width / 2,
       y: bounds.y + bounds.height / 2,
