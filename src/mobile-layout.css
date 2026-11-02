@@ -139,7 +139,7 @@ html[data-touch='true'] #app .mobile-toolbar button {
   padding: 2px 4px;
 }
 html[data-touch='true'] #app[data-mobile='true'] .campus-map-button {
-  width: clamp(96px, calc(var(--game-height) * 0.3), 150px);
+  width: clamp(76px, calc(var(--game-height) * 0.24), 112px);
   top: 4px;
   right: 6px;
 }

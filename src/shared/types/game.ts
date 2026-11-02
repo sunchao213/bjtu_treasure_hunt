@@ -66,6 +66,29 @@ export interface RaidView {
   readonly result: RaidResult | null;
 }
 
+export interface RaidControllerPort {
+  getView(): RaidView;
+  isPaused(): boolean;
+  pause(): void;
+  resume(): void;
+  start(loadoutIds?: readonly string[], starterWeaponId?: string): Promise<ActionResult>;
+  startExtraction(): ActionResult;
+  abandon(): void;
+  prepareNext(): boolean;
+  retrySettlement(): Promise<void>;
+  heal(amount: number): boolean;
+  applyDamage(amount: number): void;
+  cancelExtraction(): void;
+  setExtractionPresence(isInside: boolean): void;
+  setQuestComplete(complete: boolean): void;
+  tick(): void;
+  dispose(): void;
+}
+
+export interface InventoryClientPort extends InventoryPort {
+  consumeHealing(instanceId: string, applyEffect: () => boolean): ActionResult<ItemInstance>;
+}
+
 /** B replaces the reference inventory behind this port; never expose mutable arrays. */
 export interface InventoryPort {
   begin(raidId: string, loadout: readonly ItemInstance[]): void;

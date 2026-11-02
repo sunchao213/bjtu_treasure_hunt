@@ -129,12 +129,12 @@ export function mountShell(root: HTMLElement): void {
         <section class="map-panel" aria-label="游戏地图">
           <div class="map-top"><span><i class="status-dot"></i><b id="phase-label">准备出发</b></span>
             <span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span></div>
-          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-codex">图鉴</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="preparation">出发</button></div>
+          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-codex">图鉴</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
           ${tutorialMarkup()}
           <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-label="放大校园地图">
-            <canvas id="campus-overview" class="campus-overview" width="600" height="400" aria-hidden="true"></canvas>
+        <canvas id="campus-overview" class="campus-overview" width="600" height="855" aria-hidden="true"></canvas>
             <span>校园图 · 点击放大</span>
           </button>
           <div id="touch-controls" class="touch-controls" aria-label="触屏操作">
@@ -170,6 +170,14 @@ export function mountShell(root: HTMLElement): void {
             </ul>
             <p id="quest-status" class="muted">线索：图书馆外残缺手记</p>
           </section>
+          <section class="side-card room-card" id="room-panel"><div class="section-kicker">联机房间 <span id="room-connection">未连接</span></div>
+            <p id="room-status" class="muted">开发环境可用双标签页联机演示；配置服务器后自动使用 WebSocket。</p>
+            <label class="field-label" for="room-name">玩家名称</label><input id="room-name" class="room-input" value="探险者" maxlength="12" />
+            <label class="field-label" for="room-code">房间号</label><input id="room-code" class="room-input" placeholder="创建后分享给队友" maxlength="12" />
+            <div class="room-actions"><button id="room-create" class="secondary">创建房间</button><button id="room-join" class="secondary">加入房间</button></div>
+            <div id="room-members" class="room-members" hidden></div>
+            <div class="room-actions" id="room-controls" hidden><button id="room-ready" class="secondary">准备</button><button id="room-start" class="primary">开始房间</button><button id="room-leave" class="text-button">离开</button></div>
+          </section>
           <section class="side-card" id="inventory-panel" hidden><div class="section-kicker">临时背包 <span id="bag-count">0 / 6</span></div>
             <ul id="inventory" class="inventory"></ul>
             <button id="extract" class="primary">在撤离点申请撤离</button>
@@ -186,7 +194,7 @@ export function mountShell(root: HTMLElement): void {
     </main><div id="rotate-phone" class="rotate-phone" hidden><strong>请将手机横过来</strong><p>横屏后继续探索；当前对局已暂停。</p></div>${gameRulesMarkup()}
       <dialog id="campus-map-dialog" class="campus-map-dialog" aria-labelledby="campus-map-title" aria-describedby="campus-map-note">
         <header><h2 id="campus-map-title">海淀主校区 · 校园图</h2><button id="close-campus-map" aria-label="关闭校园图">${iconSvg('close', { size: 20 })}</button></header>
-        <div class="campus-map-scroll" tabindex="0" aria-label="校园图，可滚动查看各区域"><canvas id="campus-map-expanded" width="1200" height="800" role="img" aria-label="海淀主校区简化布局，北朝上，金色圆点为玩家当前位置"></canvas></div>
-        <p id="campus-map-note">金色圆点：当前位置 · 南门：唯一撤离点 · 查看时暂停 · 手机可滑动查看<br>依据小组提供的海淀主校区地图简化制作，非 1:1 测绘，不能用于现实导航。</p>
+        <div class="campus-map-scroll" tabindex="0" aria-label="校园图，可滚动查看各区域"><canvas id="campus-map-expanded" width="700" height="998" role="img" aria-label="海淀主校区地图，绿色圆点为撤离点，金色圆点为玩家当前位置"></canvas></div>
+        <p id="campus-map-note">金色圆点：当前位置 · 绿色圆点：撤离点 · 查看时暂停 · 手机可滑动查看<br>校园夜景底图用于游戏导航，不能用于现实导航。</p>
       </dialog>${codexMarkup()}${storyDialogMarkup()}`;
 }

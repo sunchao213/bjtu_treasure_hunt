@@ -72,4 +72,14 @@ npm.cmd run check
 
 `npm run build` 输出 `dist/`，Vite 使用相对 base，适合静态子目录部署。GitHub Pages 工作流在推送 `main`、推送 `v*` 标签或手动触发时运行完整检查，通过后发布 `dist/`。首次使用需在仓库 Settings → Pages 将 Source 设为 GitHub Actions，操作见 [GitHub Pages 发布说明](docs/github-pages.md)。Phaser 单独打包，其包体与实际校内网络加载应在 E 的性能检查中测量。
 
-当前地图、人物和物资为代码绘制，见 [素材清单](docs/assets-manifest.md)。正式开源前由全组确定许可证。不要上传真实试用者身份信息。
+校园夜景底图为用户自制，人物和物资由代码绘制，见 [素材清单](docs/assets-manifest.md)。正式开源前由全组确定许可证。不要上传真实试用者身份信息。
+
+## 联机客户端第一阶段
+
+当前已加入联机房间客户端骨架：房间协议位于 `src/shared/net/protocol.ts`，传输层和房间会话位于 `src/modules/network/`。开发环境未配置 `VITE_REALTIME_URL` 时，页面使用 `BroadcastChannel` 作为同源演示传输；配置 `VITE_REALTIME_URL` 后会改用 WebSocket 客户端。当前主游戏仍启用单写者存档锁，真正的双客户端联调应使用后续的 WebSocket 服务端或独立联机模式。
+
+客户端同步协议已经预留服务端权威边界：`PlayerInput` 只表达移动、瞄准和按钮意图；`GameSnapshot` 携带 `serverTick`、`ackInputSeq`、玩家/敌人/可见掉落；`GameEvent` 使用 `eventId` 去重；重连通过 `reconnectToken` 请求恢复快照。对应实现位于 `src/modules/network/game-session.ts`，Phaser 场景会发送限频输入并插值显示远程玩家。
+
+服务端尚未接入时，`RaidController` 仍用于离线流程和客户端联调。接入服务端后，客户端应以服务端快照和事件为准，逐步关闭本地战斗、掉落、背包和撤离判定。
+
+在线客户端适配层位于 `src/modules/network/online-raid-controller.ts` 和 `src/modules/network/online-inventory.ts`。配置 `VITE_REALTIME_URL` 后，主界面和 Phaser 场景会切换到在线控制器；`GameSnapshot.self` 只同步当前玩家的私有背包与结算信息，`players` 只用于队友表现。

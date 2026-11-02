@@ -31,11 +31,6 @@ function setup(kind: Enemy['kind'] = 'hug') {
     mutated: false,
     wanders: false,
   };
-  const label = {
-    setText: vi.fn().mockReturnThis(),
-    setColor: vi.fn().mockReturnThis(),
-    setVisible: vi.fn().mockReturnThis(),
-  };
   const sprite = {
     anims: {
       isPlaying: false,
@@ -51,7 +46,6 @@ function setup(kind: Enemy['kind'] = 'hug') {
   };
   const parts = {
     sprite,
-    'monster-name': label,
     'mutation-warning': { setVisible: vi.fn() },
     shadow: { setScale: vi.fn() },
   };
@@ -61,7 +55,7 @@ function setup(kind: Enemy['kind'] = 'hug') {
     (Reflect.get(scene, 'enemyAnimationKeys') as Map<string, string>).get(enemy.id);
   const deathFinished = Reflect.get(scene, 'enemyDeathFinished') as Set<string>;
   update();
-  return { scene, enemy, sprite, label, update, current, deathFinished };
+  return { scene, enemy, sprite, update, current, deathFinished };
 }
 
 describe('monster animation transitions in the world scene', () => {
@@ -80,7 +74,6 @@ describe('monster animation transitions in the world scene', () => {
     s.enemy.position = { x: s.enemy.position.x + 1, y: 0 };
     s.update();
     expect(s.current()).toBe('squirrel-mutant-walk');
-    expect(s.label.setText).toHaveBeenLastCalledWith('变异抱抱怪 · 红眼松鼠');
   });
 
   it.each([
@@ -117,6 +110,5 @@ describe('monster animation transitions in the world scene', () => {
     s.update();
     expect(s.deathFinished.has(s.enemy.id)).toBe(true);
     expect(s.sprite.anims.play.mock.calls.filter(([key]) => key === animation)).toHaveLength(1);
-    expect(s.label.setVisible).toHaveBeenLastCalledWith(false);
   });
 });
