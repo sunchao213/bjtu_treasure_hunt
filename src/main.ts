@@ -1,6 +1,7 @@
 import './style.css';
 import './mobile-layout.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
+import { bindStage } from './modules/ui/stage';
 import { createGame } from './app/create-game';
 import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
@@ -392,6 +393,8 @@ async function bootstrap(): Promise<void> {
     render();
   };
   const disposeLayout = bindMobileLayout(app, () => queueMicrotask(onResize));
+  // 固定画框先把缩放比例写好，再让 Phaser 量画布尺寸，避免首帧按窗口尺寸渲染。
+  const disposeStage = bindStage(() => queueMicrotask(onResize));
   // Establish the logical landscape box before Phaser measures its canvas.
   const game = createGame(scene);
   element('mobile-fullscreen').onclick = () => {
@@ -970,6 +973,7 @@ async function bootstrap(): Promise<void> {
     import.meta.hot.dispose(() => {
       sound.dispose();
       disposeLayout();
+      disposeStage();
       controller.dispose();
       touch.dispose();
       game.destroy(true);

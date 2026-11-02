@@ -79,7 +79,7 @@ input:focus-visible {
   display: grid;
   grid-template-columns: minmax(240px, 0.95fr) minmax(320px, 1.05fr);
   width: min(1080px, 100%);
-  min-height: min(610px, 80vh);
+  min-height: min(610px, 80cqh);
   overflow: hidden;
   border: 1px solid #64707866;
   background: #10171df2;
@@ -148,7 +148,7 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: clamp(28px, 5vw, 64px);
+  padding: clamp(28px, 5cqw, 64px);
 }
 .prologue-kicker {
   color: #c9a86d;
@@ -165,7 +165,7 @@ input:focus-visible {
   margin: 0 0 22px;
   color: #eee6d5;
   font-family: 'Songti SC', 'SimSun', serif;
-  font-size: clamp(34px, 5vw, 52px);
+  font-size: clamp(34px, 5cqw, 52px);
   font-weight: 500;
   letter-spacing: 0.12em;
 }
@@ -174,7 +174,7 @@ input:focus-visible {
   margin: 0;
   color: #c4c9c5;
   font-family: 'Songti SC', 'SimSun', serif;
-  font-size: clamp(16px, 2vw, 19px);
+  font-size: clamp(16px, 2cqw, 19px);
   line-height: 2.1;
   letter-spacing: 0.04em;
 }
@@ -453,7 +453,7 @@ html.prologue-open #app {
 }
 .rules-dialog {
   width: min(720px, calc(100% - 24px));
-  max-height: min(860px, calc(100svh - 24px));
+  max-height: min(860px, calc(100cqh - 24px));
   padding: 0;
   border: 1px solid #556057;
   border-radius: 8px;
@@ -805,7 +805,7 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
 .lobby-panel {
   min-width: 0;
   overflow: auto;
-  padding: 0 clamp(22px, 3.4vw, 52px) 20px;
+  padding: 0 clamp(22px, 3.4cqw, 52px) 20px;
   background: radial-gradient(700px 330px at 88% 0%, #34362236, transparent 70%);
 }
 .lobby-panel[hidden] {
@@ -950,7 +950,7 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   width: 100%;
 }
 .prep-hero {
-  padding: clamp(16px, 2.5vh, 26px) 0 14px;
+  padding: clamp(16px, 2.5cqh, 26px) 0 14px;
   border-bottom: 1px solid #363a39;
 }
 .prep-kicker {
@@ -961,7 +961,7 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
 }
 .prep-hero h2 {
   margin: 0 0 10px;
-  font-size: clamp(24px, 2.8vw, 34px);
+  font-size: clamp(24px, 2.8cqw, 34px);
   letter-spacing: 0.02em;
   color: #f5e7b3;
 }
@@ -1038,13 +1038,13 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
 .prep-main {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: clamp(12px, 1.5vw, 20px);
+  gap: clamp(12px, 1.5cqw, 20px);
   margin-top: 12px;
 }
 .prep-block {
   display: flex;
   flex-direction: column;
-  padding: clamp(11px, 1.5vh, 17px) clamp(14px, 1.6vw, 22px);
+  padding: clamp(11px, 1.5cqh, 17px) clamp(14px, 1.6cqw, 22px);
   border: 1px solid #3b403d;
   border-radius: 10px;
   background: linear-gradient(180deg, #171b19, #121514);
@@ -1137,171 +1137,38 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   padding: 8px 12px;
   font-size: 12px;
 }
-@media (min-width: 761px) and (max-height: 850px) {
-  .lobby-commandbar {
-    min-height: 56px;
-  }
-  .prep-hero {
-    padding-top: 12px;
-    padding-bottom: 10px;
-  }
-  .prep-hero h2 {
-    margin-bottom: 5px;
-    font-size: 27px;
-  }
-  .prep-brief {
-    font-size: 13px;
-    line-height: 1.6;
-  }
-  .prep-goals li {
-    padding: 5px 9px;
-  }
-  .prep-main {
-    margin-top: 9px;
-  }
-  .prep-block h3 {
-    margin-bottom: 7px;
-  }
-  .prep-equipment li {
-    margin-bottom: 4px;
-    padding: 5px 8px;
-  }
-  .prep-warning {
-    line-height: 1.6;
-  }
+/* 画框恒为 1280×720，这一档不再按窗口高度判断，改为桌面端常驻，
+   保证任何窗口下都是同一套排版（原 ≤850 档，见 CHG-29）。 */
+html:not([data-touch='true']) .lobby-commandbar {
+  min-height: 56px;
 }
-/* DEF-05：上一档只压到 850px，1100×640 实测仍溢出 77px、900×600 溢出 133px，
-   「开始探索」被推出视口底部，必须滚动才能点到——主操作不该藏在滚动区里。
-   这一档把消息栏以上的信息区进一步收紧，目标让 640px 高的窗口一屏装下；
-   760px 以下交给触屏布局，不在这里处理。 */
-@media (min-width: 761px) and (max-height: 730px) {
-  #app[data-phase='preparing'] main {
-    padding: 6px 2% 6px;
-  }
-  .lobby-weather {
-    display: none;
-  }
-  .lobby-commandbar {
-    min-height: 46px;
-  }
-  /* 18px 的余量靠底部内边距与按钮高度抹平，保证不出滚动条。 */
-  .lobby-panel {
-    padding-bottom: 8px;
-  }
-  .prep-start {
-    min-height: 44px;
-  }
-  .prep-tutorial {
-    padding-top: 4px;
-  }
-  .prep-hero {
-    padding: 7px 0;
-  }
-  .prep-kicker {
-    margin-bottom: 2px;
-    font-size: 10px;
-  }
-  .prep-hero h2 {
-    margin-bottom: 4px;
-    font-size: 22px;
-  }
-  .prep-brief {
-    margin-bottom: 6px;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-  .lobby-mission-strip {
-    margin-top: 6px;
-    padding: 4px 10px;
-  }
-  .prep-goals {
-    gap: 7px;
-  }
-  .prep-goals li {
-    padding: 3px 10px;
-    font-size: 12px;
-  }
-  .prep-main {
-    margin-top: 7px;
-  }
-  .prep-block {
-    padding: 10px 13px;
-  }
-  .prep-block h3 {
-    margin-bottom: 6px;
-    font-size: 13px;
-  }
-  .prep-equipment li {
-    margin-bottom: 5px;
-    padding: 5px 9px;
-    font-size: 12px;
-  }
-  .prep-warning {
-    margin-bottom: 6px;
-    padding: 6px 9px;
-    line-height: 1.6;
-  }
-  .prep-block .consent {
-    margin-bottom: 6px;
-    font-size: 12px;
-  }
+html:not([data-touch='true']) .prep-hero {
+  padding-top: 12px;
+  padding-bottom: 10px;
 }
-/* DEF-05 续：620px 以下再收一档。900×600 实测 .lobby-panel 仍高出可视区 45px，
-   左下「带入选择」下拉被裁掉一半——表单控件被切一半不可接受，比滚动更糟。
-   这一档只压间距与控件内边距，不删信息。 */
-@media (min-width: 761px) and (max-height: 620px) {
-  .prep-hero {
-    padding: 6px 0;
-  }
-  .lobby-mission-strip {
-    margin-top: 5px;
-    padding: 3px 9px;
-  }
-  .mission-number {
-    font-size: 16px;
-  }
-  .prep-goals li {
-    padding: 3px 9px;
-  }
-  .prep-main {
-    margin-top: 5px;
-  }
-  .prep-equipment li {
-    margin-bottom: 3px;
-    padding: 4px 8px;
-  }
-  .field-label {
-    margin: 6px 0 4px;
-  }
-  .prep-block select,
-  .prep-block input[type='text'] {
-    padding: 6px 5px;
-  }
-  /* 461px 的可用高度仍差约 50px。这里去掉与顶部命令栏重复的
-     「思源密码 · 行前准备」小标题，并压低主按钮高度，不删任何任务信息。 */
-  .lobby-panel {
-    padding-bottom: 4px;
-  }
-  .prep-kicker {
-    display: none;
-  }
-  .prep-hero h2 {
-    font-size: 20px;
-  }
-  .prep-brief {
-    line-height: 1.42;
-  }
-  .prep-warning {
-    padding: 5px 8px;
-    line-height: 1.5;
-  }
-  .prep-start {
-    min-height: 40px;
-    font-size: 15px;
-  }
-  .prep-tutorial {
-    padding-top: 3px;
-  }
+html:not([data-touch='true']) .prep-hero h2 {
+  margin-bottom: 5px;
+  font-size: 27px;
+}
+html:not([data-touch='true']) .prep-brief {
+  font-size: 13px;
+  line-height: 1.6;
+}
+html:not([data-touch='true']) .prep-goals li {
+  padding: 5px 9px;
+}
+html:not([data-touch='true']) .prep-main {
+  margin-top: 9px;
+}
+html:not([data-touch='true']) .prep-block h3 {
+  margin-bottom: 7px;
+}
+html:not([data-touch='true']) .prep-equipment li {
+  margin-bottom: 4px;
+  padding: 5px 8px;
+}
+html:not([data-touch='true']) .prep-warning {
+  line-height: 1.6;
 }
 @media (max-width: 760px) {
   #app[data-phase='preparing'] main {
@@ -1447,7 +1314,7 @@ h1 span {
 }
 #game-canvas {
   width: 100%;
-  height: min(66vh, 650px);
+  height: min(66cqh, 650px);
   min-height: 400px;
 }
 #game-canvas canvas {
@@ -1557,8 +1424,8 @@ h1 span {
   font-size: 11px;
 }
 .campus-map-dialog {
-  width: min(900px, calc(100vw - 24px));
-  max-height: calc(100svh - 16px);
+  width: min(900px, calc(100cqw - 24px));
+  max-height: calc(100cqh - 16px);
   padding: 0;
   border: 1px solid #84917e;
   border-radius: 6px;
@@ -1594,7 +1461,7 @@ h1 span {
   border-radius: 4px;
 }
 .campus-map-scroll {
-  max-height: calc(100svh - 125px);
+  max-height: calc(100cqh - 125px);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -2133,7 +2000,7 @@ footer {
 .story-box {
   position: relative;
   width: min(980px, calc(100% - 32px));
-  margin-bottom: clamp(16px, 6vh, 56px);
+  margin-bottom: clamp(16px, 6cqh, 56px);
   padding: 16px 22px 12px;
   border: 1px solid #6c6a55;
   border-radius: 10px;
@@ -2172,7 +2039,7 @@ footer {
 .story-line {
   margin: 0;
   min-height: 3.8em;
-  font-size: clamp(13px, 1.2vw, 16px);
+  font-size: clamp(13px, 1.2cqw, 16px);
   line-height: 1.95;
   color: #dfe6e0;
   white-space: pre-wrap;
@@ -2392,4 +2259,69 @@ footer {
     flex-wrap: wrap;
     gap: 8px;
   }
+}
+
+/* ---------- 固定画框（仅桌面端）----------
+   端游做法：按 1280×720 基准排一张完整画面，窗口多大就整张等比缩放，
+   不重排版、不产生滚动条；任何窗口下看到的是同一张画面，只是大小不同。
+   触屏端（data-touch='true'）本来就是整屏横屏，保持原有的容器自适应，不进入这套。
+   缩放比例由 src/modules/ui/stage.ts 写入 --stage-scale。 */
+html:not([data-touch='true']) {
+  --stage-scale: 1;
+  height: 100%;
+  overflow: hidden;
+  background: #080c12;
+}
+html:not([data-touch='true']) body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #080c12;
+}
+/* 画框即这一层的「视口」：尺寸固定，绕自身中心缩放并居中，
+   窗口多出来的部分露出背景色，不做拉伸、不裁切内容。 */
+html:not([data-touch='true']) #stage {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 1280px;
+  height: 720px;
+  transform: translate(-50%, -50%) scale(var(--stage-scale));
+  transform-origin: center center;
+  overflow: hidden;
+  container-type: size;
+}
+/* 两个 ID 是有意的：要盖过 html.lobby-open:not(...) #app 里的 height: 100dvh。 */
+html:not([data-touch='true']) #stage > #app {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+/* 序章按画框铺满，不再按窗口高度算。 */
+html:not([data-touch='true']) #stage .prologue {
+  height: 100%;
+  padding: 0;
+}
+html:not([data-touch='true']) #stage .prologue-stage {
+  width: 100%;
+  min-height: 0;
+}
+/* showModal() 的弹窗进入浏览器顶层，会脱离 #stage 的 transform，
+   这里用同一个比例单独缩放；位置显式居中，避免窗口小于画框时 margin:auto 失效。 */
+html:not([data-touch='true']) #stage dialog[open] {
+  position: fixed;
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%) scale(var(--stage-scale));
+  transform-origin: center center;
+}
+/* 弹窗高度按画框算（720 − 边距），不跟着窗口高度变。 */
+html:not([data-touch='true']) #stage .rules-dialog {
+  max-height: 696px;
+}
+html:not([data-touch='true']) #stage .campus-map-dialog {
+  width: 900px;
+  max-height: 704px;
 }
