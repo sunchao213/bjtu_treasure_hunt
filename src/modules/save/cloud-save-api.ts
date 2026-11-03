@@ -28,7 +28,7 @@ export class CloudSaveError extends Error {
 export class HttpCloudSaveApi implements CloudSaveApi {
   constructor(
     private readonly clientId: string,
-    private readonly request: typeof fetch = fetch,
+    private readonly request: typeof fetch = globalThis.fetch.bind(globalThis),
   ) {}
 
   async open(): Promise<CloudSnapshot> {

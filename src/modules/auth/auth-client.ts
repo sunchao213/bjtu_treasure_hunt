@@ -10,7 +10,7 @@ export interface AuthSession {
 }
 
 export class AuthClient {
-  constructor(private readonly request: typeof fetch = fetch) {}
+  constructor(private readonly request: typeof fetch = globalThis.fetch.bind(globalThis)) {}
 
   async current(): Promise<AuthSession | null> {
     const response = await this.send('/api/auth/me');

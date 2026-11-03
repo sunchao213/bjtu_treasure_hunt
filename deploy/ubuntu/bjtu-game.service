@@ -1,0 +1,27 @@
+[Unit]
+Description=BJTU Treasure Hunt
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=bjtu-game
+Group=bjtu-game
+WorkingDirectory=/opt/bjtu-game/current/server
+ExecStart=/usr/bin/dotnet /opt/bjtu-game/current/server/OnlineHost.dll --contentRoot /opt/bjtu-game/current/server
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5080
+Environment=Auth__DataDirectory=/var/lib/bjtu-game
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/bjtu-game
+
+[Install]
+WantedBy=multi-user.target

@@ -7,5 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.22" />
     <EmbeddedResource Include="Database/schema.sql" />
+    <Content Remove="data/**;backups/**" />
+    <None Remove="data/**;backups/**" />
   </ItemGroup>
 </Project>

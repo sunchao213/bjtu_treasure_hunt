@@ -82,4 +82,6 @@ npm.cmd run check
 
 `npm run build` 输出 `dist/`，需搭配同源账号与联机服务部署，具体见[登录功能说明](docs/authentication.md)。CI 检查前端与账号服务并生成构建附件，没有自动部署、推送或发布。Phaser 单独打包，其包体与实际校内网络加载应在 E 的性能检查中测量。
 
+Ubuntu 云服务器的打包、上传、开机启动、存档目录与更新步骤见 [Ubuntu 部署说明](docs/ubuntu-deployment.md)。
+
 当前地图、人物和物资为代码绘制，见 [素材清单](docs/assets-manifest.md)。正式开源前由全组确定许可证。不要上传真实试用者身份信息。
