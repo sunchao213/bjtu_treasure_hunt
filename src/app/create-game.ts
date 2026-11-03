@@ -13,7 +13,7 @@ export function createGame(scene: WorldScene): Phaser.Game {
     input: { touch: { capture: false } },
     // Measure the unrotated content box; boundingClientRect swaps axes in portrait.
     scale: { mode: Phaser.Scale.NONE, width: parent.clientWidth, height: parent.clientHeight },
-    render: { antialias: true, roundPixels: true },
+    render: { antialias: false, roundPixels: true },
     scene: [scene],
   });
   const resize = () => {

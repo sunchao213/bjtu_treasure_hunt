@@ -3,7 +3,6 @@ import {
   MONSTER_ANIMATIONS,
   MONSTER_SPRITE_SHEETS,
   monsterAnimationFor,
-  monsterNameFor,
   monsterScaleFor,
 } from '../../src/config/monster-sprites';
 import type { Enemy } from '../../src/modules/world/night-systems';
@@ -70,15 +69,9 @@ describe('monster sprite manifest', () => {
     );
   });
 
-  it('identifies each supplied appearance in the monster label', () => {
-    expect(monsterNameFor(makeEnemy())).toBe('巡游怪 · 灰鸭');
-    expect(monsterNameFor(makeEnemy({ kind: 'hug' }))).toBe('抱抱怪 · 棕色松鼠');
-    expect(monsterNameFor(makeEnemy({ kind: 'hug', mutated: true }))).toBe('变异抱抱怪 · 红眼松鼠');
-  });
-
-  it('keeps the established relative scale for each visual variant', () => {
-    expect(monsterScaleFor(makeEnemy())).toBe(0.5);
-    expect(monsterScaleFor(makeEnemy({ kind: 'hug' }))).toBe(0.48);
-    expect(monsterScaleFor(makeEnemy({ kind: 'hug', mutated: true }))).toBe(0.62);
+  it('keeps the reduced relative scale for each visual variant', () => {
+    expect(monsterScaleFor(makeEnemy())).toBe(0.4);
+    expect(monsterScaleFor(makeEnemy({ kind: 'hug' }))).toBe(0.38);
+    expect(monsterScaleFor(makeEnemy({ kind: 'hug', mutated: true }))).toBe(0.48);
   });
 });

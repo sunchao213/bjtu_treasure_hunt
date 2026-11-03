@@ -13,7 +13,8 @@ export function renderDarkness(
   origin: Point = { x: 0, y: 0 },
 ): void {
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = 'rgba(3, 5, 8, 0.92)';
+  // Keep the campus subdued while preserving the existing light sources.
+  ctx.fillStyle = 'rgba(3, 5, 8, 0.8)';
   ctx.fillRect(0, 0, width, height);
   ctx.save();
   ctx.translate(-origin.x, -origin.y);

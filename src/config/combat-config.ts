@@ -80,7 +80,6 @@ export const COMBAT_RULES = {
     requestDurationMs: 6_000,
     calmHoldDurationMs: 1_500,
     calmDurationMs: 30_000,
-    rewardItemId: 'gpa-charm',
     mutationWarningMs: 1_000,
     followSpeed: 130,
     followStopDistance: 55,
