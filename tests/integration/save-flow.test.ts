@@ -161,6 +161,28 @@ describe('A to B reference persistence integration', () => {
     storage.setItem(SAVE_KEY, JSON.stringify({ schemaVersion: 99 }));
     expect(() => new ReferenceSave(storage)).toThrow();
   });
+  it('rejects raid-loot with an empty source raid id', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      SAVE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        warehouse: [
+          {
+            instanceId: 'invalid-source',
+            itemId: 'school-badge',
+            origin: { kind: 'raid-loot', obtainedInRaidId: '' },
+          },
+        ],
+        codexIds: [],
+        unlockedChapterIds: [],
+        activeRaid: null,
+        settledRaidIds: [],
+        lastResult: null,
+      }),
+    );
+    expect(() => new ReferenceSave(storage)).toThrow();
+  });
   it('rejects duplicate settled raids and an active raid that was already settled', () => {
     const storage = new MemoryStorage();
     const valid = {

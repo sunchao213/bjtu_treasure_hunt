@@ -26,6 +26,21 @@
 - IndexedDB 或服务端资产事务。
 - SQL 数据库。
 
+## 第二阶段候选范围，需组长确认后实施
+
+以下内容仅作为候选规划，须由组长确认范围、优先级、接口和验收标准后另行实施：
+
+- 二维网格。
+- 物品宽高和旋转。
+- 装备槽交换。
+- 钱包。
+- 出售、购买和升级。
+- `transactionId` 和交易记录。
+- IndexedDB 或服务端资产事务。
+- 如未来引入数据库，再单独设计 schema、迁移和事务；本轮不创建或实施 SQL 数据库。
+
+这些功能会同时影响共享类型、存档结构与迁移、UI 交互、业务接口、持久化实现和测试，必须成组设计和验证，不能只增加一个数据库文件来实现。当前 V1.0 不实现上述任何功能，也不修改 `src/` 下代码。
+
 ## 步骤清单
 
 ### Step 1 冻结范围与任务计划
@@ -85,44 +100,82 @@
 
 ### Step 5 补齐 V1.0 代码
 
-- [ ] 状态：未开始
+- [x] 状态：已完成
 - 目标：完成R03、R06要求的库存、价值和存档行为。
-- 操作：补齐满包、拾取、丢弃、使用、带入物排除、实例去重、成功入库、失败损失、刷新中断和重复结算幂等；保持localStorage JSON方案。
-- 涉及文件：`src/modules/inventory/`；`src/modules/save/`；必要时更新共享类型和配置
-- 执行命令：待确定。
-- 结果：待执行。
-- 风险：不能在本步骤引入二维网格、商店、钱包、交易、升级、联机事务或SQL数据库。
-- 下一步：代码完成后进入 Step 6。
+- 操作：先确认 `docs/b-data-design.md` 存在且 Step 4 已完成；阅读库存、价值、存档和控制器实现及现有测试；仅收紧旧 `ReferenceSave` 对 `raid-loot.obtainedInRaidId` 的非空校验，并增加对应回归测试；未修改公共接口、存档 schema 或架构。
+- 涉及文件：`src/modules/save/reference-save.ts`；`tests/integration/save-flow.test.ts`；`docs/b-data-design.md`（仅按 Prettier 格式化）；`docs/b-agent-task-plan.md`
+- 执行命令：定向测试 `npm.cmd run test:unit -- tests/unit/inventory.test.ts tests/integration/persistent-save.test.ts tests/integration/save-flow.test.ts`；完整检查 `npm.cmd run check`；文档格式化 `npm.cmd exec prettier -- --write docs/b-data-design.md`
+- 结果：
+  - 满包不能吞物：现有 `ReferenceInventory.addLoot()` 在容量达到6时返回 `INVENTORY_FULL`，定向测试覆盖，未需业务修改。
+  - 丢弃后价值立即减少：现有 `remove()` 触发 `InventoryChanged`，控制器重新从当前携带实例计算价值；现有丢弃/价值集成路径通过，未需业务修改。
+  - 消耗后价值立即减少：现有 `consumeHealing()` 仅在效果确认成功后移除实例并触发库存变化；现有单元测试通过，未需业务修改。
+  - 丢弃再拾回不重复加分：实例 ID和来源保留，价值计算按 `instanceId` 去重；现有单元测试通过，未需业务修改。
+  - 带入物不计本局价值：价值计算只计当前对局的 `raid-loot`，`carry-in` 被排除；现有边界测试通过，未需业务修改。
+  - 同一 `instanceId` 不同时存在两份：库存拾取、正式存档校验、结算校验都拒绝重复实例；现有单元和集成测试通过，未需业务修改。
+  - 成功结算只入库一次：`PersistentSave`/`ReferenceSave` 对已结算 `raidId` 幂等返回，并检查仓库实例冲突；现有重复结算测试通过，未需业务修改。
+  - 失败结算不写入本局物品：失败结果必须为空物品列表，活动局清除但仓库不增加本局物品；现有正式和参考存档测试通过，未需业务修改。
+  - 刷新后活动局按中断失败：`recoverInterrupted()` 写入 `interrupted` 失败、清除活动局且不猜测返还带入物；现有集成测试通过，未需业务修改。
+  - 存档写入失败不提前显示成功：`commit()` 在 storage 写入成功后才替换内存，控制器保存失败停留在 `settling` 并支持重试；现有存储失败和控制器重试测试通过，未需业务修改。
+  - 实际代码补齐：旧 `ReferenceSave.validItem()` 原先只检查 `obtainedInRaidId` 是字符串，现已要求非空字符串，与正式 schema 3 校验一致；新增空来源 ID 被拒绝的回归测试。
+  - 定向测试结果：3 个测试文件、36 个测试全部通过。
+  - 完整检查结果：Prettier、ESLint、TypeScript、32 个测试文件共256个测试和 Vite 生产构建全部通过。
+- 风险：`inventory-model.ts` 仍未接入运行时库存，二维布局不属于本轮；`InventoryPort` 的具体装备/恢复物扩展未在本轮修改；正式 schema 3 和旧参考 schema 1 仍是两个适配器格式，但来源校验已对齐非空要求；本轮未引入 SQL、IndexedDB、商店、钱包、交易、升级或联机资产事务。
+- 下一步：暂停并等待确认后执行 Step 6；Step 6 只补充或整理测试证据，不删除已有测试。
 
 ### Step 6 补充测试
 
-- [ ] 状态：未开始
+- [x] 状态：已完成
 - 目标：验证V1.0正常路径、异常路径和边界规则。
-- 操作：补充价值门槛、满包、重复拾取、带入物、成功结算、失败结算、刷新恢复、损坏存档和重复提交测试。
-- 涉及文件：`tests/unit/`；`tests/integration/`
-- 执行命令：`npm.cmd run check`
-- 结果：待执行。
-- 风险：测试必须反映冻结规则，不能用测试替换未确认的第二阶段需求。
-- 下一步：测试通过后进入 Step 7。
+- 操作：先读取本计划和 `docs/b-data-design.md`，检查现有测试覆盖；新增 99 价值拒绝撤离测试和重复拾取不重复计分测试；保留已有的 100、110→85、带入150不计分、满包搜索、成功/失败结算、刷新中断、损坏存档和迁移失败保护测试；每组新增测试后运行对应命令，再运行重点组合测试和完整检查。
+- 涉及文件：`tests/unit/raid-controller.test.ts`；`tests/unit/inventory.test.ts`；`tests/integration/persistent-save.test.ts`；`tests/integration/save-flow.test.ts`；`docs/b-agent-task-plan.md`
+- 执行命令与结果：
+  - `npm.cmd run test:unit -- tests/unit/raid-controller.test.ts`：通过，1 个文件、15 个测试。
+  - `npm.cmd run test:unit -- tests/unit/inventory.test.ts`：通过，1 个文件、13 个测试。
+  - `npm.cmd run test:unit -- tests/unit/inventory.test.ts tests/unit/raid-controller.test.ts tests/integration/persistent-save.test.ts tests/integration/save-flow.test.ts`：通过，4 个文件、52 个测试。
+  - `npm.cmd run check`：通过；Prettier、ESLint、TypeScript、32 个测试文件共 258 个测试和 Vite 构建全部成功。
+- 结果：已补充并确认 V1.0 重点边界；新增测试只验证现有 R03/R06 规则，没有实现新功能或第二阶段能力。
+- 风险：当前测试验证的是现有 `localStorage` 适配器和单机库存链路；`inventory-model.ts` 的二维布局模型、SQL/IndexedDB、商店、钱包、交易、升级和联机资产事务仍不属于本轮测试范围。
+- 下一步：执行 Step 7，整理验收证据、最终报告和已知限制。
 
 ### Step 7 验收与最终报告
 
-- [ ] 状态：未开始
+- [x] 状态：已完成
 - 目标：确认代码、测试、数据设计和R03/R06验收证据一致。
-- 操作：执行完整检查，核对文档与代码版本，整理正常路径、异常路径、已知限制和提交记录。
-- 涉及文件：`b-agent-task-plan.md`；`docs/b-data-design.md`；B模块代码；测试结果和验收记录
-- 执行命令：`npm.cmd run check`
-- 结果：待执行。
-- 风险：不得把设计完成写成代码已实现，不得遗漏失败和恢复证据。
-- 下一步：完成V1.0报告后进入 Step 8。
+- 操作：执行 `git status`；阅读 `package.json` scripts；运行完整 `npm.cmd run check` 和独立 `npm.cmd run test:unit`；按 R03/R06 验收清单核对库存、价值、结算、恢复、存档和范围边界；确认设计文档与任务计划已更新。
+- 涉及文件：`docs/b-agent-task-plan.md`；`docs/b-data-design.md`；B模块代码；库存和存档测试文件；`package.json`
+- 执行命令与结果：
+  - `git status --short --branch`：当前为 `feature/b-inventory-save`；工作区包含本轮文档、存档校验和测试改动，未发现未记录的业务范围外修改。
+  - `npm.cmd run check`：首次在受限执行环境中因 Vitest 写入 `node_modules/.vite-temp` 返回 `EPERM`，格式检查、Lint 和类型检查均已先通过；使用允许临时文件写入的执行权限重试后通过，Prettier、ESLint、TypeScript、32 个测试文件共 258 个测试和 Vite 生产构建全部成功。
+  - `npm.cmd run test:unit`：通过（使用相同执行权限）；32 个测试文件共 258 个测试全部成功。
+- 验收清单：
+  - [x] 6 格背包逻辑符合本轮范围。
+  - [x] 拾取、丢弃、使用逻辑正确。
+  - [x] 普通/稀有/史诗/传说价值计算正确。
+  - [x] 带入物不计本局价值。
+  - [x] 成功结算只入库一次。
+  - [x] 失败结算不写入仓库。
+  - [x] 刷新中断记录为 `interrupted`。
+  - [x] 重复结算不重复增加物品。
+  - [x] 满包不吞物品。
+  - [x] 同一 `instanceId` 不重复存在。
+  - [x] `localStorage` JSON 存档正常。
+  - [x] 损坏存档拒绝加载。
+  - [x] 迁移失败保留原存档。
+  - [x] 未实现本轮明确排除的第二阶段功能。
+  - [x] 未创建 SQL 数据库。
+  - [x] `docs/b-data-design.md` 已更新并通过格式检查。
+  - [x] `docs/b-agent-task-plan.md` 已完整记录 Step 1 至 Step 7。
+- 结果：V1.0 R03/R06 验收通过；本轮没有新增第二阶段功能，没有创建 SQL 数据库，没有修改公共接口或存档 schema。
+- 风险：二维布局模型仍未接入运行时库存；第二阶段功能和关系数据库方案尚未实现；当前结论基于自动化测试和静态代码/文档核对，不替代真实浏览器试玩与课程验收。受限执行环境可能无法让 Vitest 写入 `node_modules/.vite-temp`，验收时需保留可写临时目录的运行条件。
+- 下一步：执行 Step 8，仅记录第二阶段规划和依赖，不实现第二阶段功能。
 
 ### Step 8 第二阶段规划记录 不实现
 
-- [ ] 状态：未开始
-- 目标：记录二维网格、装备、商店经济、联机资产和其他后续事项的依赖与范围。
-- 操作：只记录目标、前置接口、风险和待确认事项，不修改代码，不创建数据库，不实现功能。
-- 涉及文件：任务计划或后续规划文档
-- 执行命令：无
-- 结果：待执行。
-- 风险：第二阶段规划不得反向扩大已冻结的V1.0范围。
-- 下一步：等待团队确认后另行立项。
+- [x] 状态：已完成
+- 目标：记录需组长确认的第二阶段候选范围、跨层改动要求和实施边界。
+- 操作：在本计划中增加第二阶段候选清单，明确二维网格、物品宽高和旋转、装备槽交换、钱包、出售/购买/升级、`transactionId` 与交易记录、IndexedDB 或服务端资产事务，以及未来数据库方案的单独 schema/迁移/事务设计；同步说明这些能力需要类型、存档、UI、测试和接口协同修改。
+- 涉及文件：`docs/b-agent-task-plan.md`
+- 执行命令：读取本计划并更新 Markdown 文档；未修改 `src/`，未创建数据库。
+- 结果：第二阶段候选范围已记录，明确须组长确认后实施；本轮 V1.0 保持不变，未实现任何候选功能。
+- 风险：候选功能可能引入存档版本迁移、资产一致性和接口兼容风险，实施前需完成单独设计、评审和验收标准；不能以新增数据库文件替代跨层改造。
+- 下一步：等待组长确认第二阶段优先级和技术方案后，另行建立实施任务。

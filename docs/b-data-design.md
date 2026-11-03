@@ -23,12 +23,12 @@
 
 `ItemDefinition` 是静态配置中的物品类型定义，不作为每个存档实例重复保存。当前定义位于 `src/config/game-config.ts` 的 `ITEM_DEFINITIONS`。
 
-| 字段 | 类型 | 含义与约束 |
-| --- | --- | --- |
-| `itemId` | `string` | 物品定义唯一标识，必须在 `ITEM_DEFINITIONS` 中存在。 |
-| `name` | `string` | 展示名称。 |
-| `rarity` | `common \| uncommon \| epic \| legendary` | 稀有度，分别对应普通、稀有、史诗、传说。 |
-| `kind` | `collectible \| healing \| quest \| weapon` | 物品类型，决定可收集、恢复、任务或武器用途。 |
+| 字段     | 类型                                        | 含义与约束                                           |
+| -------- | ------------------------------------------- | ---------------------------------------------------- |
+| `itemId` | `string`                                    | 物品定义唯一标识，必须在 `ITEM_DEFINITIONS` 中存在。 |
+| `name`   | `string`                                    | 展示名称。                                           |
+| `rarity` | `common \| uncommon \| epic \| legendary`   | 稀有度，分别对应普通、稀有、史诗、传说。             |
+| `kind`   | `collectible \| healing \| quest \| weapon` | 物品类型，决定可收集、恢复、任务或武器用途。         |
 
 当前价值表由 `RAID_RULES.values` 提供：普通 10、稀有 25、史诗 60、传说 150。价值是本局撤离资格的计量值，不是钱包余额或历史累计收入。
 
@@ -36,13 +36,13 @@
 
 `ItemInstance` 表示一个可被拾取、带入、丢弃、使用和结算的具体实例。实例身份必须贯穿整个流程。
 
-| 字段 | 类型 | 含义与约束 |
-| --- | --- | --- |
-| `instanceId` | `string` | 实例唯一标识；同一实例不能在同一状态中出现两份。 |
-| `itemId` | `string` | 引用一个已知 `ItemDefinition`。 |
-| `origin` | `ItemOrigin` | 实例来源，只有 `carry-in` 或 `raid-loot`。 |
-| `origin.kind` | `string` | `carry-in` 表示开局从永久仓库带入；`raid-loot` 表示本局获得。 |
-| `origin.obtainedInRaidId` | `string` | `raid-loot` 必须填写非空的获得对局 ID；`carry-in` 不带此字段。 |
+| 字段                      | 类型         | 含义与约束                                                     |
+| ------------------------- | ------------ | -------------------------------------------------------------- |
+| `instanceId`              | `string`     | 实例唯一标识；同一实例不能在同一状态中出现两份。               |
+| `itemId`                  | `string`     | 引用一个已知 `ItemDefinition`。                                |
+| `origin`                  | `ItemOrigin` | 实例来源，只有 `carry-in` 或 `raid-loot`。                     |
+| `origin.kind`             | `string`     | `carry-in` 表示开局从永久仓库带入；`raid-loot` 表示本局获得。  |
+| `origin.obtainedInRaidId` | `string`     | `raid-loot` 必须填写非空的获得对局 ID；`carry-in` 不带此字段。 |
 
 来源决定价值和结算：只有 `origin.kind = raid-loot` 且 `obtainedInRaidId` 等于当前 `raidId` 的实例计入本局价值；带入物不计入本局价值。
 
@@ -82,14 +82,14 @@ activeRaid: {
 
 `lastResult: RaidResult | null` 保存最近一次已经写入存档的结果：
 
-| 字段 | 类型 | 含义与约束 |
-| --- | --- | --- |
-| `raidId` | `string` | 对应已结算对局，必须出现在 `settledRaidIds`。 |
-| `outcome` | `success \| failed` | 成功或失败。 |
-| `reason` | `FailureReason \| null` | 成功必须为 `null`；失败为 `death`、`timeout`、`abandoned` 或 `interrupted`。 |
-| `items` | `ItemInstance[]` | 成功时为带回实例；失败时必须为空数组。实例 ID 不重复。 |
-| `value` | `number` | 本局结算时记录的非负安全整数价值。 |
-| `questComplete` | `boolean \| undefined` | 可选的本局任务完成标记。 |
+| 字段            | 类型                    | 含义与约束                                                                   |
+| --------------- | ----------------------- | ---------------------------------------------------------------------------- |
+| `raidId`        | `string`                | 对应已结算对局，必须出现在 `settledRaidIds`。                                |
+| `outcome`       | `success \| failed`     | 成功或失败。                                                                 |
+| `reason`        | `FailureReason \| null` | 成功必须为 `null`；失败为 `death`、`timeout`、`abandoned` 或 `interrupted`。 |
+| `items`         | `ItemInstance[]`        | 成功时为带回实例；失败时必须为空数组。实例 ID 不重复。                       |
+| `value`         | `number`                | 本局结算时记录的非负安全整数价值。                                           |
+| `questComplete` | `boolean \| undefined`  | 可选的本局任务完成标记。                                                     |
 
 ### codexIds 与 unlockedChapterIds
 
@@ -160,13 +160,13 @@ erDiagram
 
 当前正式保存常量如下：
 
-| 项目 | 当前值 | 说明 |
-| --- | --- | --- |
-| 正式保存键 | `bjtu-treasure-hunt:save:v2` | `PersistentSave` 使用；键名保持稳定以支持原地迁移。 |
-| 正式 schema | `3` | `FORMAL_SCHEMA_VERSION`；`activeRaid` 含 `loadout`。 |
-| 参考保存键 | `bjtu-treasure-hunt:a-framework:v1` | `ReferenceSave` 使用的旧参考命名空间。 |
-| 参考 schema | `1` | 旧格式的 `activeRaid` 不保存带入清单。 |
-| 存储介质 | 浏览器 `localStorage` | 通过 `StoragePort.getItem/setItem` 读写 JSON 字符串。 |
+| 项目        | 当前值                              | 说明                                                  |
+| ----------- | ----------------------------------- | ----------------------------------------------------- |
+| 正式保存键  | `bjtu-treasure-hunt:save:v2`        | `PersistentSave` 使用；键名保持稳定以支持原地迁移。   |
+| 正式 schema | `3`                                 | `FORMAL_SCHEMA_VERSION`；`activeRaid` 含 `loadout`。  |
+| 参考保存键  | `bjtu-treasure-hunt:a-framework:v1` | `ReferenceSave` 使用的旧参考命名空间。                |
+| 参考 schema | `1`                                 | 旧格式的 `activeRaid` 不保存带入清单。                |
+| 存储介质    | 浏览器 `localStorage`               | 通过 `StoragePort.getItem/setItem` 读写 JSON 字符串。 |
 
 当前项目使用 **localStorage JSON 存档，不是 SQL 数据库**。本轮不创建 MySQL、SQLite 或其他 SQL 数据库，也不接入 IndexedDB 或服务端资产存储。
 

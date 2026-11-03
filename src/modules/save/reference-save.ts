@@ -40,7 +40,9 @@ function validItem(value: unknown): value is ItemInstance {
   }
   return (
     value.origin.kind === 'carry-in' ||
-    (value.origin.kind === 'raid-loot' && typeof value.origin.obtainedInRaidId === 'string')
+    (value.origin.kind === 'raid-loot' &&
+      typeof value.origin.obtainedInRaidId === 'string' &&
+      value.origin.obtainedInRaidId.length > 0)
   );
 }
 
