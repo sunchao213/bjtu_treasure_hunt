@@ -1120,7 +1120,11 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const carried = this.services.inventory.getCarriedItems();
-    const bagFull = carried.length >= RAID_RULES.bagCapacity;
+    const equippedIds = new Set(
+      Object.values(this.services.inventory.getEquipment()).map((item) => item.instanceId),
+    );
+    const bagFull =
+      carried.filter((item) => !equippedIds.has(item.instanceId)).length >= RAID_RULES.bagCapacity;
     const hug = this.nearbyHug();
     if (hug) {
       this.search.cancel();

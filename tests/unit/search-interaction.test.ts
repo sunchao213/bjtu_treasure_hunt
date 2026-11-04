@@ -40,6 +40,22 @@ describe('SearchInteraction', () => {
     expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(true);
   });
 
+  it('marks the completed point when pickup opens a story and cancels interaction', () => {
+    let now = 0;
+    const search = new SearchInteraction(2_000, () => now);
+    search.begin('library-west');
+    now = 2_000;
+    const result = search.finish(item, () => {
+      // ItemPicked opens the story dialog synchronously, clearing scene interactions.
+      search.cancel();
+      return { ok: true, value: undefined };
+    });
+    expect(result.ok).toBe(true);
+    expect(search.isOpened('library-west')).toBe(true);
+    expect(search.begin('library-west')).toBe(false);
+    expect(search.current()).toBeNull();
+  });
+
   it('cancels progress when interaction is interrupted', () => {
     let now = 500;
     const search = new SearchInteraction(2_000, () => now);
