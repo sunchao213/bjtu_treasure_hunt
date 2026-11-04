@@ -134,7 +134,7 @@ export function mountShell(root: HTMLElement): void {
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
           ${tutorialMarkup()}
           <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-label="放大校园地图">
-        <canvas id="campus-overview" class="campus-overview" width="600" height="855" aria-hidden="true"></canvas>
+        <canvas id="campus-overview" class="campus-overview" width="180" height="180" aria-hidden="true"></canvas>
             <span>校园图 · 点击放大</span>
           </button>
           <div id="touch-controls" class="touch-controls" aria-label="触屏操作">

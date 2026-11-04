@@ -7,6 +7,13 @@ const EXPLORED_ROWS = Math.ceil(WORLD.height / EXPLORED_CELL_SIZE);
 
 export type ExploredMap = Uint8Array;
 
+export interface CampusOverviewOptions {
+  /** Render a compact, player-centred radar view instead of the full campus. */
+  followPlayer?: boolean;
+  /** World-space radius shown around the player in the compact view. */
+  viewRadius?: number;
+}
+
 export function createExploredMap(): ExploredMap {
   return new Uint8Array(EXPLORED_COLUMNS * EXPLORED_ROWS);
 }
@@ -52,22 +59,45 @@ export function drawCampusOverview(
   player: Point,
   image: CanvasImageSource,
   explored: ExploredMap,
+  options: CampusOverviewOptions = {},
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const scale = Math.min(canvas.width / WORLD.width, canvas.height / WORLD.height);
-  const width = WORLD.width * scale;
-  const height = WORLD.height * scale;
-  const offsetX = (canvas.width - width) / 2;
-  const offsetY = (canvas.height - height) / 2;
+  const followPlayer = options.followPlayer === true;
+  const viewRadius = Math.max(96, options.viewRadius ?? 320);
+  const scale = followPlayer
+    ? Math.min(canvas.width, canvas.height) / (viewRadius * 2)
+    : Math.min(canvas.width / WORLD.width, canvas.height / WORLD.height);
+  const width = followPlayer ? viewRadius * 2 : WORLD.width;
+  const height = followPlayer ? viewRadius * 2 : WORLD.height;
+  const viewCenterX = followPlayer
+    ? Math.max(viewRadius, Math.min(WORLD.width - viewRadius, player.x))
+    : WORLD.width / 2;
+  const viewCenterY = followPlayer
+    ? Math.max(viewRadius, Math.min(WORLD.height - viewRadius, player.y))
+    : WORLD.height / 2;
+  const offsetX = followPlayer
+    ? (canvas.width - width * scale) / 2 - (viewCenterX - viewRadius) * scale
+    : (canvas.width - width * scale) / 2;
+  const offsetY = followPlayer
+    ? (canvas.height - height * scale) / 2 - (viewCenterY - viewRadius) * scale
+    : (canvas.height - height * scale) / 2;
   const x = (worldX: number) => offsetX + worldX * scale;
   const y = (worldY: number) => offsetY + worldY * scale;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#101713';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(image, offsetX, offsetY, width, height);
+  if (followPlayer) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.clip();
+    ctx.drawImage(image, offsetX, offsetY, WORLD.width * scale, WORLD.height * scale);
+  } else {
+    ctx.drawImage(image, offsetX, offsetY, width * scale, height * scale);
+  }
 
   ctx.fillStyle = '#020305';
   for (let row = 0; row < EXPLORED_ROWS; row += 1) {
@@ -99,4 +129,5 @@ export function drawCampusOverview(
   ctx.strokeStyle = '#111714';
   ctx.lineWidth = 2;
   ctx.stroke();
+  if (followPlayer) ctx.restore();
 }
