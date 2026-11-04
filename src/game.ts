@@ -19,7 +19,8 @@ import { EventBus } from './shared/events/game-events';
 import type { ItemInstance } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
 import { SoundManager } from './modules/ui/sound-manager';
-import { NetworkSession, type NetworkStatus } from './modules/network/network-session';
+import { NetworkSession } from './modules/network/network-session';
+import { bindRoomLobby } from './modules/ui/room-lobby';
 import type { AccountUser } from './modules/auth/auth-client';
 import { accountStorage } from './modules/save/account-storage';
 
@@ -36,7 +37,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
   const settings = document.createElement('section');
   settings.className = 'side-card settings';
   settings.innerHTML =
-    '<h2>设置</h2><label>游戏音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label><h3>联机房间</h3><p id="network-status" role="status">正在检查联机服务…</p><label>昵称 <input id="network-name" maxlength="18" value="校园探索者"></label><label>房间号 <input id="network-room" maxlength="32" value="校园夜巡"></label><div class="network-actions"><button id="network-connect" class="secondary">连接</button><button id="network-join" class="secondary" disabled>加入房间</button><button id="network-leave" class="text-button" disabled>离开房间</button></div>';
+    '<h2>设置</h2><label>游戏音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label>';
   document.querySelector('aside')?.append(settings);
   const account = document.createElement('section');
   account.className = 'side-card settings';
@@ -170,59 +171,29 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     const sound = new SoundManager();
     const networkUrl = new URL('/ws', location.href);
     networkUrl.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const networkStatusLabel: Record<NetworkStatus, string> = {
-      offline: '未连接',
-      connecting: '正在连接…',
-      connected: '已连接，尚未加入房间',
-      reconnecting: '连接中断，正在重连…',
-    };
     const network = new NetworkSession({
       url: networkUrl.href,
       sessionId: crypto.randomUUID(),
-      displayName: element<HTMLInputElement>('network-name').value,
+      displayName: user.displayName,
     });
-    let networkStatus: NetworkStatus = 'offline';
-    let onlineCount = 0;
-    network?.onStatus((status) => {
-      networkStatus = status;
-      if (status !== 'connected') {
-        onlineCount = 0;
-        scene.clearRemotePlayers();
-      }
-      render();
+    const lobby = bindRoomLobby({
+      network,
+      canEnter: () => controller.getView().phase === 'preparing' && !controller.getView().isBusy,
+      canPrepare: () =>
+        controller.getView().phase === 'preparing' &&
+        !controller.getView().isBusy &&
+        element<HTMLInputElement>('risk-consent').checked,
+      onChange: () => render(),
+      onPlayers: (players) =>
+        players.length ? scene.syncRemotePlayers(players) : scene.clearRemotePlayers(),
+      onPlayerLeft: (id) => scene.removeRemotePlayer(id),
+      onStart: async () => {
+        if (controller.getView().phase !== 'preparing') return;
+        element('close-room').click();
+        if (!(await startExploration())) lobby.finish();
+      },
     });
-    network?.onMessage((message) => {
-      if (message.type === 'room-state') {
-        onlineCount = message.players.length;
-        scene.syncRemotePlayers(message.players);
-        element('network-status').textContent = `房间 ${message.roomId} · ${onlineCount} 人在线`;
-      } else if (message.type === 'player-left') {
-        scene.removeRemotePlayer(message.playerId);
-      } else if (message.type === 'error') {
-        element('network-status').textContent = message.message;
-      }
-    });
-    element('network-status').textContent = networkStatusLabel.offline;
-    element('network-connect').title = '使用当前账号连接联机服务';
-    element('network-connect').onclick = () => {
-      if (!network) return;
-      network.setDisplayName(element<HTMLInputElement>('network-name').value);
-      network.connect();
-      render();
-    };
-    element('network-join').onclick = () => {
-      const roomId = element<HTMLInputElement>('network-room').value.trim();
-      if (network?.join(roomId)) {
-        onlineCount = 0;
-        element('network-status').textContent = `正在加入房间 ${roomId}…`;
-      }
-    };
-    element('network-leave').onclick = () => {
-      network?.leave();
-      onlineCount = 0;
-      scene.clearRemotePlayers();
-      render();
-    };
+    events.on('RaidEnded', () => lobby.finish());
     window.addEventListener('beforeunload', () => network?.close(), { once: true });
     const volume = element<HTMLInputElement>('sound-volume');
     let audibleVolume = sound.getSettings().volume || 0.8;
@@ -237,6 +208,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     brightness.oninput = applySettings;
     applySettings();
     const scene = new WorldScene({
+      displayName: user.displayName,
       controller,
       inventory,
       events,
@@ -256,18 +228,47 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let rulesOpen = false;
     let mapOpen = false;
     let codexOpen = false;
+    let roomOpen = false;
     const mobile = isTouchLayout;
     const syncOrientation = () => {
       const view = controller.getView();
       const active = view.phase === 'active' || view.phase === 'extracting';
       app.dataset.mobile = String(mobile());
       element('rotate-phone').hidden = true;
-      if (active && (rulesOpen || mapOpen || codexOpen)) {
+      if (active && (rulesOpen || mapOpen || codexOpen || roomOpen)) {
         if (!controller.isPaused()) {
           controller.pause();
           scene.clearInteractions();
         }
-      } else if (!rulesOpen && !mapOpen && !codexOpen) controller.resume();
+      } else if (!rulesOpen && !mapOpen && !codexOpen && !roomOpen) controller.resume();
+    };
+    let roomTrigger = 'open-room';
+    let gameScroll = 0;
+    for (const id of ['open-room', 'mobile-room']) {
+      element(id).onclick = () => {
+        roomTrigger = id;
+        gameScroll = app.scrollTop || window.scrollY;
+        roomOpen = true;
+        controller.pause();
+        scene.clearInteractions();
+        element('game-page').hidden = true;
+        element('room-page').hidden = false;
+        app.scrollTop = 0;
+        window.scrollTo(0, 0);
+        element('room-title').focus();
+        render();
+        lobby.connect();
+      };
+    }
+    element('close-room').onclick = () => {
+      roomOpen = false;
+      element('room-page').hidden = true;
+      element('game-page').hidden = false;
+      scene.clearInteractions();
+      render();
+      element(roomTrigger).focus({ preventScroll: true });
+      app.scrollTop = gameScroll;
+      if (!mobile()) window.scrollTo(0, gameScroll);
     };
     const onResize = () => {
       scene.clearInteractions();
@@ -368,15 +369,19 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     function render(): void {
       syncOrientation();
       const view = controller.getView();
-      if (network && networkStatus !== 'connected') {
-        element('network-status').textContent = networkStatusLabel[networkStatus];
+      lobby.render();
+      const preparation = element('preparation');
+      const prepTarget =
+        roomOpen && lobby.isJoined()
+          ? element('room-preparation-slot')
+          : element('inventory-panel').parentElement!;
+      if (preparation.parentElement !== prepTarget) {
+        if (roomOpen && lobby.isJoined()) prepTarget.append(preparation);
+        else prepTarget.insertBefore(preparation, element('inventory-panel'));
       }
-      element<HTMLButtonElement>('network-connect').disabled =
-        !network || networkStatus === 'connecting' || networkStatus === 'connected';
-      element<HTMLButtonElement>('network-join').disabled =
-        !network || networkStatus !== 'connected';
-      element<HTMLButtonElement>('network-leave').disabled =
-        !network || networkStatus !== 'connected' || !network.isInRoom();
+      for (const id of ['loadout', 'starter-weapon', 'risk-consent']) {
+        element<HTMLInputElement | HTMLSelectElement>(id).disabled = lobby.isLocked();
+      }
       const lighting = scene.getLightingStatus();
       const musicState = sound.getMusicState();
       const soundButton = element('mobile-sound');
@@ -446,7 +451,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('inventory-panel').hidden = !playable;
       element('result-panel').hidden = !['settling', 'success', 'failed'].includes(view.phase);
       element<HTMLButtonElement>('start').disabled =
-        view.isBusy || !element<HTMLInputElement>('risk-consent').checked;
+        view.isBusy || (!lobby.isJoined() && !element<HTMLInputElement>('risk-consent').checked);
+      element('start').textContent = lobby.isJoined() ? '进入联机房间 ↗' : '开始探索 ↗';
       element<HTMLButtonElement>('extract').disabled =
         !playable ||
         !view.inExtractionZone ||
@@ -578,10 +584,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     }
 
     element('risk-consent').onchange = render;
-    element('start').onclick = async () => {
-      if (!element<HTMLInputElement>('risk-consent').checked) {
-        return;
-      }
+    async function startExploration(): Promise<boolean> {
+      if (!element<HTMLInputElement>('risk-consent').checked) return false;
       // Start playback within the click gesture, before fullscreen or save awaits.
       sound.setMusic(true);
       void requestLandscape();
@@ -595,6 +599,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       );
       render();
       if (result.ok && mobile()) app.scrollTo(0, 0);
+      return result.ok;
+    }
+    element('start').onclick = () => {
+      if (lobby.isJoined()) element(mobile() ? 'mobile-room' : 'open-room').click();
+      else void startExploration();
     };
     element('extract').onclick = () => {
       const result = controller.startExtraction();
@@ -615,6 +624,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       controller.prepareNext();
       sound.setMusic(false);
       render();
+      if (lobby.isJoined()) element(mobile() ? 'mobile-room' : 'open-room').click();
       if (mobile()) app.scrollTo(0, 0);
     };
     element('retry-save').onclick = async () => {
@@ -660,6 +670,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     if (import.meta.hot) {
       import.meta.hot.dispose(() => {
         save.close();
+        lobby.dispose();
+        network.close();
         sound.dispose();
         disposeLayout();
         controller.dispose();

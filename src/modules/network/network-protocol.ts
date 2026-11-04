@@ -1,4 +1,7 @@
 export const NETWORK_PROTOCOL_VERSION = 1 as const;
+export const ROOM_CAPACITY = 10;
+export const isRoomCode = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9]{6}$/.test(value);
 
 export interface NetworkPoint {
   readonly x: number;
@@ -12,6 +15,8 @@ export interface PlayerSnapshot {
   readonly aim: number;
   readonly health: number;
   readonly connected: boolean;
+  readonly ready: boolean;
+  readonly finished: boolean;
 }
 
 export type ClientMessage =
@@ -22,10 +27,15 @@ export type ClientMessage =
       readonly displayName: string;
     }
   | { readonly type: 'join-room'; readonly roomId: string }
+  | { readonly type: 'create-room' }
+  | { readonly type: 'set-ready'; readonly ready: boolean }
+  | { readonly type: 'start-game' }
+  | { readonly type: 'finish-game'; readonly roundId: string }
   | { readonly type: 'leave-room' }
   | {
       readonly type: 'player-input';
       readonly sequence: number;
+      readonly roundId: string;
       readonly movement: NetworkPoint;
       readonly aim: number;
       readonly actions: readonly ('interact' | 'attack' | 'hug')[];
@@ -43,6 +53,10 @@ export type ServerMessage =
       readonly type: 'room-state';
       readonly roomId: string;
       readonly tick: number;
+      readonly hostId: string;
+      readonly maxPlayers: number;
+      readonly started: boolean;
+      readonly roundId: string | null;
       readonly players: readonly PlayerSnapshot[];
     }
   | { readonly type: 'player-left'; readonly playerId: string }
@@ -64,11 +78,15 @@ export function isClientMessage(value: unknown): value is ClientMessage {
       nonEmpty(value.displayName)
     );
   }
-  if (value.type === 'join-room') return nonEmpty(value.roomId);
+  if (value.type === 'join-room') return isRoomCode(value.roomId);
+  if (value.type === 'create-room' || value.type === 'start-game') return true;
+  if (value.type === 'set-ready') return typeof value.ready === 'boolean';
+  if (value.type === 'finish-game') return nonEmpty(value.roundId);
   if (value.type === 'leave-room') return true;
   if (value.type === 'ping') return Number.isFinite(value.sentAt);
   return (
     value.type === 'player-input' &&
+    nonEmpty(value.roundId) &&
     typeof value.sequence === 'number' &&
     Number.isSafeInteger(value.sequence) &&
     value.sequence >= 0 &&
@@ -96,9 +114,14 @@ export function isServerMessage(value: unknown): value is ServerMessage {
   if (value.type === 'error') return nonEmpty(value.code) && nonEmpty(value.message);
   return (
     value.type === 'room-state' &&
-    nonEmpty(value.roomId) &&
+    isRoomCode(value.roomId) &&
     Number.isSafeInteger(value.tick) &&
+    nonEmpty(value.hostId) &&
+    value.maxPlayers === ROOM_CAPACITY &&
+    typeof value.started === 'boolean' &&
+    (value.started ? nonEmpty(value.roundId) : value.roundId === null) &&
     Array.isArray(value.players) &&
+    value.players.length <= ROOM_CAPACITY &&
     value.players.every(
       (player) =>
         isRecord(player) &&
@@ -107,10 +130,14 @@ export function isServerMessage(value: unknown): value is ServerMessage {
         isPoint(player.position) &&
         Number.isFinite(player.aim) &&
         Number.isFinite(player.health) &&
-        typeof player.connected === 'boolean',
+        typeof player.connected === 'boolean' &&
+        typeof player.ready === 'boolean' &&
+        typeof player.finished === 'boolean',
     )
   );
 }
+
+export type RoomState = Extract<ServerMessage, { type: 'room-state' }>;
 
 export function encodeClientMessage(message: ClientMessage): string {
   if (!isClientMessage(message)) throw new Error('Invalid client network message');

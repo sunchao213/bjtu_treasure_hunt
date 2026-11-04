@@ -7,7 +7,7 @@ import {
   monsterAnimationFor,
   monsterScaleFor,
 } from '../config/monster-sprites';
-import { generateLootSpawns, type LootSpawn } from '../modules/world/loot-spawns';
+import { generateLootSpawns, roundRandom, type LootSpawn } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
@@ -40,6 +40,7 @@ import {
 import { evidenceStoryBeat } from '../modules/quests/chapter-content';
 
 interface SceneServices {
+  displayName?: string;
   controller: RaidController;
   inventory: InventoryPort;
   events: EventBus;
@@ -92,7 +93,7 @@ export class WorldScene extends Phaser.Scene {
   private attackFeedbackMs = 0;
   private hitStopMs = 0;
   private lastNightDraw = -Infinity;
-  private readonly bounds = { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 };
+  private readonly bounds = WORLD.bounds;
   private interaction = '从右侧准备面板开始探索';
   private releaseDamage?: () => void;
   /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
@@ -138,19 +139,31 @@ export class WorldScene extends Phaser.Scene {
     const localId = this.services.network?.getPlayerId();
     const received = new Set<string>();
     for (const snapshot of players) {
-      if (snapshot.playerId === localId || !snapshot.connected) continue;
+      if (snapshot.playerId === localId) {
+        if (this.services.network?.getRoomState()?.started)
+          this.position = { ...snapshot.position };
+        continue;
+      }
+      if (!snapshot.connected) continue;
       received.add(snapshot.playerId);
       const existing = this.remotePlayers.get(snapshot.playerId);
       if (existing) {
         existing.target = { ...snapshot.position };
-        existing.object.setRotation(snapshot.aim);
+        existing.object
+          .getByName<Phaser.GameObjects.Container>('remote-body')
+          ?.setRotation(snapshot.aim);
         continue;
       }
       const marker = this.add
         .container(snapshot.position.x, snapshot.position.y, [
-          this.add.ellipse(0, 13, 30, 12, 0x061f23, 0.3),
-          this.add.rectangle(0, 0, 22, 28, 0x78c4ee).setStrokeStyle(2, 0xe6f5ff),
-          this.add.circle(0, -16, 10, 0xd7efff),
+          this.add
+            .container(0, 0, [
+              this.add.ellipse(0, 13, 30, 12, 0x061f23, 0.3),
+              this.add.rectangle(0, 0, 22, 28, 0x78c4ee).setStrokeStyle(2, 0xe6f5ff),
+              this.add.circle(0, -16, 10, 0xd7efff),
+            ])
+            .setName('remote-body')
+            .setRotation(snapshot.aim),
           this.add
             .text(0, -38, snapshot.displayName.slice(0, 18), {
               fontFamily: 'Microsoft YaHei',
@@ -161,8 +174,8 @@ export class WorldScene extends Phaser.Scene {
             })
             .setOrigin(0.5),
         ])
-        .setDepth(29);
-      marker.setRotation(snapshot.aim);
+        .setName(`remote-player-${snapshot.playerId}`)
+        .setDepth(43);
       this.remotePlayers.set(snapshot.playerId, {
         target: { ...snapshot.position },
         object: marker,
@@ -216,7 +229,20 @@ export class WorldScene extends Phaser.Scene {
     const bag = this.add.rectangle(-10, 3, 9, 16, 0xc18a48);
     this.player = this.add
       .container(this.position.x, this.position.y, [shadow, this.aura, body, head, bag])
-      .setDepth(30);
+      .setDepth(43);
+    if (this.services.displayName) {
+      this.player.add(
+        this.add
+          .text(0, -38, this.services.displayName, {
+            fontFamily: 'Microsoft YaHei',
+            fontSize: '12px',
+            color: '#f5f0d3',
+            backgroundColor: '#214c40cc',
+            padding: { x: 4, y: 2 },
+          })
+          .setOrigin(0.5),
+      );
+    }
     for (const enemy of this.combat.enemies) {
       this.addEnemyObject(enemy);
     }
@@ -296,8 +322,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     for (const remote of this.remotePlayers.values()) {
-      remote.object.x += (remote.target.x - remote.object.x) * 0.28;
-      remote.object.y += (remote.target.y - remote.object.y) * 0.28;
+      const blend = 1 - Math.exp(-Math.max(0, deltaMs) / 55);
+      remote.object.x += (remote.target.x - remote.object.x) * blend;
+      remote.object.y += (remote.target.y - remote.object.y) * blend;
     }
     const playable =
       !this.services.controller.isPaused() &&
@@ -333,16 +360,27 @@ export class WorldScene extends Phaser.Scene {
       if (this.moving) {
         this.search.cancel();
       }
-      this.position = movePlayer(
-        this.position,
-        movement,
-        deltaMs,
-        WORLD.playerSpeed,
-        WORLD.playerRadius,
-        { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 },
-        WORLD.obstacles,
-      );
-      this.player?.setPosition(this.position.x, this.position.y);
+      this.position =
+        this.services.network?.isInRoom() && this.services.network.getRoomState()?.started
+          ? this.position
+          : movePlayer(
+              this.position,
+              movement,
+              deltaMs,
+              WORLD.playerSpeed,
+              WORLD.playerRadius,
+              WORLD.bounds,
+              WORLD.obstacles,
+            );
+      if (this.player) {
+        const blend = this.services.network?.isInRoom()
+          ? 1 - Math.exp(-Math.max(0, deltaMs) / 55)
+          : 1;
+        this.player.setPosition(
+          this.player.x + (this.position.x - this.player.x) * blend,
+          this.player.y + (this.position.y - this.player.y) * blend,
+        );
+      }
       const pointer = this.input.activePointer;
       const touchLayout = isTouchLayout();
       if (touchLayout && this.services.touch.aim) {
@@ -518,6 +556,15 @@ export class WorldScene extends Phaser.Scene {
     this.services.touch.finishFrame();
   }
 
+  private mapTeammates() {
+    const network = this.services.network;
+    return network?.isInRoom()
+      ? (network.getRoomState()?.players ?? [])
+          .filter((player) => player.connected && player.playerId !== network.getPlayerId())
+          .map((player) => ({ position: player.position, name: player.displayName }))
+      : [];
+  }
+
   private drawNight(): void {
     if (!this.darkness || !this.flashlight) {
       return;
@@ -543,11 +590,12 @@ export class WorldScene extends Phaser.Scene {
       this.darkness.refresh();
       const overview = document.querySelector<HTMLCanvasElement>('#campus-overview');
       if (overview) {
-        drawCampusOverview(overview, this.position);
+        drawCampusOverview(overview, this.position, false, this.mapTeammates());
       }
       const mapDialog = document.querySelector<HTMLDialogElement>('#campus-map-dialog');
       const expanded = document.querySelector<HTMLCanvasElement>('#campus-map-expanded');
-      if (mapDialog?.open && expanded) drawCampusOverview(expanded, this.position, true);
+      if (mapDialog?.open && expanded)
+        drawCampusOverview(expanded, this.position, true, this.mapTeammates());
       this.lastNightDraw = this.time.now;
     }
     this.flashlight.clear();
@@ -858,7 +906,12 @@ export class WorldScene extends Phaser.Scene {
     this.attackFeedbackMs = 0;
     this.hitStopMs = 0;
     this.banner = null;
-    this.position = { ...WORLD.spawn };
+    const network = this.services.network;
+    const roundId = network?.isInRoom() ? network.getRoomState()?.roundId : null;
+    this.position = {
+      ...(roundId ? (network?.getLocalPlayer()?.position ?? WORLD.spawn) : WORLD.spawn),
+    };
+    this.networkInputElapsed = 0;
     this.search.reset();
     this.lighting.reset();
     this.combat.reset();
@@ -881,7 +934,9 @@ export class WorldScene extends Phaser.Scene {
       object.destroy();
     }
     this.chestObjects.clear();
-    this.searchPoints = raidId ? generateLootSpawns() : [];
+    this.searchPoints = raidId
+      ? generateLootSpawns(roundId ? roundRandom(roundId) : Math.random)
+      : [];
     for (const point of this.searchPoints) {
       const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
       const chest = this.add.rectangle(0, 0, 24, 18, 0xc99f60).setStrokeStyle(2, 0xffdc96);

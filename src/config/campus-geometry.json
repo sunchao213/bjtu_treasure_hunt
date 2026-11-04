@@ -1,0 +1,213 @@
+{
+  "width": 3600,
+  "height": 2400,
+  "playerRadius": 13,
+  "playerSpeed": 260,
+  "spawn": {
+    "x": 1320,
+    "y": 2160
+  },
+  "bounds": {
+    "x": 30,
+    "y": 35,
+    "width": 3540,
+    "height": 2330
+  },
+  "buildings": [
+    {
+      "x": 1250,
+      "y": 850,
+      "width": 300,
+      "height": 250,
+      "name": "思源楼",
+      "sub": "SIYUAN",
+      "color": 10793916
+    },
+    {
+      "x": 2110,
+      "y": 870,
+      "width": 240,
+      "height": 180,
+      "name": "图书馆",
+      "sub": "LIBRARY",
+      "color": 11648708
+    },
+    {
+      "x": 850,
+      "y": 250,
+      "width": 240,
+      "height": 200,
+      "name": "综合体育馆",
+      "sub": "GYM",
+      "color": 11645857
+    },
+    {
+      "x": 850,
+      "y": 510,
+      "width": 240,
+      "height": 160,
+      "name": "游泳馆",
+      "sub": "POOL",
+      "color": 11648708
+    },
+    {
+      "x": 1300,
+      "y": 220,
+      "width": 250,
+      "height": 160,
+      "name": "北区教学楼",
+      "sub": "TEACHING",
+      "color": 12295303
+    },
+    {
+      "x": 1300,
+      "y": 480,
+      "width": 250,
+      "height": 180,
+      "name": "北区教学楼",
+      "sub": "TEACHING",
+      "color": 12233617
+    },
+    {
+      "x": 1710,
+      "y": 220,
+      "width": 280,
+      "height": 180,
+      "name": "教学楼群",
+      "sub": "TEACHING",
+      "color": 12295303
+    },
+    {
+      "x": 1710,
+      "y": 480,
+      "width": 280,
+      "height": 180,
+      "name": "教学楼群",
+      "sub": "TEACHING",
+      "color": 12233617
+    },
+    {
+      "x": 2150,
+      "y": 230,
+      "width": 280,
+      "height": 180,
+      "name": "实验楼群",
+      "sub": "LABS",
+      "color": 11645857
+    },
+    {
+      "x": 2560,
+      "y": 260,
+      "width": 310,
+      "height": 220,
+      "name": "实验楼群",
+      "sub": "LABS",
+      "color": 11645857
+    },
+    {
+      "x": 380,
+      "y": 1050,
+      "width": 230,
+      "height": 180,
+      "name": "学生公寓",
+      "sub": "DORM",
+      "color": 12233617
+    },
+    {
+      "x": 760,
+      "y": 1050,
+      "width": 280,
+      "height": 180,
+      "name": "食堂",
+      "sub": "CANTEEN",
+      "color": 12295303
+    },
+    {
+      "x": 380,
+      "y": 1440,
+      "width": 230,
+      "height": 160,
+      "name": "学生公寓",
+      "sub": "DORM",
+      "color": 12233617
+    },
+    {
+      "x": 760,
+      "y": 1440,
+      "width": 280,
+      "height": 160,
+      "name": "学生活动区",
+      "sub": "STUDENT",
+      "color": 12295303
+    },
+    {
+      "x": 400,
+      "y": 1810,
+      "width": 260,
+      "height": 170,
+      "name": "学生公寓",
+      "sub": "DORM",
+      "color": 12233617
+    },
+    {
+      "x": 880,
+      "y": 1810,
+      "width": 220,
+      "height": 170,
+      "name": "食堂",
+      "sub": "CANTEEN",
+      "color": 12295303
+    },
+    {
+      "x": 1470,
+      "y": 1450,
+      "width": 250,
+      "height": 170,
+      "name": "南区教学楼",
+      "sub": "TEACHING",
+      "color": 12295303
+    },
+    {
+      "x": 2460,
+      "y": 1410,
+      "width": 280,
+      "height": 200,
+      "name": "软件与通信教学区",
+      "sub": "SOFTWARE",
+      "color": 12165008
+    },
+    {
+      "x": 2910,
+      "y": 1420,
+      "width": 260,
+      "height": 190,
+      "name": "电气教学区",
+      "sub": "ELECTRICAL",
+      "color": 12165008
+    },
+    {
+      "x": 2470,
+      "y": 1830,
+      "width": 270,
+      "height": 170,
+      "name": "机械教学区",
+      "sub": "MECHANICAL",
+      "color": 12165008
+    },
+    {
+      "x": 2930,
+      "y": 1830,
+      "width": 250,
+      "height": 170,
+      "name": "实验楼群",
+      "sub": "LABS",
+      "color": 11645857
+    }
+  ],
+  "lake": {
+    "x": 1840,
+    "y": 900,
+    "width": 200,
+    "height": 250
+  }
+}

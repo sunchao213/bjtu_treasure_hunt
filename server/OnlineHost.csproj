@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.22" />
     <EmbeddedResource Include="Database/schema.sql" />
+    <EmbeddedResource Include="../src/config/campus-geometry.json" LogicalName="campus-geometry.json" />
     <Content Remove="data/**;backups/**" />
     <None Remove="data/**;backups/**" />
   </ItemGroup>

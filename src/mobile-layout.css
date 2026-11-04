@@ -42,6 +42,10 @@ html[data-touch='true'] #app .masthead {
 html[data-touch='true'] #app main {
   padding: 4px;
 }
+html[data-touch='true'] #app .room-content {
+  padding: 12px 20px;
+  gap: 24px;
+}
 html[data-touch='true'] #app .play-layout {
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;

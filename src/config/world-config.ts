@@ -1,89 +1,16 @@
 import type { Rect } from '../shared/types/game';
 
-// Relative layout from the team's Haidian main-campus image, simplified for play.
-const buildings = [
-  { x: 1250, y: 850, width: 300, height: 250, name: '思源楼', sub: 'SIYUAN', color: 0xa4b3bc },
-  { x: 2110, y: 870, width: 240, height: 180, name: '图书馆', sub: 'LIBRARY', color: 0xb1bec4 },
-  { x: 850, y: 250, width: 240, height: 200, name: '综合体育馆', sub: 'GYM', color: 0xb1b3a1 },
-  { x: 850, y: 510, width: 240, height: 160, name: '游泳馆', sub: 'POOL', color: 0xb1bec4 },
-  {
-    x: 1300,
-    y: 220,
-    width: 250,
-    height: 160,
-    name: '北区教学楼',
-    sub: 'TEACHING',
-    color: 0xbb9c87,
-  },
-  {
-    x: 1300,
-    y: 480,
-    width: 250,
-    height: 180,
-    name: '北区教学楼',
-    sub: 'TEACHING',
-    color: 0xbaab91,
-  },
-  { x: 1710, y: 220, width: 280, height: 180, name: '教学楼群', sub: 'TEACHING', color: 0xbb9c87 },
-  { x: 1710, y: 480, width: 280, height: 180, name: '教学楼群', sub: 'TEACHING', color: 0xbaab91 },
-  { x: 2150, y: 230, width: 280, height: 180, name: '实验楼群', sub: 'LABS', color: 0xb1b3a1 },
-  { x: 2560, y: 260, width: 310, height: 220, name: '实验楼群', sub: 'LABS', color: 0xb1b3a1 },
-  { x: 380, y: 1050, width: 230, height: 180, name: '学生公寓', sub: 'DORM', color: 0xbaab91 },
-  { x: 760, y: 1050, width: 280, height: 180, name: '食堂', sub: 'CANTEEN', color: 0xbb9c87 },
-  { x: 380, y: 1440, width: 230, height: 160, name: '学生公寓', sub: 'DORM', color: 0xbaab91 },
-  { x: 760, y: 1440, width: 280, height: 160, name: '学生活动区', sub: 'STUDENT', color: 0xbb9c87 },
-  { x: 400, y: 1810, width: 260, height: 170, name: '学生公寓', sub: 'DORM', color: 0xbaab91 },
-  { x: 880, y: 1810, width: 220, height: 170, name: '食堂', sub: 'CANTEEN', color: 0xbb9c87 },
-  {
-    x: 1470,
-    y: 1450,
-    width: 250,
-    height: 170,
-    name: '南区教学楼',
-    sub: 'TEACHING',
-    color: 0xbb9c87,
-  },
-  {
-    x: 2460,
-    y: 1410,
-    width: 280,
-    height: 200,
-    name: '软件与通信教学区',
-    sub: 'SOFTWARE',
-    color: 0xb99f90,
-  },
-  {
-    x: 2910,
-    y: 1420,
-    width: 260,
-    height: 190,
-    name: '电气教学区',
-    sub: 'ELECTRICAL',
-    color: 0xb99f90,
-  },
-  {
-    x: 2470,
-    y: 1830,
-    width: 270,
-    height: 170,
-    name: '机械教学区',
-    sub: 'MECHANICAL',
-    color: 0xb99f90,
-  },
-  { x: 2930, y: 1830, width: 250, height: 170, name: '实验楼群', sub: 'LABS', color: 0xb1b3a1 },
-];
-const lake = { x: 1840, y: 900, width: 200, height: 250 };
+import geometry from './campus-geometry.json';
+
+// Shared with the room server for collision, movement and spawn coordinates.
+const { buildings, lake } = geometry;
 const sportsFields = [
   { x: 380, y: 200, width: 360, height: 500, name: '西侧运动场' },
   { x: 2460, y: 870, width: 380, height: 300, name: '东侧运动场' },
 ];
 
 export const WORLD = {
-  width: 3600,
-  height: 2400,
-  playerRadius: 13,
-  playerSpeed: 260,
-  spawn: { x: 1320, y: 2160 },
+  ...geometry,
   extraction: { x: 1220, y: 2100, width: 200, height: 150 },
   buildings,
   lake,

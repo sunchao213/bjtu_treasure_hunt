@@ -1,3 +1,4 @@
+import './style.css';
 import './auth.css';
 import { AuthClient, startAuthenticated, type AuthSession } from './modules/auth/auth-client';
 
@@ -24,13 +25,26 @@ window.addEventListener('pagehide', () => {
 });
 
 function frame(content: string): void {
-  root.innerHTML = `<main class="auth-page"><section class="auth-story" aria-label="游戏介绍">
-    <a class="auth-brand" href="./"><span>交</span>交大摸金录</a>
-    <p class="auth-eyebrow">思源密码 · CAMPUS EXTRACTION</p>
-    <h1>夜幕降临，<br>校园的故事等你发现。</h1>
-    <p>寻找散落的校园记忆，带着收获平安归来。<br>登录后，开启你的下一次探索。</p>
-    <div class="auth-landmark" aria-hidden="true">知行 · 明湖 · 思源</div>
-  </section><section class="auth-card" aria-label="账号登录">${content}</section></main>`;
+  root.innerHTML = `<div class="auth-page">
+    <header class="masthead">
+      <a class="brand" href="./" aria-label="交大摸金录首页"><span class="brand-mark">交</span>
+        <span>交大摸金录<small>思源密码 / CAMPUS EXTRACTION</small></span></a>
+      <div class="build-label"><span class="status-dot"></span>海淀校区 · 夜巡</div>
+    </header>
+    <main class="auth-layout">
+      <section class="auth-story side-card" aria-label="游戏介绍">
+        <div class="section-kicker">海淀校区 · 探索行动</div>
+        <h1>南门集合，准备出发。</h1>
+        <p>搜集校园物资，寻找思源密码。带着收获，平安撤离。</p>
+        <dl class="auth-guide">
+          <div><dt>行前准备</dt><dd>选择装备，确认本局携带物。</dd></div>
+          <div><dt>校园探索</dt><dd>寻找线索，搜集至少 100 价值的物资。</dd></div>
+          <div><dt>平安归来</dt><dd>前往南门撤离，保存仓库与图鉴进度。</dd></div>
+        </dl>
+        <p class="muted">登录后可单人探索，也可在联机房间页与同伴集合。</p>
+      </section>
+      <section class="auth-card side-card" aria-label="账号登录">${content}</section>
+    </main></div>`;
 }
 
 function loading(): void {
@@ -99,7 +113,7 @@ function showLogin(message = ''): void {
       <div id="register-confirm" hidden><label for="auth-confirm">确认密码</label>
         <input id="auth-confirm" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" disabled placeholder="再次输入密码"></div>
       <p id="auth-message" class="auth-message" role="status" aria-live="polite"></p>
-      <button id="auth-submit" class="auth-primary" type="submit">登录并进入游戏</button>
+      <button id="auth-submit" class="auth-primary primary" type="submit">登录并进入游戏</button>
     </fieldset></form>
     <button id="auth-retry" type="button" class="auth-retry">重新检查登录状态</button>
     <p class="auth-footnote">登录状态保留 12 小时。仓库、图鉴和任务进度按账号保存到云端，可在不同设备继续探索。</p>`);

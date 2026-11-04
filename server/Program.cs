@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -113,14 +112,10 @@ IResult WithSave(HttpContext context, Func<LoginSession, IResult> action)
     }
 }
 
-var rooms = new ConcurrentDictionary<string, Room>(StringComparer.Ordinal);
+var rooms = new RoomDirectory();
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 const int protocolVersion = 1;
 const int maxMessageBytes = 4096;
-const int maxRoomPlayers = 8;
-const float worldWidth = 3600;
-const float worldHeight = 2400;
-const float playerSpeed = 400;
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", protocol = protocolVersion }));
 app.Map("/ws", async context =>
@@ -143,7 +138,6 @@ app.Map("/ws", async context =>
     using var revoked = lifetime.Token.Register(socket.Abort);
     var client = new Client(socket, Guid.NewGuid().ToString("N")) { DisplayName = session.User.DisplayName };
     string? joinedRoomId = null;
-    var lastInputAt = Environment.TickCount64;
 
     try
     {
@@ -170,36 +164,33 @@ app.Map("/ws", async context =>
                     }
                     await Send(client, new { type = "welcome", protocol = protocolVersion, playerId = client.Id, serverTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }, json);
                     break;
+                case "create-room":
                 case "join-room":
-                    if (joinedRoomId is not null) await LeaveRoom(client, joinedRoomId, rooms, json);
-                    joinedRoomId = CleanRoom(ReadString(root, "roomId", ""));
-                    if (joinedRoomId.Length == 0)
+                case "set-ready":
+                case "start-game":
+                case "finish-game":
+                    RoomAction action;
+                    if (type == "set-ready" && (!root.TryGetProperty("ready", out var readyValue)
+                        || readyValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False)))
                     {
-                        await SendError(client, "INVALID_ROOM", "Room ID is invalid.", json);
-                        joinedRoomId = null;
+                        await SendError(client, "INVALID_MESSAGE", "准备状态无效。", json);
                         break;
                     }
-                    var room = rooms.GetOrAdd(joinedRoomId, _ => new Room());
-                    lock (room.Gate)
+                    action = type switch
                     {
-                        if (room.Clients.Count >= maxRoomPlayers)
-                        {
-                            joinedRoomId = null;
-                            room = null!;
-                        }
-                        else
-                        {
-                            client.Position ??= new Point(600 + Random.Shared.Next(-40, 41), 2200 + Random.Shared.Next(-40, 41));
-                            room.Clients[client.Id] = client;
-                            client.RoomId = joinedRoomId;
-                        }
-                    }
-                    if (room is null)
+                        "create-room" => rooms.Create(client),
+                        "join-room" => rooms.Join(client, ReadString(root, "roomId", "")),
+                        "set-ready" => rooms.Ready(client, root.GetProperty("ready").GetBoolean()),
+                        "start-game" => rooms.Start(client),
+                        _ => rooms.Finish(client, ReadString(root, "roundId", "")),
+                    };
+                    if (action.Code is not null)
                     {
-                        await SendError(client, "ROOM_FULL", "Room is full.", json);
+                        await SendError(client, action.Code, action.Message!, json);
                         break;
                     }
-                    await BroadcastRoom(joinedRoomId!, room, rooms, json);
+                    joinedRoomId = action.RoomId;
+                    await BroadcastRoom(joinedRoomId!, action.Room!, rooms, json);
                     break;
                 case "leave-room":
                     if (joinedRoomId is not null)
@@ -209,31 +200,14 @@ app.Map("/ws", async context =>
                     }
                     break;
                 case "player-input":
-                    if (joinedRoomId is null || !rooms.TryGetValue(joinedRoomId, out var inputRoom)) break;
+                    if (joinedRoomId is null) break;
                     if (!root.TryGetProperty("sequence", out var sequenceValue) || !sequenceValue.TryGetInt64(out var sequence) || sequence <= client.LastSequence) break;
                     if (!root.TryGetProperty("movement", out var movement) || movement.ValueKind != JsonValueKind.Object) break;
                     var dx = ReadFiniteProperty(movement, "x");
                     var dy = ReadFiniteProperty(movement, "y");
-                    var magnitude = MathF.Sqrt(dx * dx + dy * dy);
-                    if (magnitude > 1)
-                    {
-                        dx /= magnitude;
-                        dy /= magnitude;
-                    }
                     var aim = root.TryGetProperty("aim", out var aimValue) ? ReadFiniteNumber(aimValue) : 0;
-                    var now = Environment.TickCount64;
-                    if (now - lastInputAt < 30) break;
-                    var elapsed = Math.Clamp((now - lastInputAt) / 1000f, 0, 0.1f);
-                    lastInputAt = now;
-                    client.LastSequence = sequence;
-                    lock (inputRoom.Gate)
-                    {
-                        var current = client.Position ?? new Point(600, 2200);
-                        client.Position = new Point(
-                            Math.Clamp(current.X + dx * playerSpeed * elapsed, 25, worldWidth - 25),
-                            Math.Clamp(current.Y + dy * playerSpeed * elapsed, 25, worldHeight - 25));
-                        client.Aim = Math.Clamp(aim, -MathF.PI, MathF.PI);
-                    }
+                    var inputRoom = rooms.Move(client, ReadString(root, "roundId", ""), sequence, dx, dy, aim);
+                    if (inputRoom is null) break;
                     await BroadcastRoom(joinedRoomId!, inputRoom, rooms, json);
                     break;
                 case "ping":
@@ -301,10 +275,7 @@ static float ReadFiniteProperty(JsonElement root, string name) =>
     root.TryGetProperty(name, out var value) ? ReadFiniteNumber(value) : 0;
 
 static float ReadFiniteNumber(JsonElement value) =>
-    value.TryGetSingle(out var number) && float.IsFinite(number) ? Math.Clamp(number, -1, 1) : 0;
-
-static string CleanRoom(string value) =>
-    new string(value.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').Take(32).ToArray());
+    value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out var number) && float.IsFinite(number) ? Math.Clamp(number, -10, 10) : 0;
 
 static async Task SendError(Client client, string code, string message, JsonSerializerOptions options) =>
     await Send(client, new { type = "error", code, message }, options);
@@ -323,7 +294,7 @@ static async Task Send(Client client, object message, JsonSerializerOptions opti
     finally { client.SendGate.Release(); }
 }
 
-static async Task BroadcastRoom(string roomId, Room room, ConcurrentDictionary<string, Room> rooms, JsonSerializerOptions options)
+static async Task BroadcastRoom(string roomId, Room room, RoomDirectory rooms, JsonSerializerOptions options)
 {
     Client[] clients;
     object snapshot;
@@ -336,20 +307,25 @@ static async Task BroadcastRoom(string roomId, Room room, ConcurrentDictionary<s
             type = "room-state",
             roomId,
             tick = room.Tick,
+            hostId = room.HostId,
+            maxPlayers = RoomDirectory.Capacity,
+            started = room.Started,
+            roundId = room.RoundId,
             players = clients.Select(client => new
             {
                 playerId = client.Id,
                 displayName = client.DisplayName,
-                position = client.Position ?? new Point(600, 2200),
+                position = client.Position ?? CampusWorld.Spawn(0),
                 aim = client.Aim,
                 health = 100,
                 connected = client.Socket.State == WebSocketState.Open,
+                ready = client.Ready,
+                finished = client.Finished,
             }).ToArray(),
         };
     }
     var payload = JsonSerializer.SerializeToUtf8Bytes(snapshot, options);
     await Task.WhenAll(clients.Select(client => SendBytes(client, payload)));
-    if (clients.Length == 0) rooms.TryRemove(roomId, out _);
 }
 
 static async Task SendBytes(Client client, byte[] payload)
@@ -365,14 +341,10 @@ static async Task SendBytes(Client client, byte[] payload)
     finally { client.SendGate.Release(); }
 }
 
-static async Task LeaveRoom(Client client, string roomId, ConcurrentDictionary<string, Room> rooms, JsonSerializerOptions options)
+static async Task LeaveRoom(Client client, string roomId, RoomDirectory rooms, JsonSerializerOptions options)
 {
-    if (!rooms.TryGetValue(roomId, out var room)) return;
-    lock (room.Gate)
-    {
-        room.Clients.Remove(client.Id);
-        client.RoomId = null;
-    }
+    var room = rooms.Leave(client, roomId);
+    if (room is null) return;
     Client[] remaining;
     lock (room.Gate) remaining = room.Clients.Values.ToArray();
     await Task.WhenAll(remaining.Select(peer => Send(peer, new { type = "player-left", playerId = client.Id }, options)));
@@ -393,13 +365,19 @@ sealed class Client(WebSocket socket, string id)
     public Point? Position { get; set; }
     public float Aim { get; set; }
     public long LastSequence { get; set; } = -1;
+    public long LastInputAt { get; set; }
     public string? RoomId { get; set; }
+    public bool Ready { get; set; }
+    public bool Finished { get; set; }
     public SemaphoreSlim SendGate { get; } = new(1, 1);
 }
 
-sealed class Room
+sealed class Room(object gate)
 {
-    public object Gate { get; } = new();
+    public object Gate { get; } = gate;
     public Dictionary<string, Client> Clients { get; } = new(StringComparer.Ordinal);
     public long Tick { get; set; }
+    public string HostId { get; set; } = "";
+    public bool Started { get; set; }
+    public string? RoundId { get; set; }
 }

@@ -2,9 +2,11 @@ import {
   decodeServerMessage,
   encodeClientMessage,
   NETWORK_PROTOCOL_VERSION,
+  isRoomCode,
   type ClientMessage,
   type PlayerSnapshot,
   type ServerMessage,
+  type RoomState,
 } from './network-protocol';
 
 export type NetworkStatus = 'offline' | 'connecting' | 'connected' | 'reconnecting';
@@ -43,6 +45,9 @@ export class NetworkSession {
   private status: NetworkStatus = 'offline';
   private roomId: string | null = null;
   private inRoom = false;
+  private membershipPending = false;
+  private lastRoomTick = -1;
+  private roomState: RoomState | null = null;
   private playerId: string | null = null;
   private sequence = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -114,6 +119,14 @@ export class NetworkSession {
     return this.playerId;
   }
 
+  getRoomState(): RoomState | null {
+    return this.roomState;
+  }
+
+  getLocalPlayer(): PlayerSnapshot | undefined {
+    return this.roomState?.players.find((player) => player.playerId === this.playerId);
+  }
+
   onMessage(listener: (message: ServerMessage) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -138,12 +151,33 @@ export class NetworkSession {
         sessionId: this.options.sessionId,
         displayName: this.displayName,
       });
-      if (this.roomId) this.send({ type: 'join-room', roomId: this.roomId });
+      if (this.roomId) {
+        this.membershipPending = true;
+        this.send({ type: 'join-room', roomId: this.roomId });
+      }
     };
     socket.onmessage = ({ data }) => {
       try {
         const message = decodeServerMessage(data);
         if (message.type === 'welcome') this.playerId = message.playerId;
+        if (message.type === 'room-state') {
+          if (this.roomId && message.roomId !== this.roomId) return;
+          if (message.roomId === this.roomId && message.tick <= this.lastRoomTick) return;
+          // Late snapshots from a room we explicitly left must not rejoin it.
+          if (!this.membershipPending && !this.inRoom) return;
+          this.lastRoomTick = message.tick;
+          this.roomState = message;
+          this.roomId = message.roomId;
+          this.inRoom = true;
+          this.membershipPending = false;
+        }
+        if (message.type === 'error' && this.membershipPending) {
+          this.membershipPending = false;
+          this.roomId = null;
+          this.roomState = null;
+          this.inRoom = false;
+          this.lastRoomTick = -1;
+        }
         for (const listener of [...this.listeners]) listener(message);
       } catch {
         // Invalid server data is ignored and cannot mutate the local game state.
@@ -154,15 +188,40 @@ export class NetworkSession {
   }
 
   join(roomId: string): boolean {
-    if (!roomId.trim()) return false;
-    this.roomId = roomId.trim();
-    this.inRoom = this.send({ type: 'join-room', roomId: this.roomId });
-    return this.inRoom;
+    const code = roomId.trim();
+    if (!isRoomCode(code) || this.inRoom || this.membershipPending) return false;
+    if (!this.send({ type: 'join-room', roomId: code })) return false;
+    this.roomId = code;
+    this.membershipPending = true;
+    this.lastRoomTick = -1;
+    return true;
+  }
+
+  createRoom(): boolean {
+    if (this.inRoom || this.membershipPending || !this.send({ type: 'create-room' })) return false;
+    this.membershipPending = true;
+    this.lastRoomTick = -1;
+    return true;
+  }
+
+  setReady(ready: boolean): boolean {
+    return this.inRoom && this.send({ type: 'set-ready', ready });
+  }
+
+  startGame(): boolean {
+    return this.inRoom && this.send({ type: 'start-game' });
+  }
+
+  finishGame(roundId: string): boolean {
+    return this.inRoom && this.send({ type: 'finish-game', roundId });
   }
 
   leave(): boolean {
     this.roomId = null;
+    this.roomState = null;
     this.inRoom = false;
+    this.membershipPending = false;
+    this.lastRoomTick = -1;
     return this.send({ type: 'leave-room' });
   }
 
@@ -175,10 +234,17 @@ export class NetworkSession {
     aim: number,
     actions: readonly ('interact' | 'attack' | 'hug')[] = [],
   ): boolean {
-    if (!this.inRoom) return false;
+    if (
+      !this.inRoom ||
+      !this.roomState?.started ||
+      !this.roomState.roundId ||
+      this.getLocalPlayer()?.finished
+    )
+      return false;
     const sent = this.send({
       type: 'player-input',
       sequence: this.sequence++,
+      roundId: this.roomState.roundId,
       movement,
       aim,
       actions,
@@ -223,6 +289,10 @@ export class NetworkSession {
 
   private setStatus(status: NetworkStatus): void {
     this.status = status;
+    if (status !== 'connected') {
+      this.inRoom = false;
+      this.lastRoomTick = -1;
+    }
     for (const listener of [...this.statusListeners]) listener(status);
   }
 }

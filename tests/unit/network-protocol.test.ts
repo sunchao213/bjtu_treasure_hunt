@@ -21,6 +21,7 @@ describe('online protocol boundary', () => {
       isClientMessage({
         type: 'player-input',
         sequence: 1,
+        roundId: 'shared-round',
         movement: { x: 1, y: 0 },
         aim: 0,
         actions: ['attack'],
@@ -41,8 +42,30 @@ describe('online protocol boundary', () => {
         actions: [],
       }),
     ).toBe(false);
-    expect(isServerMessage({ type: 'room-state', roomId: 'r', tick: 1, players: [] })).toBe(true);
+    expect(
+      isServerMessage({
+        type: 'room-state',
+        roomId: '123456',
+        tick: 1,
+        hostId: 'p1',
+        maxPlayers: 10,
+        started: false,
+        roundId: null,
+        players: [],
+      }),
+    ).toBe(true);
     expect(() => decodeServerMessage('{bad')).toThrow('Malformed');
     expect(() => decodeServerMessage(JSON.stringify({ type: 'unknown' }))).toThrow('Invalid');
+  });
+
+  it('requires six digit room codes and explicit room creation', () => {
+    expect(isClientMessage({ type: 'create-room' })).toBe(true);
+    expect(isClientMessage({ type: 'join-room', roomId: '123456' })).toBe(true);
+    for (const roomId of ['room-a', '12345', '1234567', '１２３４５６', ' 123456']) {
+      expect(isClientMessage({ type: 'join-room', roomId })).toBe(false);
+    }
+    expect(isClientMessage({ type: 'set-ready', ready: true })).toBe(true);
+    expect(isClientMessage({ type: 'set-ready', ready: 'true' })).toBe(false);
+    expect(isClientMessage({ type: 'start-game' })).toBe(true);
   });
 });

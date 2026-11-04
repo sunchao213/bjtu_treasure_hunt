@@ -62,9 +62,46 @@ SSH 隧道只是初次验证方式。公开游玩时配置 HTTPS 后，玩家只
 
 ## 5. 正式公开访问
 
-准备域名、按云厂商要求完成北京等中国大陆节点的网站备案和接入流程，再把域名解析到服务器公网 IP。使用 Nginx 或 Caddy 在 443 提供 HTTPS，反向代理到 `http://127.0.0.1:5080`；配置 WebSocket Upgrade，并保留原始 Host 和 `X-Forwarded-Proto`。反向代理需与游戏进程位于同一台主机，通过回环地址访问。后端只信任回环代理，不能任意放开可信代理列表。
+可以使用域名 HTTPS，也可以使用受浏览器信任的公网 IP HTTPS。两种方式都通过服务器上的 Nginx 反向代理到 `http://127.0.0.1:5080`；游戏服务与网页使用同一个访问地址，玩家不需要 SSH。关闭发布者电脑或终端不影响这个公网入口。
 
-对公网开放 HTTPS 所需端口；5080 继续只监听回环。前端和接口保持同一域名。部署完成后可在 GitHub Pages 介绍页放置新版游戏链接。
+### 公网 IP HTTPS
+
+Let's Encrypt 现已支持 [IP 地址证书](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability/)。IP 证书使用 `shortlived` 配置，有效期 160 小时，必须配置自动续期。使用 [Certbot 5.4 或更高版本](https://letsencrypt.org/2026/03/11/shorter-certs-certbot)的 webroot 方式签发，发行版自带的旧 Certbot 可能不支持。
+
+先在云控制台开放 TCP 80、443，服务器上执行（将 IP 替换为实际公网 IPv4）：
+
+```bash
+sudo apt-get install -y nginx python3-venv
+sudo bash deploy/ubuntu/ip-https.sh prepare 123.57.160.49
+```
+
+`prepare` 配置 HTTP 证书验证目录，并在独立 Python 环境安装 Certbot。从其他电脑确认以下地址返回 `bjtu-acme-ready` 后继续：
+
+```text
+http://123.57.160.49/.well-known/acme-challenge/bjtu-connectivity-check
+```
+
+```bash
+sudo bash deploy/ubuntu/ip-https.sh issue 123.57.160.49
+```
+
+`issue` 先在独立目录测试签发，再申请正式证书，启用 HTTPS 与 WebSocket 代理；HTTP 游戏请求重定向至 HTTPS，证书验证路径保留在 HTTP。脚本安装 `bjtu-certbot-renew.timer`，每 6 小时检查续期，成功后自动重载 Nginx。80 端口需要持续可达，以便后续证书验证。5080 始终只监听回环。
+
+```bash
+sudo systemctl list-timers bjtu-certbot-renew.timer --all
+sudo journalctl -u bjtu-certbot-renew.service -n 30 --no-pager
+
+# 模拟续期并验证 Nginx 重载钩子
+sudo /opt/bjtu-certbot/bin/certbot renew --cert-name bjtu-game-ip --dry-run --run-deploy-hooks
+```
+
+2026-11-04 已验证的游戏入口为 [https://123.57.160.49](https://123.57.160.49)。正式证书通过系统和浏览器校验；真实浏览器验证了安全上下文、Web Locks、注册、Secure/HttpOnly Cookie、云进度初始化、两个独立账号的 WSS 房间与位置同步。模拟续期及 Nginx 重载通过，验证用账号与存档已清理。
+
+### 域名 HTTPS
+
+准备域名、按云厂商要求完成北京等中国大陆节点的网站备案和接入流程，再把域名解析到服务器公网 IP。使用 Nginx 或 Caddy 在 443 提供 HTTPS；配置 WebSocket Upgrade，并保留原始 Host 和 `X-Forwarded-Proto`。反向代理需与游戏进程位于同一台主机，通过回环地址访问。后端只信任回环代理，不能任意放开可信代理列表。
+
+部署完成后可在 GitHub Pages 介绍页放置新版游戏链接。程序更新仍沿用下一节的部署流程，独立安装的 Nginx、证书和续期任务继续保留。
 
 ## 6. 后续更新、备份与诊断
 

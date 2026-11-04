@@ -218,7 +218,7 @@ try {
     received = Buffer.concat([received, chunk]);
   });
   send({ type: 'hello', protocol: 1, sessionId: 'fake', displayName: 'Impersonated Name' });
-  send({ type: 'join-room', roomId: 'auth-test' });
+  send({ type: 'create-room' });
   for (let attempt = 0; attempt < 100 && !received.includes(Buffer.from('room-state')); attempt++)
     await delay(50);
   assert(received.includes(Buffer.from('room-state')), 'authenticated room join succeeds');

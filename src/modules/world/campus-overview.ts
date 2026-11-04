@@ -6,6 +6,7 @@ export function drawCampusOverview(
   canvas: HTMLCanvasElement,
   player: Point,
   expanded = false,
+  teammates: readonly { readonly position: Point; readonly name: string }[] = [],
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -39,13 +40,41 @@ export function drawCampusOverview(
   ctx.font = `bold ${font}px Microsoft YaHei, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const label = (name: string, x: number, y: number, color = '#f4f1df') => {
+  const labelBounds: { left: number; top: number; right: number; bottom: number }[] = [];
+  const label = (name: string, x: number, y: number, color = '#f4f1df', anchor?: Point) => {
     const lines = expanded ? (name.match(/.{1,4}/gu) ?? [name]) : [name];
     const lineHeight = font * 1.12;
     const width = Math.max(...lines.map((line) => ctx.measureText(line).width)) + pixelRatio * 6;
     const height = lines.length * lineHeight + pixelRatio * 3;
     const px = Math.max(width / 2, Math.min(canvas.width - width / 2, x * sx));
-    const py = Math.max(height / 2, Math.min(canvas.height - height / 2, y * sy));
+    let py = Math.max(height / 2, Math.min(canvas.height - height / 2, y * sy));
+    if (anchor) {
+      // Players gathering at the gate should not cover one another's names.
+      while (
+        py > height / 2 &&
+        labelBounds.some(
+          (box) =>
+            px - width / 2 < box.right + 3 &&
+            px + width / 2 > box.left - 3 &&
+            py - height / 2 < box.bottom + 3 &&
+            py + height / 2 > box.top - 3,
+        )
+      ) {
+        py = Math.max(height / 2, py - height - 6 * pixelRatio);
+      }
+      ctx.strokeStyle = '#78c4ee88';
+      ctx.lineWidth = pixelRatio;
+      ctx.beginPath();
+      ctx.moveTo(anchor.x * sx, anchor.y * sy);
+      ctx.lineTo(px, py + height / 2);
+      ctx.stroke();
+    }
+    labelBounds.push({
+      left: px - width / 2,
+      right: px + width / 2,
+      top: py - height / 2,
+      bottom: py + height / 2,
+    });
     ctx.fillStyle = '#14221eed';
     ctx.fillRect(px - width / 2, py - height / 2, width, height);
     ctx.fillStyle = color;
@@ -112,6 +141,17 @@ export function drawCampusOverview(
       gate.y - (expanded ? 80 : 170),
       extraction ? '#baf4d4' : '#f4f1df',
     );
+  }
+  for (const teammate of teammates) {
+    const { x, y } = teammate.position;
+    ctx.beginPath();
+    ctx.arc(x * sx, y * sy, 3 * pixelRatio, 0, Math.PI * 2);
+    ctx.fillStyle = '#78c4ee';
+    ctx.fill();
+    ctx.strokeStyle = '#111714';
+    ctx.lineWidth = pixelRatio;
+    ctx.stroke();
+    if (expanded) label(teammate.name, x, y - 65, '#b7e7ff', teammate.position);
   }
   ctx.beginPath();
   ctx.arc(player.x * sx, player.y * sy, 3 * pixelRatio, 0, Math.PI * 2);

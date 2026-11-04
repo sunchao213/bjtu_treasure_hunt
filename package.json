@@ -17,7 +17,7 @@
     "test:database": "node --test --experimental-test-isolation=none tests/server/database-schema-smoke.mjs",
     "db:init": "node scripts/init-database.mjs",
     "db:backup": "node scripts/backup-database.mjs",
-    "test:server": "dotnet build server/OnlineHost.csproj && node tests/server/auth-smoke.mjs",
+    "test:server": "dotnet build server/OnlineHost.csproj && node tests/server/auth-smoke.mjs && node tests/server/room-smoke.mjs",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run test:database && npm run build"

@@ -7,13 +7,25 @@ export interface LootSpawn extends Point {
   zoneId: string;
 }
 
+/** The room round ID gives every member the same randomized campus layout. */
+export function roundRandom(roundId: string): () => number {
+  let seed = 2166136261;
+  for (let i = 0; i < roundId.length; i++) seed = Math.imul(seed ^ roundId.charCodeAt(i), 16777619);
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let value = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /** Extra clearance leaves room to stand beside a chest and aim at it. */
 export function clearLootPosition(p: Point, radius = 35): boolean {
   return (
-    p.x >= 30 + radius &&
-    p.x <= WORLD.width - 30 - radius &&
-    p.y >= 35 + radius &&
-    p.y <= WORLD.height - 35 - radius &&
+    p.x >= WORLD.bounds.x + radius &&
+    p.x <= WORLD.bounds.x + WORLD.bounds.width - radius &&
+    p.y >= WORLD.bounds.y + radius &&
+    p.y <= WORLD.bounds.y + WORLD.bounds.height - radius &&
     !WORLD.obstacles.some(
       (w) =>
         p.x + radius > w.x &&

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { WORLD } from '../../src/config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../../src/config/game-config';
 import { lineOfSight, distance } from '../../src/modules/world/night-systems';
-import { clearLootPosition, generateLootSpawns } from '../../src/modules/world/loot-spawns';
+import {
+  clearLootPosition,
+  generateLootSpawns,
+  roundRandom,
+} from '../../src/modules/world/loot-spawns';
 
 function seeded(seed: number): () => number {
   return () => {
@@ -12,6 +16,13 @@ function seeded(seed: number): () => number {
 }
 
 describe('expanded main campus', () => {
+  it('gives room members identical loot layouts and changes the layout for the next round', () => {
+    const host = generateLootSpawns(roundRandom('room-round-1'));
+    const member = generateLootSpawns(roundRandom('room-round-1'));
+    const next = generateLootSpawns(roundRandom('room-round-2'));
+    expect(member).toEqual(host);
+    expect(next).not.toEqual(host);
+  });
   it('matches the supplied relative landmarks and grows exploration area', () => {
     const library = WORLD.buildings.find((b) => b.name === '图书馆')!;
     const siyuan = WORLD.buildings.find((b) => b.name === '思源楼')!;
