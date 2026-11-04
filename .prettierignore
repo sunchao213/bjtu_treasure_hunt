@@ -4,3 +4,7 @@ coverage/
 package-lock.json
 artifacts/
 artifacts/**
+godot/
+
+# E2E 工具产物（playwright-cli 快照与临时截图，不提交）
+.playwright-cli/

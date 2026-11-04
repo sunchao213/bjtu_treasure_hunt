@@ -39,10 +39,10 @@ static class CampusWorld
     }
 
     private static bool Clear(Point point) =>
-        !Geometry.Buildings.Append(Geometry.Lake).Any(wall =>
+        !Geometry.Obstacles.Any(wall =>
             point.X + Geometry.PlayerRadius > wall.X && point.X - Geometry.PlayerRadius < wall.X + wall.Width &&
             point.Y + Geometry.PlayerRadius > wall.Y && point.Y - Geometry.PlayerRadius < wall.Y + wall.Height);
 }
 
-sealed record CampusGeometry(float Width, float Height, float PlayerRadius, float PlayerSpeed, Point Spawn, WorldRect Bounds, WorldRect[] Buildings, WorldRect Lake);
+sealed record CampusGeometry(float Width, float Height, float PlayerRadius, float PlayerSpeed, Point Spawn, WorldRect Bounds, WorldRect[] Buildings, WorldRect Lake, WorldRect[] Obstacles);
 sealed record WorldRect(float X, float Y, float Width, float Height);

@@ -32,6 +32,16 @@ describe('B reference inventory contract', () => {
       ]),
     ).toBe(110);
   });
+
+  it('rejects duplicate pickup of the same instance without changing value', () => {
+    const inventory = new ReferenceInventory(new EventBus(), 6, ITEM_DEFINITIONS);
+    inventory.begin('current', []);
+    const item = loot('duplicate', 'gpa-charm');
+    expect(inventory.addLoot(item)).toEqual({ ok: true, value: undefined });
+    expect(inventory.addLoot(item)).toEqual({ ok: false, error: 'INVALID_ITEM' });
+    expect(inventory.getCarriedItems()).toEqual([item]);
+    expect(value(inventory.getCarriedItems())).toBe(60);
+  });
   it('uses the rules snapshot and rejects unknown loot instead of granting a fake value', () => {
     expect(
       calculateExtractionValue([loot('a')], 'current', ITEM_DEFINITIONS, {
@@ -58,7 +68,10 @@ describe('B reference inventory contract', () => {
     expect(() =>
       value([
         loot('same', 'school-badge'),
-        { ...loot('same', 'gpa-charm'), origin: { kind: 'raid-loot', obtainedInRaidId: 'old' } },
+        {
+          ...loot('same', 'gpa-charm'),
+          origin: { kind: 'raid-loot', obtainedInRaidId: 'old' },
+        },
       ]),
     ).toThrow('Conflicting item instance');
   });

@@ -6,23 +6,52 @@ import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-con
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
 import { FORMAL_SAVE_KEY } from './modules/save/persistent-save';
-import { CloudSave } from './modules/save/cloud-save';
-import { HttpCloudSaveApi } from './modules/save/cloud-save-api';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
 import { bindGameRules } from './modules/ui/game-rules';
-import { renderChapterUnlock, renderCodexPanel, renderQuestPanel } from './modules/ui/quest-view';
+import { canStartRaid, shouldShowPrepView } from './modules/ui/prep-view';
+import {
+  renderChapterLock,
+  renderChapterUnlock,
+  renderCodexPanel,
+  renderQuestPanel,
+} from './modules/ui/quest-view';
 import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
+import { bindStoryDialog, stepForEvidence } from './modules/ui/story-dialog';
+import { createTypewriter } from './modules/ui/typewriter';
+import {
+  PROLOGUE_AFTER_PAPER,
+  PROLOGUE_OPENING,
+  PROLOGUE_SEGMENTS,
+} from './modules/ui/prologue-text';
+import {
+  interruptedText,
+  refusalText,
+  valueGapText,
+  type ExtractionSnapshot,
+} from './modules/ui/extraction-feedback';
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
+import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
 import { WorldScene } from './scenes/world-scene';
+import { contains } from './modules/world/movement';
+import { WORLD } from './config/world-config';
 import { EventBus } from './shared/events/game-events';
-import type { ItemInstance } from './shared/types/game';
+import type { InventoryClientPort, ItemInstance, RaidControllerPort } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
 import { SoundManager } from './modules/ui/sound-manager';
+import { RoomSession } from './modules/network/room-session';
+import { BroadcastRoomTransport, WebSocketTransport } from './modules/network/realtime-transport';
+import { GameSession } from './modules/network/game-session';
+import { OnlineInventory } from './modules/network/online-inventory';
+import { OnlineRaidController } from './modules/network/online-raid-controller';
+
 import { NetworkSession } from './modules/network/network-session';
 import { bindRoomLobby } from './modules/ui/room-lobby';
 import type { AccountUser } from './modules/auth/auth-client';
 import { accountStorage } from './modules/save/account-storage';
+
+import { CloudSave } from './modules/save/cloud-save';
+import { HttpCloudSaveApi } from './modules/save/cloud-save-api';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -31,14 +60,181 @@ function element<T extends HTMLElement>(id: string): T {
   }
   return node as T;
 }
+
 export async function startGame(user: AccountUser, logout: () => Promise<void>): Promise<void> {
   const app = element('app');
+  // 序章是首屏画板：不恢复上次滚动位置，否则画板会被页面滚动带偏、露出下面的准备页。
+  if ('scrollRestoration' in history) {
+    history.scrollRestoration = 'manual';
+  }
   mountShell(app);
+  // 一级大厅导航只切换页面内容，不改变对局状态；各模块可独立接入后端数据。
+  const lobbyTabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-lobby-tab]'));
+  const lobbyPanels = Array.from(document.querySelectorAll<HTMLElement>('[data-lobby-panel]'));
+  for (const tab of lobbyTabs) {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.lobbyTab;
+      if (!target) return;
+      for (const item of lobbyTabs) {
+        const active = item === tab;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-selected', String(active));
+      }
+      for (const panel of lobbyPanels) {
+        const active = panel.dataset.lobbyPanel === target;
+        panel.hidden = !active;
+        panel.classList.toggle('is-active', active);
+      }
+    });
+  }
+
+  type PrologueMode = 'intro' | 'discovery' | 'clue' | 'story';
+  let prologueMode: PrologueMode = 'intro';
+  let prologueReturnMode: 'discovery' | 'story' = 'discovery';
+  let prologuePaperExamined = false;
+  const prologueImage = element<HTMLImageElement>('prologue-image');
+
+  /** 序章台词结束：开场段读完进入「调查草稿纸」，后半段读完进入准备页。 */
+  const finishPrologueNarration = (): void => {
+    if (prologueMode === 'intro') {
+      prologueMode = 'discovery';
+      renderPrologue();
+      return;
+    }
+    closePrologue();
+  };
+
+  // 与剧情弹窗共用同一套「旁白」台词卡。
+  const prologueTypewriter = createTypewriter(
+    {
+      label: element('prologue-story-label'),
+      speaker: element('prologue-story-speaker'),
+      line: element('prologue-story-line'),
+      progress: element('prologue-story-progress'),
+      hint: element('prologue-story-hint'),
+    },
+    () => finishPrologueNarration(),
+  );
+
+  /** 规则 / 图鉴等弹层打开时不抢台词，等它关掉再开始打字。 */
+  const narrationBlocked = (): boolean => document.querySelector('dialog[open]') !== null;
+
+  const playPrologueNarration = (): void => {
+    if (narrationBlocked()) return;
+    if (prologueMode === 'intro') {
+      prologueTypewriter.play(PROLOGUE_OPENING, {
+        progressOffset: 0,
+        progressTotal: PROLOGUE_SEGMENTS.length,
+        lastHint: '继续调查 ▸',
+      });
+    } else if (prologueMode === 'story') {
+      prologueTypewriter.play(PROLOGUE_AFTER_PAPER, {
+        progressOffset: PROLOGUE_OPENING.length,
+        progressTotal: PROLOGUE_SEGMENTS.length,
+        lastHint: '前往准备 ▸',
+      });
+    }
+  };
+
+  /** 弹层关闭后回到序章台词（进度重新从当前段开始，不影响流程）。 */
+  const resumePrologueNarration = (): void => {
+    if (element('prologue').hidden) return;
+    if (prologueMode === 'intro' || prologueMode === 'story') playPrologueNarration();
+  };
+
+  const renderPrologue = (): void => {
+    const clue = prologueMode === 'clue';
+    const narrating = prologueMode === 'intro' || prologueMode === 'story';
+    element('prologue-story-overlay').hidden = !narrating;
+    element('prologue-paper-hit').hidden =
+      clue || prologueMode === 'intro' || prologuePaperExamined;
+    element('prologue-continue-hit').hidden = prologueMode !== 'discovery';
+    element('prologue-continue-hint').hidden = prologueMode !== 'discovery';
+    element('prologue-clue-later').hidden = !clue;
+    element('prologue-clue-close').hidden = !clue;
+    element('prologue-progress').textContent = clue
+      ? '序章 · 线索'
+      : narrating
+        ? '序章 · 晚归'
+        : '序章 · 调查';
+    const imageSrc = clue
+      ? '/images/prologue-paper-examined.svg'
+      : '/images/prologue-discovery.svg';
+    if (prologueImage.getAttribute('src') !== imageSrc) prologueImage.src = imageSrc;
+    if (narrating) playPrologueNarration();
+    else prologueTypewriter.stop();
+  };
+
+  const closePrologue = (): void => {
+    prologueTypewriter.stop();
+    element('prologue').hidden = true;
+    document.documentElement.classList.remove('prologue-open');
+    element<HTMLButtonElement>('start').focus();
+  };
+  element('prologue-story-box').addEventListener('click', () => {
+    if (prologueMode === 'intro' || prologueMode === 'story') prologueTypewriter.advance();
+  });
+  element('prologue-paper-hit').onclick = () => {
+    if (prologueMode !== 'discovery' && prologueMode !== 'story') return;
+    prologueReturnMode = prologueMode;
+    prologueTypewriter.stop();
+    prologueMode = 'clue';
+    renderPrologue();
+  };
+  element('prologue-continue-hit').onclick = () => {
+    prologueMode = 'story';
+    renderPrologue();
+  };
+  element('prologue-continue-hint').onclick = () => {
+    prologueMode = 'story';
+    renderPrologue();
+  };
+  element('prologue-clue-later').onclick = () => {
+    prologueMode = prologueReturnMode;
+    renderPrologue();
+  };
+  element('prologue-clue-close').onclick = () => {
+    prologuePaperExamined = true;
+    prologueMode = prologueReturnMode;
+    renderPrologue();
+  };
+  element('prologue-skip').onclick = () => closePrologue();
+  element('prologue').addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (prologueMode === 'clue') element('prologue-clue-later').click();
+      else closePrologue();
+      return;
+    }
+    if (
+      event.key.toLowerCase() === 'e' &&
+      (prologueMode === 'discovery' || prologueMode === 'story')
+    ) {
+      event.preventDefault();
+      element('prologue-paper-hit').click();
+      return;
+    }
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target instanceof HTMLButtonElement) return;
+    event.preventDefault();
+    if (prologueMode === 'clue') element('prologue-clue-close').click();
+    else if (prologueMode === 'discovery') element('prologue-continue-hit').click();
+    else prologueTypewriter.advance();
+  });
+  renderPrologue();
+  // 序章是全屏画板：锁住页面滚动并把滚动位置归零，避免画板被卷走、露出下面的准备页内容。
+  document.documentElement.classList.add('prologue-open');
+  window.scrollTo(0, 0);
+  element('app').scrollTop = 0;
+  // 首次渲染时「游戏规则」可能在同一轮里自动打开，等它落定再决定是否开始打字。
+  prologueTypewriter.stop();
+  setTimeout(resumePrologueNarration, 0);
+  element('prologue').focus();
   const settings = document.createElement('section');
   settings.className = 'side-card settings';
   settings.innerHTML =
     '<h2>设置</h2><label>游戏音量 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label>界面亮度 <input id="screen-brightness" type="range" min="0.65" max="1.2" step="0.05" value="1"></label>';
-  document.querySelector('aside')?.append(settings);
+  document.querySelector('#lobby-settings-slot')?.append(settings);
   const account = document.createElement('section');
   account.className = 'side-card settings';
   account.innerHTML =
@@ -63,8 +259,20 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
   };
   const storage = accountStorage(localStorage, user.id);
   const lockName = `bjtu-treasure-hunt:account:${user.id}`;
+
   const notify = (message: string) => {
     element('notice').textContent = message;
+  };
+  let mapToastTimer: number | undefined;
+  /** F02：撤离相关的拒绝与中断原因要落在画面内，侧栏状态行只作补充。 */
+  const showMapToast = (message: string, ms = 3200): void => {
+    const toast = element('map-toast');
+    toast.textContent = message;
+    toast.hidden = false;
+    window.clearTimeout(mapToastTimer);
+    mapToastTimer = window.setTimeout(() => {
+      toast.hidden = true;
+    }, ms);
   };
   const phaseNames = {
     preparing: '准备出发',
@@ -131,6 +339,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       notify('检测到上次未结束的探索，已按中断失败处理；未带入仓库的物品不受影响。');
     }
     const events = new EventBus();
+    const realtimeUrl = import.meta.env.VITE_REALTIME_URL;
+    const realtimeTransport = realtimeUrl
+      ? new WebSocketTransport(realtimeUrl)
+      : new BroadcastRoomTransport();
+    const roomSession = new RoomSession(realtimeTransport);
     const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
     const controller = new RaidController(inventory, save, events, RAID_RULES, ITEM_DEFINITIONS);
     const migrate = element<HTMLButtonElement>('account-import-legacy');
@@ -161,12 +374,18 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       if (phase === 'preparing' || phase === 'success' || phase === 'failed') return true;
       return confirm('退出登录会中断本次探索，本局携带物将按中断失败处理。确定退出吗？');
     };
+
     let lastInventory = '';
     let lastWarehouse = '';
     let lastCodex = '';
     let renderedAt = 0;
     let interacted = '';
     let searchProgress = 0;
+    // F02：记录读条开始时的状态，用来判断读条为什么被取消。
+    let extractionSnapshot: ExtractionSnapshot | null = null;
+    let enteredExtractionZone = false;
+    let leftExtractionZone = false;
+    let zoneRaidId: string | null = null;
     const touch = new TouchControls(element('touch-controls'));
     const sound = new SoundManager();
     const networkUrl = new URL('/ws', location.href);
@@ -195,6 +414,31 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     });
     events.on('RaidEnded', () => lobby.finish());
     window.addEventListener('beforeunload', () => network?.close(), { once: true });
+
+    let onlineMode = Boolean(realtimeUrl);
+    const gameSession = new GameSession(realtimeTransport, {
+      onSnapshot: (snapshot) => {
+        const localPlayerId = roomSession.playerId;
+        onlineController.applySnapshot(snapshot);
+        onlineInventory.applySnapshot(snapshot);
+        scene.setOnlineSnapshot(snapshot);
+        scene.setRemotePlayers(
+          snapshot.players.filter((player) => player.playerId !== localPlayerId),
+        );
+        render();
+      },
+      onEvent: (event) => {
+        if (event.kind === 'damage-taken') {
+          notify('收到服务端伤害事件。');
+        }
+      },
+      onNotice: notify,
+      onStateChange: () => render(),
+    });
+    const onlineInventory = new OnlineInventory(events, gameSession, ITEM_DEFINITIONS);
+    const onlineController = new OnlineRaidController(gameSession, events, RAID_RULES);
+    const activeInventory: InventoryClientPort = realtimeUrl ? onlineInventory : inventory;
+    const activeController: RaidControllerPort = realtimeUrl ? onlineController : controller;
     const volume = element<HTMLInputElement>('sound-volume');
     let audibleVolume = sound.getSettings().volume || 0.8;
     const brightness = element<HTMLInputElement>('screen-brightness');
@@ -209,13 +453,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     applySettings();
     const scene = new WorldScene({
       displayName: user.displayName,
-      controller,
-      inventory,
+      network,
+      controller: activeController,
+      inventory: activeInventory,
       events,
       notify,
       touch,
       sound,
-      network,
+      onInput: (input) => gameSession.sendInput(input),
+      isOnline: () => onlineMode,
       onFrame: (interaction, progress) => {
         interacted = interaction;
         searchProgress = progress;
@@ -225,22 +471,151 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         }
       },
     });
+    const renderRoom = (): void => {
+      const connection = element('room-connection');
+      const status = element('room-status');
+      const code = element<HTMLInputElement>('room-code');
+      const name = element<HTMLInputElement>('room-name');
+      const create = element<HTMLButtonElement>('room-create');
+      const join = element<HTMLButtonElement>('room-join');
+      const controls = element('room-controls');
+      const members = element('room-members');
+      const ready = element<HTMLButtonElement>('room-ready');
+      const start = element<HTMLButtonElement>('room-start');
+      const snapshot = roomSession.snapshot;
+      const connectionNames = {
+        idle: '未连接',
+        connecting: '连接中',
+        connected: '已连接',
+        'in-room': '房间中',
+        started: '已开始',
+        closed: '已关闭',
+        error: '连接异常',
+      } as const;
+      connection.textContent = connectionNames[roomSession.state];
+      status.textContent =
+        roomSession.error ??
+        (snapshot
+          ? `房间 ${snapshot.roomId} · ${snapshot.members.length}/${snapshot.maxPlayers} 人`
+          : realtimeUrl
+            ? `服务器：${realtimeUrl}`
+            : '开发演示通道：可用两个浏览器标签页共享房间。');
+      const connected = roomSession.state === 'connected' || roomSession.state === 'in-room';
+      create.disabled = !connected || !!snapshot;
+      join.disabled = !connected || !!snapshot;
+      name.disabled = !!snapshot;
+      code.disabled = !!snapshot;
+      controls.hidden = !snapshot;
+      members.hidden = !snapshot;
+      if (!snapshot) return;
+      if (document.activeElement !== code) code.value = snapshot.roomId;
+      members.replaceChildren();
+      for (const member of snapshot.members) {
+        const row = document.createElement('div');
+        row.className = 'room-member';
+        const label = document.createElement('span');
+        label.textContent = `${member.displayName}${member.playerId === snapshot.hostId ? ' · 房主' : ''}`;
+        const state = document.createElement('span');
+        state.textContent = member.connected ? (member.ready ? '已准备' : '未准备') : '已断线';
+        row.append(label, state);
+        members.append(row);
+      }
+      const own = snapshot.members.find((member) => member.playerId === roomSession.playerId);
+      ready.textContent = own?.ready ? '取消准备' : '准备';
+      ready.disabled = snapshot.status !== 'lobby';
+      start.disabled = snapshot.hostId !== roomSession.playerId || snapshot.status !== 'lobby';
+    };
+    roomSession.subscribe(renderRoom);
+    roomSession.subscribe(() => {
+      const snapshot = roomSession.snapshot;
+      gameSession.setContext(snapshot?.roomId ?? null, roomSession.raidId);
+      onlineMode = Boolean(realtimeUrl && roomSession.state === 'started');
+      render();
+    });
+    element('room-create').onclick = () => {
+      const roomId = `BJTU-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
+      element<HTMLInputElement>('room-code').value = roomId;
+      roomSession.createRoom(user.displayName, roomId);
+    };
+    element('room-join').onclick = () => {
+      const roomId = element<HTMLInputElement>('room-code').value.trim().toUpperCase();
+      if (!roomId) {
+        notify('请输入房间号。');
+        return;
+      }
+      roomSession.joinRoom(user.displayName, roomId);
+    };
+    element('room-ready').onclick = () => {
+      const snapshot = roomSession.snapshot;
+      const own = snapshot?.members.find((member) => member.playerId === roomSession.playerId);
+      if (own) roomSession.setReady(!own.ready);
+    };
+    element('room-start').onclick = () => roomSession.startRoom();
+    element('room-leave').onclick = () => roomSession.leaveRoom();
     let rulesOpen = false;
     let mapOpen = false;
     let codexOpen = false;
+    let storyOpen = false;
     let roomOpen = false;
+    // F04：新手引导。只读局内状态与玩家位置，不写任何玩法数据。
+    const tutorial = createTutorial({ store: tutorialStore(storage) });
+    let tutorialRaidId: string | null = null;
+    let tutorialOrigin: { x: number; y: number } | null = null;
+    let tutorialMoved = false;
+    let tutorialSignature = '';
+    let tutorialWasVisible = false;
+    const scenePosition = (): { x: number; y: number } | null => {
+      // 场景把位置作为内部字段持有；这里只读一份坐标用于判断「是否已经走动」，
+      // 不改 world-scene（C）的实现，也不参与任何玩法计算。
+      const probe = scene as unknown as { position?: { x: number; y: number } };
+      const position = probe.position;
+      return position ? { x: position.x, y: position.y } : null;
+    };
+    function syncTutorial(view: ReturnType<typeof controller.getView>): void {
+      if (view.raidId !== tutorialRaidId) {
+        tutorialRaidId = view.raidId;
+        tutorialOrigin = null;
+        tutorialMoved = false;
+      }
+      const position = scenePosition();
+      if (position) {
+        if (tutorialOrigin === null) tutorialOrigin = position;
+        else if (Math.hypot(position.x - tutorialOrigin.x, position.y - tutorialOrigin.y) > 12) {
+          tutorialMoved = true;
+        }
+      }
+      const snapshot = tutorial.sync({
+        phase: view.phase,
+        value: view.value,
+        threshold: view.threshold,
+        inExtractionZone: view.inExtractionZone,
+        bagCount: inventory.getCarriedItems().length,
+        interacted,
+        moved: tutorialMoved,
+        nowMs: performance.now(),
+      });
+      const signature = `${snapshot.visible}:${snapshot.index}:${snapshot.step?.id ?? ''}`;
+      if (signature === tutorialSignature) return;
+      renderTutorial(snapshot);
+      tutorialSignature = signature;
+      if (tutorialWasVisible && !snapshot.visible && tutorial.isDone()) {
+        notify('新手引导已完成 · 可在准备页「重看新手引导」重新观看。');
+      }
+      tutorialWasVisible = snapshot.visible;
+    }
     const mobile = isTouchLayout;
     const syncOrientation = () => {
-      const view = controller.getView();
+      const view = activeController.getView();
       const active = view.phase === 'active' || view.phase === 'extracting';
       app.dataset.mobile = String(mobile());
       element('rotate-phone').hidden = true;
-      if (active && (rulesOpen || mapOpen || codexOpen || roomOpen)) {
-        if (!controller.isPaused()) {
-          controller.pause();
+      if (active && (rulesOpen || mapOpen || codexOpen || storyOpen || roomOpen)) {
+        if (!activeController.isPaused()) {
+          activeController.pause();
           scene.clearInteractions();
         }
-      } else if (!rulesOpen && !mapOpen && !codexOpen && !roomOpen) controller.resume();
+      } else if (!rulesOpen && !mapOpen && !codexOpen && !storyOpen && !roomOpen)
+        activeController.resume();
     };
     let roomTrigger = 'open-room';
     let gameScroll = 0;
@@ -270,6 +645,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       app.scrollTop = gameScroll;
       if (!mobile()) window.scrollTo(0, gameScroll);
     };
+
+    const preparation = element('preparation');
+    const preparationHome = preparation.parentElement!;
     const onResize = () => {
       scene.clearInteractions();
       render();
@@ -304,7 +682,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     element('open-campus-map').onclick = () => {
       if (campusMap.open) return;
       mapOpen = true;
-      controller.pause();
+      activeController.pause();
       scene.clearInteractions();
       campusMap.showModal();
       render();
@@ -319,7 +697,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     const openCodex = () => {
       if (codex.open) return;
       codexOpen = true;
-      controller.pause();
+      activeController.pause();
       scene.clearInteractions();
       const archive = save.view();
       renderCodex(archive.codexIds, archive.unlockedChapterIds);
@@ -354,7 +732,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     bindGameRules(
       () => {
         rulesOpen = true;
-        controller.pause();
+        // 规则弹窗盖住序章时，台词先停下，关掉后再继续。
+        prologueTypewriter.stop();
+        activeController.pause();
         scene.clearInteractions();
         render();
       },
@@ -363,25 +743,51 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         rulesOpen = false;
         syncOrientation();
         render();
+        resumePrologueNarration();
       },
     );
+    // 剧情弹窗（复用规则弹窗骨架）：打开时暂停对局，关闭后恢复。
+    const story = bindStoryDialog(
+      () => {
+        storyOpen = true;
+        controller.pause();
+        scene.clearInteractions();
+        render();
+      },
+      () => {
+        scene.clearInteractions();
+        storyOpen = false;
+        render();
+      },
+    );
+    // 每局只弹一次的剧情键：`${raidId}:${itemId}` 为线索，`${raidId}:ending` 为结尾。
+    const storyShownPerRaid = new Set<string>();
+    events.on('ItemPicked', ({ raidId, item }) => {
+      const step = stepForEvidence(item.itemId);
+      if (!step) return;
+      const key = `${raidId}:${item.itemId}`;
+      if (storyShownPerRaid.has(key)) return;
+      storyShownPerRaid.add(key);
+      story.open({ kind: 'step', step });
+    });
+    // 剧情档案的「回看」按钮随存档状态重渲染，用事件委托绑定。
+    element('story-archive').addEventListener('click', (event) => {
+      if ((event.target as HTMLElement).id === 'open-story') {
+        story.open({ kind: 'full-chapter' });
+      }
+    });
 
     function render(): void {
       syncOrientation();
-      const view = controller.getView();
+      renderRoom();
       lobby.render();
-      const preparation = element('preparation');
       const prepTarget =
-        roomOpen && lobby.isJoined()
-          ? element('room-preparation-slot')
-          : element('inventory-panel').parentElement!;
-      if (preparation.parentElement !== prepTarget) {
-        if (roomOpen && lobby.isJoined()) prepTarget.append(preparation);
-        else prepTarget.insertBefore(preparation, element('inventory-panel'));
-      }
+        roomOpen && lobby.isJoined() ? element('room-preparation-slot') : preparationHome;
+      if (preparation.parentElement !== prepTarget) prepTarget.append(preparation);
       for (const id of ['loadout', 'starter-weapon', 'risk-consent']) {
         element<HTMLInputElement | HTMLSelectElement>(id).disabled = lobby.isLocked();
       }
+      const view = activeController.getView();
       const lighting = scene.getLightingStatus();
       const musicState = sound.getMusicState();
       const soundButton = element('mobile-sound');
@@ -400,12 +806,52 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       bagButton.textContent = preparing ? '出发' : finished ? '结算' : '背包';
       bagButton.setAttribute(
         'aria-controls',
-        preparing ? 'preparation' : finished ? 'result-panel' : 'inventory-panel',
+        preparing ? 'prep-view' : finished ? 'result-panel' : 'inventory-panel',
       );
-      const playable =
-        !controller.isPaused() && (view.phase === 'active' || view.phase === 'extracting');
+      const paused = activeController.isPaused();
+      const playable = !paused && (view.phase === 'active' || view.phase === 'extracting');
       touch.setEnabled(playable);
       app.dataset.phase = view.phase;
+      document.documentElement.classList.toggle(
+        'lobby-open',
+        view.phase === 'preparing' && !roomOpen,
+      );
+      syncTutorial(view);
+      // F02：读条被价值跌破、受伤、离开区域或暂停打断时，在画面内说明原因。
+      if (view.phase === 'extracting') {
+        extractionSnapshot = {
+          value: view.value,
+          inZone: view.inExtractionZone,
+          health: view.health,
+          paused,
+        };
+      } else if (extractionSnapshot) {
+        const interrupted = interruptedText(extractionSnapshot, view, paused);
+        extractionSnapshot = null;
+        if (interrupted) {
+          notify(interrupted);
+          showMapToast(interrupted);
+        }
+      }
+      // 出生点就在南门撤离区：只有「先真正进过撤离区、再走出去、再走回来」才提示差额。
+      if (view.raidId !== zoneRaidId) {
+        zoneRaidId = view.raidId;
+        enteredExtractionZone = false;
+        leftExtractionZone = false;
+      }
+      if (view.phase === 'active' && view.inExtractionZone) {
+        if (!enteredExtractionZone) {
+          enteredExtractionZone = true;
+          leftExtractionZone = false;
+        } else if (leftExtractionZone) {
+          leftExtractionZone = false;
+          if (view.value < view.threshold) {
+            showMapToast(valueGapText(view.value, view.threshold));
+          }
+        }
+      } else if (view.phase === 'active' && enteredExtractionZone) {
+        leftExtractionZone = true;
+      }
       const lightButton =
         element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="L"]');
       lightButton?.setAttribute('aria-pressed', String(lighting.enabled));
@@ -447,23 +893,24 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('interaction-label').textContent = interacted;
       element<HTMLProgressElement>('interaction-progress').value =
         view.phase === 'extracting' ? view.extractionProgress : searchProgress;
-      element('preparation').hidden = view.phase !== 'preparing';
+      element('prep-view').hidden = !shouldShowPrepView(view.phase);
       element('inventory-panel').hidden = !playable;
       element('result-panel').hidden = !['settling', 'success', 'failed'].includes(view.phase);
-      element<HTMLButtonElement>('start').disabled =
-        view.isBusy || (!lobby.isJoined() && !element<HTMLInputElement>('risk-consent').checked);
+      element<HTMLButtonElement>('start').disabled = !canStartRaid({
+        busy: view.isBusy,
+        consented: lobby.isJoined() || element<HTMLInputElement>('risk-consent').checked,
+      });
       element('start').textContent = lobby.isJoined() ? '进入联机房间 ↗' : '开始探索 ↗';
-      element<HTMLButtonElement>('extract').disabled =
-        !playable ||
-        !view.inExtractionZone ||
-        view.value < view.threshold ||
-        view.phase === 'extracting';
+      // F02：按钮不再因为「不在区域 / 价值不足」直接禁用，否则点了没有任何反馈。
+      element<HTMLButtonElement>('extract').disabled = !playable || view.phase === 'extracting';
       element('extract').textContent =
         view.phase === 'extracting'
           ? '正在撤离，请保持停留…'
-          : view.inExtractionZone
-            ? '开始撤离 · 5 秒'
-            : '请前往南侧撤离点';
+          : !view.inExtractionZone
+            ? '请前往南侧撤离点'
+            : view.value < view.threshold
+              ? `还差 ${view.threshold - view.value} 价值 · 点此查看`
+              : '开始撤离 · 5 秒';
       element('retry-save').hidden = !view.saveError || view.phase !== 'settling';
       element<HTMLButtonElement>('retry-save').disabled = view.isBusy;
       element('next').hidden = !['success', 'failed'].includes(view.phase);
@@ -475,16 +922,17 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           : view.result?.outcome === 'success'
             ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
             : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
-      const carried = inventory.getCarriedItems();
+      const carried = activeInventory.getCarriedItems();
       renderQuestPanel(questProgress(carried, view.raidId));
-      const signature = JSON.stringify([carried, inventory.getEquipment()]);
+      const signature = JSON.stringify([carried, activeInventory.getEquipment()]);
       if (signature !== lastInventory) {
-        renderInventory(carried, inventory.getEquipment());
+        renderInventory(carried, activeInventory.getEquipment());
         lastInventory = signature;
       }
       const archive = save.view();
       const warehouseSignature = JSON.stringify(archive.warehouse);
       element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
+      element('warehouse-count-label').textContent = `${archive.warehouse.length} 件物品`;
       element('archive-detail').textContent = archive.unlockedChapterIds.length
         ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
         : archive.codexIds.length
@@ -500,10 +948,18 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         }
         lastWarehouse = warehouseSignature;
       }
-      renderChapterUnlock(
-        element('quest-unlock'),
-        view.result !== null && chapterUnlockGranted(view.result),
-      );
+      const unlocked = view.result !== null && chapterUnlockGranted(view.result);
+      renderChapterUnlock(element('quest-unlock'), unlocked);
+      // R07：成功撤离但证据不齐时，说明本章为什么还没解锁。
+      renderChapterLock(element('quest-lock'), view.result);
+      // 结尾剧情（剧情稿 6.4）：成功撤离解锁章节后自动弹出一次。
+      if (unlocked) {
+        const key = `${view.raidId}:ending`;
+        if (!storyShownPerRaid.has(key)) {
+          storyShownPerRaid.add(key);
+          story.open({ kind: 'ending' });
+        }
+      }
       const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
       if (codexSignature !== lastCodex) {
         renderCodexPanel(element('codex-list'), element('story-archive'), archive);
@@ -549,7 +1005,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           use.className = 'mini';
           use.textContent = '使用';
           use.onclick = () => {
-            const state = controller.getView();
+            const state = activeController.getView();
             if (state.phase !== 'active' && state.phase !== 'extracting') {
               return;
             }
@@ -558,8 +1014,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
               notify('该恢复物尚未配置效果，物品没有消耗。');
               return;
             }
-            const consumed = inventory.consumeHealing(item.instanceId, () =>
-              controller.heal(amount),
+            const consumed = activeInventory.consumeHealing(item.instanceId, () =>
+              activeController.heal(amount),
             );
             if (consumed.ok) {
               notify('恢复物已消耗，当前携带价值已重算。');
@@ -591,7 +1047,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       void requestLandscape();
       const selected = element<HTMLSelectElement>('loadout').value;
       const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
-      const result = await controller.start(selected ? [selected] : [], starterWeapon || undefined);
+      const result = await activeController.start(
+        selected ? [selected] : [],
+        starterWeapon || undefined,
+      );
       notify(
         result.ok
           ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
@@ -606,9 +1065,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       else void startExploration();
     };
     element('extract').onclick = () => {
-      const result = controller.startExtraction();
+      const current = activeController.getView();
+      const result = activeController.startExtraction();
       if (result.ok) {
         sound.play('home');
+        showMapToast('开始撤离 · 请留在南门区域内 5 秒');
+      } else {
+        const reason = refusalText(result.error, current, activeController.isPaused());
+        notify(reason);
+        showMapToast(reason);
       }
       render();
     };
@@ -616,19 +1081,34 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       if (!confirm('确定放弃本次探索吗？本局携带物（包括从仓库带入的物品）将全部损失。')) {
         return;
       }
-      controller.abandon();
+      activeController.abandon();
       sound.setMusic(false);
       render();
     };
     element('next').onclick = () => {
-      controller.prepareNext();
+      activeController.prepareNext();
       sound.setMusic(false);
       render();
       if (lobby.isJoined()) element(mobile() ? 'mobile-room' : 'open-room').click();
       if (mobile()) app.scrollTo(0, 0);
     };
     element('retry-save').onclick = async () => {
-      await controller.retrySettlement();
+      await activeController.retrySettlement();
+      render();
+    };
+    // F04：跳过与重看两个入口，配合引导卡一起满足「可跳过、可重看」的要求。
+    element('tutorial-skip').onclick = () => {
+      tutorial.skip();
+      tutorialSignature = '';
+      tutorialWasVisible = false;
+      notify('已跳过新手引导 · 可在准备页「重看新手引导」重新打开。');
+      render();
+    };
+    element('tutorial-restart').onclick = () => {
+      tutorial.restart();
+      tutorialSignature = '';
+      tutorialWasVisible = false;
+      notify('新手引导已重置 · 进入局内会从第一步重新提示。');
       render();
     };
     element('reset-save').onclick = async () => {
@@ -658,15 +1138,133 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     if (import.meta.env.DEV) {
       element('debug-panel').hidden = false;
       element('damage').onclick = () => {
-        controller.applyDamage(25);
+        activeController.applyDamage(25);
         render();
       };
       element('fatal').onclick = () => {
-        controller.applyDamage(RAID_RULES.maxHealth);
+        activeController.applyDamage(RAID_RULES.maxHealth);
         render();
       };
+      // F02 人工验收需要精确的价值（75 / 110 / 85），宝箱随机难以凑数，这里给个 dev 专用发放按钮。
+      const grantLoot = (itemId: string) => {
+        const raidId = controller.getView().raidId;
+        if (raidId === null) {
+          notify('请先开始一局探索。');
+          return;
+        }
+        const result = inventory.addLoot({
+          instanceId: `debug-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          itemId,
+          origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
+        });
+        notify(
+          result.ok
+            ? `调试：已发放 ${ITEM_DEFINITIONS[itemId]?.name ?? itemId}。`
+            : '调试：背包已满，先丢弃一件再发放。',
+        );
+        render();
+      };
+      element('debug-grant-uncommon').onclick = () => grantLoot('window-seat');
+      element('debug-grant-epic').onclick = () => grantLoot('gpa-charm');
+      // R07 验收需要稳定的证据组合，宝箱随机拿不到，这里同样只在 dev 提供发放入口。
+      element('debug-grant-notebook').onclick = () => grantLoot('torn-notebook');
+      element('debug-grant-feather').onclick = () => grantLoot('anomalous-feather');
+      // R07 验收还需要抵达随机生成的搜证点；人工探索太耗时，dev 提供传送（只读场景内部状态，不改玩法）。
+      type DebugSceneAccess = {
+        position: { x: number; y: number };
+        aim: number;
+        player?: {
+          setPosition(x: number, y: number): void;
+          body: { reset(x: number, y: number): void };
+        };
+        searchPoints: readonly { id: string; itemId: string; x: number; y: number }[];
+        lighting: { enabled: boolean };
+        combat?: {
+          enemies: readonly {
+            id: string;
+            kind: string;
+            state: string;
+            position: { x: number; y: number };
+          }[];
+        };
+        search?: { isOpened(id: string): boolean; current?(): string | null };
+        services?: {
+          inventory?: { getCarriedItems(): readonly { instanceId: string; itemId: string }[] };
+        };
+      };
+      const debugScene = scene as unknown as DebugSceneAccess;
+      const teleportTargets: Record<string, () => { x: number; y: number } | null> = {
+        'debug-tp-notebook': () =>
+          debugScene.searchPoints.find((point) => point.itemId === 'torn-notebook') ?? null,
+        'debug-tp-feather': () =>
+          debugScene.searchPoints.find((point) => point.itemId === 'anomalous-feather') ?? null,
+        'debug-tp-extract': () => ({ ...WORLD.spawn }),
+      };
+      const questPointNames: Record<string, string> = {
+        'debug-tp-notebook': '图书馆书架',
+        'debug-tp-feather': '明湖石碑',
+        'debug-tp-extract': '南门撤离点',
+      };
+      for (const [buttonId, resolveTarget] of Object.entries(teleportTargets)) {
+        element(buttonId).onclick = () => {
+          const target = resolveTarget();
+          if (!target) {
+            notify('调试：本局没有该目标点，或尚未开始探索。');
+            return;
+          }
+          // 优先落在目标西侧 48px（面朝东即对准目标），被障碍挡住就按东/北/南顺序挑空位。
+          const candidates = [
+            { x: target.x - 48, y: target.y },
+            { x: target.x + 48, y: target.y },
+            { x: target.x, y: target.y - 48 },
+            { x: target.x, y: target.y + 48 },
+            { x: target.x, y: target.y },
+          ];
+          const spot =
+            candidates.find((p) => !WORLD.obstacles.some((w) => contains(w, p))) ?? target;
+          debugScene.position = { x: spot.x, y: spot.y };
+          debugScene.aim = 0;
+          debugScene.lighting.enabled = true;
+          debugScene.player?.setPosition(spot.x, spot.y);
+          notify(`调试：已传送到${questPointNames[buttonId] ?? buttonId}旁，手电已开启。`);
+          render();
+        };
+      }
+      // 供自动化验收读取场景内部状态（仅 dev）。
+      (window as unknown as { __debugSceneState?: () => unknown }).__debugSceneState = () => ({
+        position: { ...debugScene.position },
+        aim: debugScene.aim,
+        lightOn: debugScene.lighting.enabled,
+        points: debugScene.searchPoints.map((p) => ({
+          id: p.id,
+          itemId: p.itemId,
+          x: p.x,
+          y: p.y,
+        })),
+        enemies: (debugScene.combat?.enemies ?? []).map((enemy) => ({
+          id: enemy.id,
+          kind: enemy.kind,
+          state: enemy.state,
+          x: enemy.position.x,
+          y: enemy.position.y,
+        })),
+        opened: debugScene.search
+          ? Array.from(
+              (debugScene.search as unknown as { opened?: Set<string> }).opened ??
+                new Set<string>(),
+            )
+          : [],
+        searchCurrent: debugScene.search?.current?.() ?? null,
+        hasSearch: debugScene.search !== undefined,
+        hasServices: debugScene.services !== undefined,
+        bag: (debugScene.services?.inventory?.getCarriedItems() ?? []).map((item) => ({
+          id: item.instanceId,
+          item: item.itemId,
+        })),
+      });
     }
     render();
+    void roomSession.connect().catch(() => renderRoom());
     if (import.meta.hot) {
       import.meta.hot.dispose(() => {
         save.close();
@@ -675,6 +1273,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         sound.dispose();
         disposeLayout();
         controller.dispose();
+        roomSession.close();
+        gameSession.close();
         touch.dispose();
         game.destroy(true);
         unlock();

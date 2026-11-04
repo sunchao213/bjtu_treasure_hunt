@@ -8,12 +8,13 @@ import type {
   RaidResult,
   RaidRules,
   RaidView,
+  RaidControllerPort,
   SavePort,
 } from '../../shared/types/game';
 import { calculateExtractionValue } from '../inventory/extraction-value';
 
 /** A owns all phase changes. This controller contains no Phaser or DOM dependencies. */
-export class RaidController {
+export class RaidController implements RaidControllerPort {
   private phase: RaidPhase = 'preparing';
   private raidId: string | null = null;
   private startedAtMs = 0;
@@ -74,14 +75,13 @@ export class RaidController {
             },
           ]
         : [];
+      const primary =
+        starterWeapon[0] ??
+        loadout.find((item) => this.definitions[item.itemId]?.kind === 'weapon');
       this.inventory.begin(
         raidId,
-        loadout,
-        starterWeapon.length > 0
-          ? { primary: starterWeapon[0] }
-          : {
-              primary: loadout.find((item) => this.definitions[item.itemId]?.kind === 'weapon'),
-            },
+        loadout.filter((item) => item.instanceId !== primary?.instanceId),
+        primary ? { primary } : {},
       );
       this.raidId = raidId;
       this.health = this.rules.maxHealth;

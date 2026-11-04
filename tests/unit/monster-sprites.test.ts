@@ -29,8 +29,11 @@ function makeEnemy(overrides: Partial<Enemy> = {}): Enemy {
 
 describe('monster sprite manifest', () => {
   it('has a texture and animation definition for every loaded sheet', () => {
+    expect(Object.keys(MONSTER_ANIMATIONS).sort()).toEqual([...MONSTER_SPRITE_SHEETS].sort());
     for (const key of MONSTER_SPRITE_SHEETS) {
       expect(MONSTER_ANIMATIONS).toHaveProperty(key);
+      const texture = MONSTER_ANIMATIONS[key]!.texture;
+      expect(MONSTER_SPRITE_SHEETS).toContain(texture);
     }
   });
 
@@ -47,6 +50,12 @@ describe('monster sprite manifest', () => {
     expect(monsterAnimationFor(hug, false)).toBe('squirrel-idle');
     expect(monsterAnimationFor(hug, true)).toBe('squirrel-walk');
     expect(monsterAnimationFor({ ...hug, state: 'request' }, false)).toBe('squirrel-request');
+    expect(monsterAnimationFor({ ...hug, state: 'mutation-warning' }, false)).toBe(
+      'squirrel-request',
+    );
+    expect(monsterAnimationFor({ ...hug, state: 'calmed' }, false)).toBe('squirrel-idle');
+    expect(monsterAnimationFor({ ...hug, state: 'stunned' }, false)).toBe('squirrel-idle');
+    expect(monsterAnimationFor({ ...hug, state: 'dead' }, false)).toBe('squirrel-death');
     expect(monsterAnimationFor({ ...hug, mutated: true }, false)).toBe('squirrel-mutant-idle');
     expect(monsterAnimationFor({ ...hug, mutated: true }, true)).toBe('squirrel-mutant-walk');
     expect(monsterAnimationFor({ ...hug, mutated: true, state: 'windup' }, false)).toBe(
@@ -60,9 +69,9 @@ describe('monster sprite manifest', () => {
     );
   });
 
-  it('keeps the established relative scale for each visual variant', () => {
-    expect(monsterScaleFor(makeEnemy())).toBe(0.5);
-    expect(monsterScaleFor(makeEnemy({ kind: 'hug' }))).toBe(0.48);
-    expect(monsterScaleFor(makeEnemy({ kind: 'hug', mutated: true }))).toBe(0.62);
+  it('keeps the reduced relative scale for each visual variant', () => {
+    expect(monsterScaleFor(makeEnemy())).toBe(0.4);
+    expect(monsterScaleFor(makeEnemy({ kind: 'hug' }))).toBe(0.38);
+    expect(monsterScaleFor(makeEnemy({ kind: 'hug', mutated: true }))).toBe(0.48);
   });
 });

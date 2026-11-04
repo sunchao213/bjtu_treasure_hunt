@@ -1,8 +1,12 @@
 # 素材说明
 
-当前校园、人物和物资全部由 Phaser 图形 API 绘制，没有下载或引用商业游戏素材。
-后续 D 添加地图／图像／音效时，在 `docs/assets-manifest.md` 记录来源、作者、许可和署名。
+校园夜景底图 `maps/campus-night/campus-base.png` 由用户自制。人物和物资仍由 Phaser 绘制或使用独立精灵素材。
+玩家动作源图位于 `characters/player/player-source.png`，运行 `scripts/prepare_player_sprites.ps1` 可重新生成透明精灵条。
+宝箱动画精灵条位于 `props/treasure-chest.png`，包含闭合与开启状态。
+后续添加地图／图像／音效时，在 `docs/assets-manifest.md` 记录来源、作者、许可和署名。
 
 `characters/monster-animals-source.png` 及其 `processed/` 动画条来自用户提供的 `怪物动物像素动画精灵表.png`，用于鸭子普通怪、平静抱抱怪和变异抱抱怪的游戏内动画。作者、许可和署名信息未随素材提供，当前仅限本地开发；发布或部署前必须补齐来源与再分发授权。
 
-运行 `python scripts/prepare_monster_sprites.py` 可重新生成并校验处理后的动画条。脚本输出使用 128×128 RGBA 帧和统一底部中心锚点，文件名遵循小写英文 kebab-case。
+运行 `python scripts/prepare_monster_sprites.py` 可重新生成并校验处理后的动画条。脚本输出使用 176×176 RGBA 帧和统一底部中心锚点，文件名遵循小写英文 kebab-case。
+
+外观对应：巡游怪为灰鸭，抱抱怪为棕色松鼠，变异抱抱怪为红眼松鼠。逐动作指定源图行和动物边界，沿透明间隙分离相邻姿势，每帧保持源图比例，不再将不同大小的紧裁剪统一拉伸。原图没有棕色松鼠死亡动作，`squirrel-death` 使用原棕色松鼠姿势旋转倒地、渐隐，避免致死时变成鸭子。

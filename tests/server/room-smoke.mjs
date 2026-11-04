@@ -299,7 +299,17 @@ try {
     (player) => player.position.x === geometry.spawn.x && player.position.y === geometry.spawn.y,
   ).playerId;
   const walker = members.find((peer) => peer.id === walkerId);
-  for (let sequence = 2; sequence < 82; sequence++) {
+  const wall = geometry.obstacles
+    .filter(
+      (obstacle) =>
+        geometry.spawn.x + geometry.playerRadius > obstacle.x &&
+        geometry.spawn.x - geometry.playerRadius < obstacle.x + obstacle.width &&
+        obstacle.y + obstacle.height < geometry.spawn.y,
+    )
+    .sort((a, b) => b.y + b.height - (a.y + a.height))[0];
+  assert(wall, 'shared map has an obstacle north of the spawn');
+  const travelMs = ((geometry.spawn.y - wall.y - wall.height) / geometry.playerSpeed) * 1000 + 800;
+  for (let sequence = 2; sequence < Math.ceil(travelMs / 40) + 2; sequence++) {
     await delay(40);
     await request(walker, {
       type: 'player-input',
@@ -310,7 +320,6 @@ try {
       actions: [],
     });
   }
-  const wall = geometry.buildings.find((building) => building.name === '思源楼');
   const stopped = lastState(walker).players.find(
     (player) => player.playerId === walker.id,
   ).position;

@@ -14,8 +14,9 @@ export const QUEST_CHAPTER_ID = 'siyuan-code';
 export const EVIDENCE_NOTEBOOK = 'torn-notebook';
 export const EVIDENCE_FEATHER = 'anomalous-feather';
 
-export const QUEST_COMPLETE_HINT = '手记与异常羽毛已凑齐；带着它们成功撤离可解锁思源密码。';
-export const NOTEBOOK_PREREQUISITE_HINT = '湖畔线索 · 缺少本局残缺手记';
+// 文案口径见剧情稿 v1.1 表 7（局内文案统一口径）。
+export const QUEST_COMPLETE_HINT = '线索齐备：带回南门撤离可解锁第一章。';
+export const NOTEBOOK_PREREQUISITE_HINT = '湖畔线索：缺少本局残缺手记。';
 
 export interface CarriedEvidence {
   readonly notebook: boolean;
@@ -87,7 +88,7 @@ export function questProgress(
   if (raidId === null) {
     statusText = '开始探索后，可按线索搜集任务证据。';
   } else if (complete) {
-    statusText = '线索齐备 · 带回南门撤离可解锁章节';
+    statusText = '线索齐备：带回南门撤离可解锁第一章。';
   } else if (evidence.notebook) {
     statusText = '线索二 · 去明湖石碑周边，用手电寻找异常羽毛';
   } else {
