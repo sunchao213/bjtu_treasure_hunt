@@ -1,4 +1,4 @@
-import { ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { isExplorationItem, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
 import { chapterUnlockGranted, QUEST_CHAPTER_ID } from '../quests/quest-service';
@@ -326,7 +326,11 @@ export class PersistentSave implements SavePort {
       if (!item) {
         throw new Error('Missing loadout item');
       }
-      return { ...structuredClone(item), origin: { kind: 'carry-in' as const } };
+      const source = item.origin.kind === 'carry-in' ? item.origin.source : undefined;
+      return {
+        ...structuredClone(item),
+        origin: source ? { kind: 'carry-in' as const, source } : { kind: 'carry-in' as const },
+      };
     });
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
@@ -353,7 +357,7 @@ export class PersistentSave implements SavePort {
           throw new Error('Duplicate instance in settlement');
         }
         warehouseIds.add(item.instanceId);
-        if (!next.codexIds.includes(item.itemId)) {
+        if (isExplorationItem(item) && !next.codexIds.includes(item.itemId)) {
           next.codexIds.push(item.itemId);
         }
       }
@@ -392,7 +396,7 @@ export class PersistentSave implements SavePort {
     const item: ItemInstance = {
       instanceId: `purchase:${itemId}:${crypto.randomUUID()}`,
       itemId,
-      origin: { kind: 'carry-in' },
+      origin: { kind: 'carry-in', source: 'purchase' },
     };
     const next = this.view();
     next.currency -= price;

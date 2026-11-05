@@ -2,7 +2,12 @@ import './style.css';
 import './mobile-layout.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { createGame } from './app/create-game';
-import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
+import {
+  HEALING_AMOUNTS,
+  isPurchasedItem,
+  ITEM_DEFINITIONS,
+  RAID_RULES,
+} from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
 import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save';
@@ -446,6 +451,42 @@ async function bootstrap(): Promise<void> {
     container.append(add);
     updateOptions();
     syncLoadoutControls();
+  };
+
+  const renderWarehouse = (warehouse: readonly ItemInstance[]): void => {
+    const groups = new Map<'exploration' | 'purchase', Map<string, number>>([
+      ['exploration', new Map()],
+      ['purchase', new Map()],
+    ]);
+    for (const item of warehouse) {
+      const definition = ITEM_DEFINITIONS[item.itemId];
+      if (!definition || definition.kind === 'collectible') continue;
+      const section = isPurchasedItem(item) ? 'purchase' : 'exploration';
+      const counts = groups.get(section)!;
+      counts.set(item.itemId, (counts.get(item.itemId) ?? 0) + 1);
+    }
+    const renderSection = (
+      section: 'exploration' | 'purchase',
+      listId: string,
+      emptyId: string,
+    ) => {
+      const list = element<HTMLUListElement>(listId);
+      list.replaceChildren();
+      const entries = groups.get(section)!;
+      for (const [itemId, quantity] of entries) {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = ITEM_DEFINITIONS[itemId]?.name ?? itemId;
+        const count = document.createElement('b');
+        count.className = 'warehouse-item-count';
+        count.textContent = `数量：${quantity}`;
+        li.append(name, count);
+        list.append(li);
+      }
+      element(emptyId).hidden = entries.size > 0;
+    };
+    renderSection('exploration', 'exploration-warehouse', 'exploration-warehouse-empty');
+    renderSection('purchase', 'purchase-warehouse', 'purchase-warehouse-empty');
   };
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
@@ -919,15 +960,19 @@ async function bootstrap(): Promise<void> {
     }
     const archive = save.view();
     const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
-    element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
+    const functionalWarehouse = archive.warehouse.filter(
+      (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
+    );
+    element('warehouse-count').textContent = `${functionalWarehouse.length} 件功能道具`;
     element('warehouse-count-label').innerHTML =
-      `${archive.warehouse.length} 件物品 · <b id="currency-count">${archive.currency} 交子</b>`;
+      `${functionalWarehouse.length} 件功能道具 · <b id="currency-count">${archive.currency} 交子</b>`;
     element('archive-detail').textContent = archive.unlockedChapterIds.length
-      ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
+      ? `探索发现已收入图鉴；已解锁思源密码章节。`
       : archive.codexIds.length
-        ? `已点亮 ${archive.codexIds.length} 种图鉴；带手记和异常羽毛成功撤离可解锁章节。`
-        : '成功撤离后，物品和图鉴会保存在此浏览器。';
+        ? `探索发现已点亮 ${archive.codexIds.length} 种图鉴；功能物品保存在仓库。`
+        : '探索物品成功撤离后会收入图鉴，功能物品会保存在仓库。';
     if (lastWarehouse !== warehouseSignature) {
+      renderWarehouse(archive.warehouse);
       renderLoadoutOptions(archive.warehouse);
       lastWarehouse = warehouseSignature;
     }

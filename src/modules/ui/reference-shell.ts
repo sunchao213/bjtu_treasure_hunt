@@ -76,11 +76,12 @@ export function prepViewMarkup(): string {
             <p class="lobby-panel-intro" id="warehouse-panel-intro">成功撤离后，物品和图鉴会保存在此浏览器。</p>
             <section class="side-card archive"><div class="section-kicker">永久仓库 <span id="warehouse-count">0 件</span></div>
               <p id="archive-detail">成功撤离后，物品和图鉴会保存在此浏览器。</p>
+              <div class="warehouse-sections" aria-label="永久仓库物品">
+                <section class="warehouse-section"><h3>探索地图物品</h3><p class="warehouse-subtitle">探索带回的功能物品</p><ul id="exploration-warehouse" class="warehouse-list"></ul><p id="exploration-warehouse-empty" class="warehouse-empty">暂无功能物品</p></section>
+                <section class="warehouse-section"><h3>购买道具</h3><p class="warehouse-subtitle">商店购买的功能道具</p><ul id="purchase-warehouse" class="warehouse-list"></ul><p id="purchase-warehouse-empty" class="warehouse-empty">暂无购买道具</p></section>
+              </div>
               <button id="archive-codex" class="secondary">查看图鉴 / 导出图片</button>
-              <details class="codex-panel"><summary>图鉴与剧情档案</summary>
-                <ul id="codex-list" class="codex-list"></ul>
-                <div id="story-archive" class="story-archive"></div>
-              </details>
+              <div hidden><ul id="codex-list"></ul><div id="story-archive"></div></div>
               <details><summary>存档管理</summary>
                 <button id="export-save" class="secondary">导出存档备份（JSON）</button><button id="reset-save" class="text-button">重置存档</button></details>
             </section>

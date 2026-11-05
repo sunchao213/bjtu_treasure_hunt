@@ -1,4 +1,4 @@
-import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { EXPLORATION_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import { CODEX_ENTRIES } from '../quests/chapter-content';
 import type { Rarity } from '../../shared/types/game';
 import { iconSvg } from './icons';
@@ -85,7 +85,7 @@ export interface CodexEntry {
 /** Only persisted codex IDs unlock entries; warehouse possession is not required. */
 export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
   const unlocked = new Set(ids);
-  return ITEM_CATALOG_IDS.map((itemId, index) => {
+  return EXPLORATION_CATALOG_IDS.map((itemId, index) => {
     const item = ITEM_DEFINITIONS[itemId]!;
     const known = unlocked.has(item.itemId);
     const detail = details[item.itemId];

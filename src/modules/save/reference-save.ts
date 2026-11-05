@@ -1,5 +1,10 @@
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
-import { assertKnownItemId, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import {
+  assertKnownItemId,
+  isExplorationItem,
+  ITEM_DEFINITIONS,
+  RAID_RULES,
+} from '../../config/game-config';
 import { retainSettlementItems } from './settlement-retention';
 
 export interface StoragePort {
@@ -113,9 +118,10 @@ function validSaveInvariants(value: Record<string, unknown>): boolean {
     }
     if (
       lastResult.outcome === 'success' &&
-      lastResult.items.some(
-        (item) =>
-          item.origin.kind !== 'raid-loot' || item.origin.obtainedInRaidId !== lastResult.raidId,
+      lastResult.items.some((item) =>
+        item.origin.kind === 'raid-loot'
+          ? item.origin.obtainedInRaidId !== lastResult.raidId
+          : item.origin.kind !== 'carry-in',
       )
     ) {
       return false;
@@ -137,7 +143,9 @@ function validSettlementResult(result: RaidResult): boolean {
     return result.items.length === 0;
   }
   return result.items.every(
-    (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === result.raidId,
+    (item) =>
+      item.origin.kind === 'carry-in' ||
+      (item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === result.raidId),
   );
 }
 
@@ -209,7 +217,11 @@ export class ReferenceSave implements SavePort {
       if (!item) {
         throw new Error('Missing loadout item');
       }
-      return { ...structuredClone(item), origin: { kind: 'carry-in' as const } };
+      const source = item.origin.kind === 'carry-in' ? item.origin.source : undefined;
+      return {
+        ...structuredClone(item),
+        origin: source ? { kind: 'carry-in' as const, source } : { kind: 'carry-in' as const },
+      };
     });
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
@@ -233,7 +245,7 @@ export class ReferenceSave implements SavePort {
           throw new Error('Duplicate instance in settlement');
         }
         ids.add(item.instanceId);
-        if (!next.codexIds.includes(item.itemId)) {
+        if (isExplorationItem(item) && !next.codexIds.includes(item.itemId)) {
           next.codexIds.push(item.itemId);
         }
       }
@@ -280,7 +292,7 @@ export class ReferenceSave implements SavePort {
     const item: ItemInstance = {
       instanceId: `purchase:${itemId}:${crypto.randomUUID()}`,
       itemId,
-      origin: { kind: 'carry-in' },
+      origin: { kind: 'carry-in', source: 'purchase' },
     };
     const next = this.view();
     next.currency -= price;

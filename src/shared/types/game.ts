@@ -12,7 +12,8 @@ export interface ItemDefinition {
 }
 
 export type ItemOrigin =
-  { readonly kind: 'carry-in' } | { readonly kind: 'raid-loot'; readonly obtainedInRaidId: string };
+  | { readonly kind: 'carry-in'; readonly source?: 'exploration' | 'purchase' }
+  | { readonly kind: 'raid-loot'; readonly obtainedInRaidId: string };
 
 export interface ItemInstance {
   readonly instanceId: string;

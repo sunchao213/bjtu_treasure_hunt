@@ -1906,6 +1906,55 @@ h2 {
   color: #8a9a8d;
   font-size: 11px;
 }
+.warehouse-sections {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+}
+.warehouse-section {
+  padding: 13px 15px;
+  border: 1px solid #303934;
+  border-radius: 8px;
+  background: #171c19;
+}
+.warehouse-section h3 {
+  margin: 0;
+  color: #d9e2d5;
+  font-size: 14px;
+}
+.warehouse-subtitle {
+  margin: 4px 0 9px;
+  color: #829087;
+  font-size: 11px;
+}
+.warehouse-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 7px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.warehouse-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: #202722;
+  color: #bdc9be;
+  font-size: 12px;
+}
+.warehouse-item-count {
+  color: #d5a64d;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.warehouse-empty {
+  margin: 0;
+  color: #657269;
+  font-size: 11px;
+}
 select {
   width: 100%;
   padding: 9px 5px;

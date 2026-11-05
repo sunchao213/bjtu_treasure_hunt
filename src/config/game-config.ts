@@ -1,4 +1,4 @@
-import type { ItemDefinition, RaidRules } from '../shared/types/game';
+import type { ItemDefinition, ItemInstance, RaidRules } from '../shared/types/game';
 
 export const RAID_RULES: RaidRules = {
   threshold: 100,
@@ -43,7 +43,7 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
   }),
 );
 
-/** Every item that can enter the permanent warehouse must have a gallery entry. */
+/** Exploration discoveries that can be permanently recorded in the gallery. */
 export const ITEM_CATALOG_IDS = [
   'scratch-paper',
   'half-eraser',
@@ -57,12 +57,34 @@ export const ITEM_CATALOG_IDS = [
   'gpa-charm',
   'library-reward-ticket',
   'siyuan-key',
-  'training-bat',
-  'stun-baton',
-  'bandage',
-  'yellow-bike',
-  'thick-down-jacket',
 ] as const;
+
+/** All known item IDs, including shop-only supplies, for save/config validation. */
+export const ALL_ITEM_IDS = Object.keys(ITEM_DEFINITIONS) as readonly string[];
+
+/** Items created by the shop are functional supplies, not exploration discoveries. */
+export const PURCHASE_ITEM_IDS = ['bandage', 'yellow-bike', 'thick-down-jacket'] as const;
+
+/** The production gallery contains discoveries; shop supplies stay in the warehouse only. */
+export const EXPLORATION_CATALOG_IDS = ITEM_CATALOG_IDS.filter(
+  (itemId) => !(PURCHASE_ITEM_IDS as readonly string[]).includes(itemId),
+);
+
+export function isPurchasedItem(
+  item: Pick<ItemInstance, 'itemId' | 'instanceId' | 'origin'>,
+): boolean {
+  return (
+    (PURCHASE_ITEM_IDS as readonly string[]).includes(item.itemId) ||
+    (item.origin.kind === 'carry-in' && item.origin.source === 'purchase') ||
+    item.instanceId.startsWith('purchase:')
+  );
+}
+
+export function isExplorationItem(
+  item: Pick<ItemInstance, 'itemId' | 'instanceId' | 'origin'>,
+): boolean {
+  return !isPurchasedItem(item);
+}
 
 /** Healing amounts are effects, not extraction values; values reflect current product rules. */
 export const HEALING_AMOUNTS: Readonly<Record<string, number>> = {
