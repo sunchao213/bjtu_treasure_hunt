@@ -42,7 +42,7 @@ export function prepViewMarkup(): string {
             <button id="mode-room" class="mode-option" aria-pressed="false"><span>02 / SQUAD</span><b>组队探索 ↗</b><small>创建房间或输入房间号加入</small></button>
           </div>
           <div id="preparation" class="prep-main">
-            <p id="game-load-status" class="game-load-status" role="status">正在加载校园与角色资源…</p><button id="reload-game" class="secondary" hidden>重新加载校园</button>
+            <div class="game-load-feedback"><p id="game-load-status" class="game-load-status" role="status">正在加载校园与角色资源…</p><button id="reload-game" class="secondary" hidden>重新加载校园</button></div>
             <section class="prep-block prep-kit" aria-labelledby="prep-kit-title">
               <h3 id="prep-kit-title">装备与带入</h3>
               <ul class="prep-equipment">

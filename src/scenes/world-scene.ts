@@ -1,4 +1,5 @@
 import { isTouchLayout } from '../modules/ui/mobile-layout';
+import { assetUrl } from '../app/asset-url';
 import Phaser from 'phaser';
 import { COMBAT_RULES } from '../config/combat-config';
 import {
@@ -162,24 +163,25 @@ export class WorldScene extends Phaser.Scene {
       this.startupFailed = true;
       this.services.onLoadError?.(`校园资源加载失败（${file.key}），请检查网络并重新加载。`);
     });
-    this.load.image('campus-base', 'assets/maps/campus-night/campus-base.png');
-    this.load.spritesheet('treasure-chest', 'assets/props/treasure-chest.png', {
+    this.load.image('campus-base', assetUrl('assets/maps/campus-night/campus-base.png'));
+    this.load.spritesheet('treasure-chest', assetUrl('assets/props/treasure-chest.png'), {
       frameWidth: 256,
       frameHeight: 256,
     });
     for (const state of ['idle', 'walk', 'attack', 'hurt', 'death']) {
-      this.load.spritesheet(`player-${state}`, `assets/characters/player/player-${state}.png`, {
-        frameWidth: 128,
-        frameHeight: 160,
-      });
+      this.load.spritesheet(
+        `player-${state}`,
+        assetUrl(`assets/characters/player/player-${state}.png`),
+        { frameWidth: 128, frameHeight: 160 },
+      );
     }
     this.load.spritesheet(
       'tiny-town-sheet',
-      'assets/environment/kenney-tiny-town/Tilemap/tilemap_packed.png',
+      assetUrl('assets/environment/kenney-tiny-town/Tilemap/tilemap_packed.png'),
       { frameWidth: 16, frameHeight: 16 },
     );
     for (const key of MONSTER_SPRITE_SHEETS) {
-      this.load.spritesheet(key, `assets/characters/processed/${key}.png`, {
+      this.load.spritesheet(key, assetUrl(`assets/characters/processed/${key}.png`), {
         frameWidth: MONSTER_FRAME_SIZE,
         frameHeight: MONSTER_FRAME_SIZE,
       });

@@ -1325,8 +1325,19 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   color: #94a295;
   font-size: 11px;
 }
-.game-load-status {
+.game-load-feedback {
   grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.game-load-feedback .secondary {
+  width: auto;
+  min-height: 36px;
+  margin: 0;
+}
+.game-load-status {
   margin: 0;
   color: #94ac98;
   font-size: 12px;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, utimes, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -11,6 +11,11 @@ import { setTimeout as delay } from 'node:timers/promises';
 // All accounts and saves belong to a separate local database. No production writes.
 const directory = resolve(`artifacts/game-flow-${Date.now()}`);
 await mkdir(directory, { recursive: true });
+// Serve an isolated release copy so the cache upgrade test never edits the build under review.
+const contentRoot = join(directory, 'server');
+const frontendRoot = join(directory, 'dist');
+await mkdir(contentRoot);
+await cp(resolve('dist'), frontendRoot, { recursive: true });
 const executable = [
   process.env.BROWSER_PATH,
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -30,7 +35,7 @@ const server = spawn(
   [
     resolve('server/bin/Debug/net8.0/OnlineHost.dll'),
     '--contentRoot',
-    resolve('server'),
+    contentRoot,
     '--urls',
     origin,
   ],
@@ -113,7 +118,7 @@ function pass(message) {
   passed.push(message);
   console.log(`PASS ${message}`);
 }
-async function newPage(name, { mobile = false, failAsset = false } = {}) {
+async function newPage(name, { mobile = false, failAsset = false, legacyCache = false } = {}) {
   const { browserContextId } = await command('Target.createBrowserContext', {
     disposeOnDetach: true,
   });
@@ -147,6 +152,7 @@ async function newPage(name, { mobile = false, failAsset = false } = {}) {
     await command('Fetch.enable', { patterns: [{ urlPattern: '*player-idle.png*' }] }, sessionId);
   await command('Page.navigate', { url: origin }, sessionId);
   await until(page, '!!document.querySelector("#auth-form")');
+  if (legacyCache) await primeLegacySpriteCache(page);
   await click(page, '#tab-register');
   await evaluate(
     page,
@@ -168,6 +174,58 @@ async function newPage(name, { mobile = false, failAsset = false } = {}) {
   );
   await click(page, '#prologue-skip');
   return page;
+}
+async function primeLegacySpriteCache(page) {
+  // The November 3 release used 128px frames at the same URLs; the new release uses 176px.
+  // Materialize those earlier dimensions and warm the real HTTP cache before upgrading files.
+  const paths = (await readdir(join(frontendRoot, 'assets/characters/processed')))
+    .filter((file) => file.endsWith('.png'))
+    .map((file) => `assets/characters/processed/${file}`);
+  const fixtures = await evaluate(
+    page,
+    `(async () => Promise.all(${JSON.stringify(paths)}.map(async path => {
+      const image = new Image();
+      image.src = path + '?cache-fixture=current';
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth / 176 * 128;
+      canvas.height = 128;
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      return {path, base64: canvas.toDataURL('image/png').split(',')[1]};
+    })))()`,
+  );
+  const originals = await Promise.all(
+    paths.map(async (path) => ({ path, bytes: await readFile(join(frontendRoot, path)) })),
+  );
+  try {
+    const modified = new Date(Date.now() - 7 * 86400000);
+    for (const { path, base64 } of fixtures) {
+      const file = join(frontendRoot, path);
+      await writeFile(file, Buffer.from(base64, 'base64'));
+      await utimes(file, modified, modified);
+    }
+    const dimensions = await evaluate(
+      page,
+      `(async () => Promise.all(${JSON.stringify(paths)}.map(async path => {
+        const bytes = await (await fetch(path)).arrayBuffer();
+        return new DataView(bytes).getUint32(20);
+      })))()`,
+    );
+    assert(
+      dimensions.every((height) => height === 128),
+      'legacy sprite files warmed in cache',
+    );
+  } finally {
+    for (const { path, bytes } of originals) await writeFile(join(frontendRoot, path), bytes);
+  }
+  assert.equal(
+    await evaluate(
+      page,
+      '(async () => new DataView(await (await fetch("assets/characters/processed/duck-idle.png")).arrayBuffer()).getUint32(20))()',
+    ),
+    128,
+    'old unversioned image remains cached after server files upgrade to 176px',
+  );
 }
 async function consent(page) {
   if (!(await evaluate(page, 'document.querySelector("#risk-consent").checked')))
@@ -268,6 +326,19 @@ try {
       }
     }
   });
+
+  const upgraded = await newPage('upgraded', { legacyCache: true });
+  await consent(upgraded);
+  await click(upgraded, '#start');
+  await until(
+    upgraded,
+    'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#timer").textContent !== "10:00"',
+  );
+  assert(await evaluate(upgraded, marker), 'upgraded browser has a working minimap');
+  await screenshot(upgraded, '08-cache-upgrade');
+  await abandon(upgraded);
+  await command('Target.disposeBrowserContext', { browserContextId: upgraded.browserContextId });
+  pass('Cached 128px sprites → new 176px release → solo launch without clearing browser data');
 
   const host = await newPage('host');
   assert.equal(await evaluate(host, 'document.querySelector("#start").disabled'), true);
