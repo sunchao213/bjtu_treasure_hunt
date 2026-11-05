@@ -70,6 +70,9 @@ interface SceneServices {
 const ENTITY_DEPTH_BASE = 100;
 const NIGHT_MASK_DEPTH = 4000;
 const EFFECTS_DEPTH = 4100;
+// Search points must remain visible above map landmark foreground masks (flagpole,
+// pillar and south gate). The night mask still renders above this layer.
+const CHEST_DEPTH = ENTITY_DEPTH_BASE + WORLD.height + 20;
 const PLAYER_ATTACK_FRAME = { width: 314, height: 167 };
 
 type CampusBuilding = (typeof WORLD.buildings)[number];
@@ -1412,7 +1415,7 @@ export class WorldScene extends Phaser.Scene {
         this.add
           .container(point.x, point.y, [halo, chest])
           .setName(`chest-${point.id}`)
-          .setDepth(this.entityDepth(point.y) - 1)
+          .setDepth(CHEST_DEPTH)
           .setVisible(false),
       );
     }
