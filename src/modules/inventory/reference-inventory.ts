@@ -166,7 +166,14 @@ export class ReferenceInventory implements InventoryClientPort {
   private bagCount(): number {
     return this.items.reduce((total, item) => {
       const slots = this.definitions[item.itemId]?.bagSlots ?? 1;
-      return total + (this.equipment.has([...this.equipment.entries()].find(([, id]) => id === item.instanceId)?.[0] ?? '') ? 0 : slots);
+      return (
+        total +
+        (this.equipment.has(
+          [...this.equipment.entries()].find(([, id]) => id === item.instanceId)?.[0] ?? '',
+        )
+          ? 0
+          : slots)
+      );
     }, 0);
   }
   private loadoutSlots(items: readonly ItemInstance[]): number {
