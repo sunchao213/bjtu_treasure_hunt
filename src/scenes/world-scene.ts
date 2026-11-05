@@ -147,7 +147,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.image('campus-base', 'assets/maps/campus-night/campus-base.png');
+    this.load.image('campus-base', 'assets/maps/campus-night/campus-base.jpg');
     this.load.spritesheet('treasure-chest', 'assets/props/treasure-chest.png', {
       frameWidth: 256,
       frameHeight: 256,
@@ -1335,6 +1335,8 @@ export class WorldScene extends Phaser.Scene {
 
   private createCampusForeground(): void {
     this.textures.remove('campus-foreground');
+    this.textures.remove('pillar-landmark-foreground');
+    this.textures.remove('flagpole-landmark-foreground');
     const texture = this.textures.createCanvas('campus-foreground', WORLD.width, WORLD.height);
     if (!texture) return;
 
@@ -1348,12 +1350,12 @@ export class WorldScene extends Phaser.Scene {
         // Only the green-marked parts sit in front of the player. The upper
         // outer arch remains part of the background so a player above it can
         // appear on top, as marked by the white outline.
-        const signBand = x >= 158 && x <= 322 && y >= 1638 && y <= 1678;
-        const outerInnerArch = (x - 240) ** 2 / 100 ** 2 + (y - 1710) ** 2 / 78 ** 2 <= 1;
-        const doorwayCutout = (x - 240) ** 2 / 72 ** 2 + (y - 1714) ** 2 / 55 ** 2 <= 1;
-        const innerArchRim = outerInnerArch && !doorwayCutout && y >= 1668 && y <= 1732;
-        const leftPillar = x >= 142 && x <= 181 && y >= 1650 && y <= 1788;
-        const rightPillar = x >= 299 && x <= 338 && y >= 1650 && y <= 1788;
+        const signBand = x >= 158 && x <= 322 && y >= 1335 && y <= 1420;
+        const outerInnerArch = (x - 255) ** 2 / 120 ** 2 + (y - 1465) ** 2 / 132 ** 2 <= 1;
+        const doorwayCutout = (x - 255) ** 2 / 82 ** 2 + (y - 1475) ** 2 / 101 ** 2 <= 1;
+        const innerArchRim = outerInnerArch && !doorwayCutout && y >= 1400 && y <= 1530;
+        const leftPillar = x >= 142 && x <= 181 && y >= 1440 && y <= 1760;
+        const rightPillar = x >= 330 && x <= 369 && y >= 1440 && y <= 1760;
         const isSouthGateForeground = signBand || innerArchRim || leftPillar || rightPillar;
         if (!isSouthGateForeground) pixels.data[index + 3] = 0;
       }
@@ -1364,6 +1366,79 @@ export class WorldScene extends Phaser.Scene {
       .image(0, 0, 'campus-foreground')
       .setOrigin(0)
       .setDepth(ENTITY_DEPTH_BASE + WORLD.height + 10);
+
+    const pillarTexture = this.textures.createCanvas(
+      'pillar-landmark-foreground',
+      WORLD.width,
+      WORLD.height,
+    );
+    if (!pillarTexture) return;
+    const pillarContext = pillarTexture.getContext();
+    pillarContext.drawImage(mapImage, 0, 0, WORLD.width, WORLD.height);
+    const pillarPixels = pillarContext.getImageData(0, 0, WORLD.width, WORLD.height);
+    for (let y = 0; y < WORLD.height; y++) {
+      for (let x = 0; x < WORLD.width; x++) {
+        const ringDistance = ((x - 260) / 42) ** 2 + ((y - 978) / 39) ** 2;
+        const ringOpening = ((x - 260) / 29) ** 2 + ((y - 978) / 27) ** 2;
+        const isRing = ringDistance <= 1 && ringOpening >= 1;
+        const isTop = x >= 235 && x <= 286 && y >= 954 && y <= 1025;
+        const isCapital = x >= 220 && x <= 302 && y >= 1018 && y <= 1050;
+        const isColumn = x >= 230 && x <= 291 && y >= 1040 && y <= 1152;
+        const isBase = x >= 204 && x <= 334 && y >= 1142 && y <= 1192;
+        const isPillarLandmark = isRing || isTop || isCapital || isColumn || isBase;
+        if (!isPillarLandmark) pillarPixels.data[(y * WORLD.width + x) * 4 + 3] = 0;
+      }
+    }
+    pillarContext.putImageData(pillarPixels, 0, 0);
+    pillarTexture.refresh();
+    this.add
+      .image(0, 0, 'pillar-landmark-foreground')
+      .setOrigin(0)
+      .setDepth(this.entityDepth(1190));
+
+    const flagpoleTexture = this.textures.createCanvas(
+      'flagpole-landmark-foreground',
+      WORLD.width,
+      WORLD.height,
+    );
+    if (!flagpoleTexture) return;
+    const flagpoleContext = flagpoleTexture.getContext();
+    flagpoleContext.drawImage(mapImage, 0, 0, WORLD.width, WORLD.height);
+    const flagpolePixels = flagpoleContext.getImageData(0, 0, WORLD.width, WORLD.height);
+    const flagPolygon = [
+      { x: 202, y: 632 },
+      { x: 262, y: 614 },
+      { x: 263, y: 665 },
+      { x: 213, y: 674 },
+      { x: 204, y: 662 },
+    ];
+    const insideFlag = (x: number, y: number) => {
+      let inside = false;
+      for (let i = 0, j = flagPolygon.length - 1; i < flagPolygon.length; j = i++) {
+        const a = flagPolygon[i]!;
+        const b = flagPolygon[j]!;
+        if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    };
+    for (let y = 0; y < WORLD.height; y++) {
+      for (let x = 0; x < WORLD.width; x++) {
+        const isFlagpole =
+          insideFlag(x, y) ||
+          (x >= 260 && x <= 269 && y >= 610 && y <= 833) ||
+          (x >= 253 && x <= 279 && y >= 819 && y <= 842) ||
+          (x >= 223 && x <= 301 && y >= 831 && y <= 879);
+        if (!isFlagpole) flagpolePixels.data[(y * WORLD.width + x) * 4 + 3] = 0;
+      }
+    }
+    flagpoleContext.putImageData(flagpolePixels, 0, 0);
+    flagpoleTexture.refresh();
+    this.add
+      .image(0, 0, 'flagpole-landmark-foreground')
+      .setOrigin(0)
+      .setDepth(this.entityDepth(879));
   }
 
   drawBuilding(building: CampusBuilding): void {
