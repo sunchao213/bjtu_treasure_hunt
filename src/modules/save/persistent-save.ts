@@ -2,6 +2,7 @@ import { ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
 import { chapterUnlockGranted, QUEST_CHAPTER_ID } from '../quests/quest-service';
+import { retainSettlementItems } from './settlement-retention';
 
 // Keep the storage key stable so existing browsers can migrate in place.
 export const FORMAL_SAVE_KEY = 'bjtu-treasure-hunt:save:v2';
@@ -356,7 +357,15 @@ export class PersistentSave implements SavePort {
           next.codexIds.push(item.itemId);
         }
       }
-      next.warehouse.push(...result.items.map((item) => structuredClone(item)));
+      const retained = retainSettlementItems(
+        next.warehouse,
+        result.items,
+        next.currency,
+        ITEM_DEFINITIONS,
+        RAID_RULES.values,
+      );
+      next.warehouse = retained.warehouse;
+      next.currency = retained.currency;
       if (chapterUnlockGranted(result) && !next.unlockedChapterIds.includes(QUEST_CHAPTER_ID)) {
         next.unlockedChapterIds.push(QUEST_CHAPTER_ID);
       }
@@ -371,7 +380,11 @@ export class PersistentSave implements SavePort {
     this.commit(this.initial());
   }
 
-  purchaseItem(itemId: string): { ok: true; value: ItemInstance } | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' } {
+  purchaseItem(
+    itemId: string,
+  ):
+    | { ok: true; value: ItemInstance }
+    | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' } {
     const definition = ITEM_DEFINITIONS[itemId];
     const price = definition?.price;
     if (!definition || price === undefined) return { ok: false, error: 'UNKNOWN_ITEM' };

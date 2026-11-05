@@ -1,5 +1,6 @@
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import { assertKnownItemId, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { retainSettlementItems } from './settlement-retention';
 
 export interface StoragePort {
   getItem(key: string): string | null;
@@ -236,7 +237,15 @@ export class ReferenceSave implements SavePort {
           next.codexIds.push(item.itemId);
         }
       }
-      next.warehouse.push(...result.items.map((item) => structuredClone(item)));
+      const retained = retainSettlementItems(
+        next.warehouse,
+        result.items,
+        next.currency,
+        ITEM_DEFINITIONS,
+        RAID_RULES.values,
+      );
+      next.warehouse = retained.warehouse;
+      next.currency = retained.currency;
       const hasEvidence = ['torn-notebook', 'anomalous-feather'].every((id) =>
         result.items.some(
           (item) =>
@@ -259,12 +268,20 @@ export class ReferenceSave implements SavePort {
     this.commit(this.initial());
   }
 
-  purchaseItem(itemId: string): { ok: true; value: ItemInstance } | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' } {
+  purchaseItem(
+    itemId: string,
+  ):
+    | { ok: true; value: ItemInstance }
+    | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' } {
     const definition = ITEM_DEFINITIONS[itemId];
     const price = definition?.price;
     if (!definition || price === undefined) return { ok: false, error: 'UNKNOWN_ITEM' };
     if (this.data.currency < price) return { ok: false, error: 'INSUFFICIENT_FUNDS' };
-    const item: ItemInstance = { instanceId: `purchase:${itemId}:${crypto.randomUUID()}`, itemId, origin: { kind: 'carry-in' } };
+    const item: ItemInstance = {
+      instanceId: `purchase:${itemId}:${crypto.randomUUID()}`,
+      itemId,
+      origin: { kind: 'carry-in' },
+    };
     const next = this.view();
     next.currency -= price;
     next.warehouse.push(item);
