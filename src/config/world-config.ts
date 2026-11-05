@@ -54,6 +54,12 @@ const treeObstacles = [
   { x: 1160, y: 1330, width: 34, height: 38 },
 ];
 
+const landmarkBaseObstacles = [
+  { x: 222, y: 820, width: 80, height: 68 },
+  { x: 584, y: 1132, width: 114, height: 112 },
+  { x: 204, y: 1142, width: 130, height: 48 },
+];
+
 export const WORLD = {
   bounds: { x: 30, y: 35, width: 1220, height: 1754 },
   width: 1280,
@@ -72,6 +78,7 @@ export const WORLD = {
     ...buildings,
     lake,
     ...treeObstacles,
+    ...landmarkBaseObstacles,
     { x: 598, y: 970, width: 92, height: 274 },
     { x: 1070, y: 918, width: 50, height: 88 },
   ] satisfies Rect[],
@@ -112,7 +119,10 @@ export const WORLD = {
       kind: 'patrol' as const,
       route: [
         { x: 190, y: 790 },
+        { x: 360, y: 790 },
+        { x: 360, y: 1090 },
         { x: 300, y: 1090 },
+        { x: 160, y: 1090 },
       ],
     },
     {

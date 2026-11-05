@@ -124,4 +124,10 @@ describe('portrait campus image map', () => {
       }
     }
   });
+
+  it('blocks movement through the landmark bases', () => {
+    expect(clearLootPosition({ x: 262, y: 854 })).toBe(false);
+    expect(clearLootPosition({ x: 641, y: 1188 })).toBe(false);
+    expect(clearLootPosition({ x: 269, y: 1166 })).toBe(false);
+  });
 });

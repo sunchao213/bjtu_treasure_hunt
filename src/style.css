@@ -1892,13 +1892,15 @@ h1 span {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 150px;
+  width: 164px;
+  height: 164px;
   padding: 0;
-  border: 1px solid #84917e;
-  border-radius: 4px;
+  border: 2px solid #84917e;
+  border-radius: 50%;
   background: #14221e;
   color: #f4f1df;
   overflow: hidden;
+  box-shadow: 0 8px 20px #0008;
 }
 .campus-map-button:focus-visible {
   outline: 2px solid #ffe3a0;
@@ -1907,13 +1909,19 @@ h1 span {
 .campus-overview {
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 1280 / 1824;
+  height: 100%;
+  aspect-ratio: 1;
   pointer-events: none;
 }
 .campus-map-button span {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  left: 10px;
   display: block;
-  padding: 3px;
+  padding: 3px 4px;
+  border-radius: 999px;
+  background: #101713c9;
   font-size: 11px;
 }
 .campus-map-dialog {
@@ -1972,7 +1980,8 @@ h1 span {
 }
 @media (max-width: 580px) {
   .campus-map-button {
-    width: 180px;
+    width: 142px;
+    height: 142px;
     top: 8px;
     right: 8px;
   }
