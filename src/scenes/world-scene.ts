@@ -779,7 +779,10 @@ export class WorldScene extends Phaser.Scene {
       const overview = document.querySelector<HTMLCanvasElement>('#campus-overview');
       const mapImage = this.textures.get('campus-base').getSourceImage() as CanvasImageSource;
       if (overview) {
-        drawCampusOverview(overview, this.position, mapImage, this.exploredMap);
+        drawCampusOverview(overview, this.position, mapImage, this.exploredMap, {
+          followPlayer: true,
+          viewRadius: 320,
+        });
       }
       const mapDialog = document.querySelector<HTMLDialogElement>('#campus-map-dialog');
       const expanded = document.querySelector<HTMLCanvasElement>('#campus-map-expanded');
