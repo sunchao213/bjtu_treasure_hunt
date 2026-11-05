@@ -21,10 +21,10 @@ class MemoryStorage implements StoragePort {
   }
 }
 
-const result = (raidId: string): RaidResult => {
+const result = (raidId: string, itemId = 'school-badge'): RaidResult => {
   const items: ItemInstance[] = Array.from({ length: 4 }, (_, index) => ({
     instanceId: `${raidId}-${index}`,
-    itemId: 'school-badge',
+    itemId,
     origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
   }));
   return { raidId, outcome: 'success', reason: null, items, value: 100 };
@@ -96,7 +96,8 @@ describe('formal persistence and migration', () => {
     expect(storage.getItem(SAVE_KEY)).toBe(legacyRaw);
     expect(storage.getItem(FORMAL_SAVE_KEY)).not.toBeNull();
     expect(formal.view().schemaVersion).toBe(3);
-    expect(formal.view().warehouse).toHaveLength(4);
+    expect(formal.view().warehouse).toEqual([result('legacy').items[3]]);
+    expect(formal.view().currency).toBe(3 * RAID_RULES.values.uncommon);
     expect(new PersistentSave(storage).view().codexIds).toEqual(['school-badge']);
   });
 
@@ -153,7 +154,7 @@ describe('formal persistence and migration', () => {
     const storage = new MemoryStorage();
     const save = new PersistentSave(storage);
     await save.beginRaid('seed', []);
-    await save.finalizeRaid(result('seed'));
+    await save.finalizeRaid(result('seed', 'morning-coffee'));
     const [carry] = await save.beginRaid('raid', ['seed-0']);
     expect(save.view().activeRaid?.loadout).toEqual([carry]);
     const before = save.exportRaw();
@@ -173,9 +174,12 @@ describe('formal persistence and migration', () => {
   it('returns only surviving carry-ins on success and keeps other warehouse items after failure', async () => {
     const save = new PersistentSave(new MemoryStorage());
     await save.beginRaid('seed', []);
-    await save.finalizeRaid(result('seed'));
+    await save.finalizeRaid(result('seed', 'morning-coffee'));
     const carry = await save.beginRaid('return', ['seed-0', 'seed-1']);
-    await save.finalizeRaid({ ...result('return'), items: [carry[0]!, ...result('return').items] });
+    await save.finalizeRaid({
+      ...result('return', 'morning-coffee'),
+      items: [carry[0]!, ...result('return', 'morning-coffee').items],
+    });
     expect(save.view().warehouse.map((item) => item.instanceId)).not.toContain('seed-1');
     expect(save.view().warehouse).toHaveLength(7);
     await save.beginRaid('loss', ['seed-0']);
@@ -194,7 +198,7 @@ describe('formal persistence and migration', () => {
     const storage = new MemoryStorage();
     const save = new PersistentSave(storage);
     await save.beginRaid('seed', []);
-    await save.finalizeRaid(result('seed'));
+    await save.finalizeRaid(result('seed', 'morning-coffee'));
     const carry = await save.beginRaid('active', ['seed-0']);
     const original = save.exportRaw();
     for (const loadout of [
@@ -237,7 +241,8 @@ describe('formal persistence and migration', () => {
     storage.fail = false;
     await save.finalizeRaid(result('raid'));
     await save.finalizeRaid(result('raid'));
-    expect(save.view().warehouse).toHaveLength(4);
+    expect(save.view().warehouse).toEqual([result('raid').items[3]]);
+    expect(save.view().currency).toBe(3 * RAID_RULES.values.uncommon);
     expect(save.view().settledRaidIds).toEqual(['raid']);
   });
 
@@ -310,10 +315,11 @@ describe('formal persistence and migration', () => {
     await Promise.resolve();
 
     expect(controller.getView().phase).toBe('success');
-    expect(save.view().warehouse).toHaveLength(4);
+    expect(save.view().warehouse.map((item) => item.instanceId)).toEqual(['formal-raid:3']);
+    expect(save.view().currency).toBe(3 * RAID_RULES.values.uncommon);
     expect(save.view().settledRaidIds).toEqual(['formal-raid']);
     expect(save.view().lastResult?.raidId).toBe('formal-raid');
-    expect(new PersistentSave(storage).view().warehouse).toHaveLength(4);
+    expect(new PersistentSave(storage).view()).toEqual(save.view());
   });
 
   it('returns a dropped and retrieved carry-in exactly once after a failed write and permits the next raid', async () => {
@@ -322,7 +328,7 @@ describe('formal persistence and migration', () => {
     const storage = new MemoryStorage();
     const save = new PersistentSave(storage);
     await save.beginRaid('seed', []);
-    await save.finalizeRaid(result('seed'));
+    await save.finalizeRaid(result('seed', 'morning-coffee'));
     const events = new EventBus();
     const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
     const controller = new RaidController(
@@ -353,7 +359,8 @@ describe('formal persistence and migration', () => {
     expect(controller.getView().phase).toBe('success');
     expect(controller.getView().value).toBe(100);
     expect(controller.getView().result).toEqual(frozen);
-    expect(save.view().warehouse).toHaveLength(8);
+    expect(save.view().warehouse).toHaveLength(5);
+    expect(save.view().currency).toBe(3 * RAID_RULES.values.uncommon);
     expect(save.view().warehouse.filter((item) => item.instanceId === 'seed-0')).toHaveLength(1);
     expect(save.view().warehouse.some((item) => item.instanceId.includes(':starter:'))).toBe(false);
     await save.finalizeRaid(frozen!);
@@ -363,7 +370,7 @@ describe('formal persistence and migration', () => {
     controller.abandon();
     await Promise.resolve();
     expect(controller.getView().phase).toBe('failed');
-    expect(save.view().warehouse).toHaveLength(7);
+    expect(save.view().warehouse).toHaveLength(4);
     controller.dispose();
   });
 });

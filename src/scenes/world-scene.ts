@@ -450,7 +450,7 @@ export class WorldScene extends Phaser.Scene {
         this.position,
         movement,
         deltaMs,
-        WORLD.playerSpeed,
+        WORLD.playerSpeed * this.services.controller.getMoveSpeedMultiplier(),
         WORLD.playerRadius,
         { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 },
         WORLD.obstacles,
