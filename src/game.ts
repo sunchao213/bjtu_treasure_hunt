@@ -39,11 +39,6 @@ import { EventBus } from './shared/events/game-events';
 import type { InventoryClientPort, ItemInstance, RaidControllerPort } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
 import { SoundManager } from './modules/ui/sound-manager';
-import { RoomSession } from './modules/network/room-session';
-import { BroadcastRoomTransport, WebSocketTransport } from './modules/network/realtime-transport';
-import { GameSession } from './modules/network/game-session';
-import { OnlineInventory } from './modules/network/online-inventory';
-import { OnlineRaidController } from './modules/network/online-raid-controller';
 
 import { NetworkSession } from './modules/network/network-session';
 import { bindRoomLobby } from './modules/ui/room-lobby';
@@ -169,6 +164,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     prologueTypewriter.stop();
     element('prologue').hidden = true;
     document.documentElement.classList.remove('prologue-open');
+    try {
+      localStorage.setItem(`bjtu-prologue:${user.id}`, 'seen');
+    } catch {
+      // UI preferences must not prevent entering the lobby.
+    }
     element<HTMLButtonElement>('start').focus();
   };
   element('prologue-story-box').addEventListener('click', () => {
@@ -221,15 +221,23 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     else if (prologueMode === 'discovery') element('prologue-continue-hit').click();
     else prologueTypewriter.advance();
   });
+  let prologueSeen = false;
+  try {
+    prologueSeen = localStorage.getItem(`bjtu-prologue:${user.id}`) === 'seen';
+  } catch {
+    // Continue with the skippable prologue when preferences are unavailable.
+  }
   renderPrologue();
   // 序章是全屏画板：锁住页面滚动并把滚动位置归零，避免画板被卷走、露出下面的准备页内容。
-  document.documentElement.classList.add('prologue-open');
+  document.documentElement.classList.toggle('prologue-open', !prologueSeen);
+  element('prologue').hidden = prologueSeen;
   window.scrollTo(0, 0);
   element('app').scrollTop = 0;
   // 首次渲染时「游戏规则」可能在同一轮里自动打开，等它落定再决定是否开始打字。
   prologueTypewriter.stop();
   setTimeout(resumePrologueNarration, 0);
-  element('prologue').focus();
+  if (!prologueSeen) element('prologue').focus();
+  element('reload-game').onclick = () => location.reload();
   const settings = document.createElement('section');
   settings.className = 'side-card settings';
   settings.innerHTML =
@@ -241,6 +249,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     '<h2>当前账号</h2><p id="account-label"></p><p id="cloud-save-status" role="status">正在读取云端进度…</p><button id="account-logout" class="secondary">退出登录</button><button id="account-import-legacy" class="text-button" hidden>迁移此浏览器的旧存档</button>';
   settings.before(account);
   element('account-label').textContent = `${user.displayName}（${user.username}）`;
+  element('lobby-player-name').textContent = user.displayName;
+  element('lobby-player-avatar').textContent = user.displayName.slice(0, 1);
   element<HTMLInputElement>('network-name').value = user.displayName;
   element<HTMLInputElement>('network-name').readOnly = true;
   element('network-name').title = '联机昵称使用当前登录账号的昵称';
@@ -339,11 +349,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       notify('检测到上次未结束的探索，已按中断失败处理；未带入仓库的物品不受影响。');
     }
     const events = new EventBus();
-    const realtimeUrl = import.meta.env.VITE_REALTIME_URL;
-    const realtimeTransport = realtimeUrl
-      ? new WebSocketTransport(realtimeUrl)
-      : new BroadcastRoomTransport();
-    const roomSession = new RoomSession(realtimeTransport);
     const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
     const controller = new RaidController(inventory, save, events, RAID_RULES, ITEM_DEFINITIONS);
     const migrate = element<HTMLButtonElement>('account-import-legacy');
@@ -395,19 +400,29 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       sessionId: crypto.randomUUID(),
       displayName: user.displayName,
     });
+    let sceneReady = false;
+    let sceneError = '';
     const lobby = bindRoomLobby({
       network,
-      canEnter: () => controller.getView().phase === 'preparing' && !controller.getView().isBusy,
+      canEnter: () =>
+        sceneReady && controller.getView().phase === 'preparing' && !controller.getView().isBusy,
       canPrepare: () =>
+        sceneReady &&
         controller.getView().phase === 'preparing' &&
         !controller.getView().isBusy &&
         element<HTMLInputElement>('risk-consent').checked,
       onChange: () => render(),
       onPlayers: (players) =>
-        players.length ? scene.syncRemotePlayers(players) : scene.clearRemotePlayers(),
-      onPlayerLeft: (id) => scene.removeRemotePlayer(id),
+        sceneReady &&
+        (players.length ? scene.syncRemotePlayers(players) : scene.clearRemotePlayers()),
+      onPlayerLeft: (id) => {
+        if (sceneReady) scene.removeRemotePlayer(id);
+      },
       onStart: async () => {
-        if (controller.getView().phase !== 'preparing') return;
+        if (controller.getView().phase !== 'preparing') {
+          lobby.finish();
+          return;
+        }
         element('close-room').click();
         if (!(await startExploration())) lobby.finish();
       },
@@ -415,30 +430,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     events.on('RaidEnded', () => lobby.finish());
     window.addEventListener('beforeunload', () => network?.close(), { once: true });
 
-    let onlineMode = Boolean(realtimeUrl);
-    const gameSession = new GameSession(realtimeTransport, {
-      onSnapshot: (snapshot) => {
-        const localPlayerId = roomSession.playerId;
-        onlineController.applySnapshot(snapshot);
-        onlineInventory.applySnapshot(snapshot);
-        scene.setOnlineSnapshot(snapshot);
-        scene.setRemotePlayers(
-          snapshot.players.filter((player) => player.playerId !== localPlayerId),
-        );
-        render();
-      },
-      onEvent: (event) => {
-        if (event.kind === 'damage-taken') {
-          notify('收到服务端伤害事件。');
-        }
-      },
-      onNotice: notify,
-      onStateChange: () => render(),
-    });
-    const onlineInventory = new OnlineInventory(events, gameSession, ITEM_DEFINITIONS);
-    const onlineController = new OnlineRaidController(gameSession, events, RAID_RULES);
-    const activeInventory: InventoryClientPort = realtimeUrl ? onlineInventory : inventory;
-    const activeController: RaidControllerPort = realtimeUrl ? onlineController : controller;
+    const activeInventory: InventoryClientPort = inventory;
+    const activeController: RaidControllerPort = controller;
     const volume = element<HTMLInputElement>('sound-volume');
     let audibleVolume = sound.getSettings().volume || 0.8;
     const brightness = element<HTMLInputElement>('screen-brightness');
@@ -460,8 +453,18 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       notify,
       touch,
       sound,
-      onInput: (input) => gameSession.sendInput(input),
-      isOnline: () => onlineMode,
+      onReady: () => {
+        sceneReady = true;
+        const players = network.getRoomState()?.players;
+        if (players) scene.syncRemotePlayers(players);
+        render();
+      },
+      onLoadError: (message) => {
+        sceneError = message;
+        sceneReady = false;
+        notify(message);
+        render();
+      },
       onFrame: (interaction, progress) => {
         interacted = interaction;
         searchProgress = progress;
@@ -471,87 +474,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         }
       },
     });
-    const renderRoom = (): void => {
-      const connection = element('room-connection');
-      const status = element('room-status');
-      const code = element<HTMLInputElement>('room-code');
-      const name = element<HTMLInputElement>('room-name');
-      const create = element<HTMLButtonElement>('room-create');
-      const join = element<HTMLButtonElement>('room-join');
-      const controls = element('room-controls');
-      const members = element('room-members');
-      const ready = element<HTMLButtonElement>('room-ready');
-      const start = element<HTMLButtonElement>('room-start');
-      const snapshot = roomSession.snapshot;
-      const connectionNames = {
-        idle: '未连接',
-        connecting: '连接中',
-        connected: '已连接',
-        'in-room': '房间中',
-        started: '已开始',
-        closed: '已关闭',
-        error: '连接异常',
-      } as const;
-      connection.textContent = connectionNames[roomSession.state];
-      status.textContent =
-        roomSession.error ??
-        (snapshot
-          ? `房间 ${snapshot.roomId} · ${snapshot.members.length}/${snapshot.maxPlayers} 人`
-          : realtimeUrl
-            ? `服务器：${realtimeUrl}`
-            : '开发演示通道：可用两个浏览器标签页共享房间。');
-      const connected = roomSession.state === 'connected' || roomSession.state === 'in-room';
-      create.disabled = !connected || !!snapshot;
-      join.disabled = !connected || !!snapshot;
-      name.disabled = !!snapshot;
-      code.disabled = !!snapshot;
-      controls.hidden = !snapshot;
-      members.hidden = !snapshot;
-      if (!snapshot) return;
-      if (document.activeElement !== code) code.value = snapshot.roomId;
-      members.replaceChildren();
-      for (const member of snapshot.members) {
-        const row = document.createElement('div');
-        row.className = 'room-member';
-        const label = document.createElement('span');
-        label.textContent = `${member.displayName}${member.playerId === snapshot.hostId ? ' · 房主' : ''}`;
-        const state = document.createElement('span');
-        state.textContent = member.connected ? (member.ready ? '已准备' : '未准备') : '已断线';
-        row.append(label, state);
-        members.append(row);
-      }
-      const own = snapshot.members.find((member) => member.playerId === roomSession.playerId);
-      ready.textContent = own?.ready ? '取消准备' : '准备';
-      ready.disabled = snapshot.status !== 'lobby';
-      start.disabled = snapshot.hostId !== roomSession.playerId || snapshot.status !== 'lobby';
-    };
-    roomSession.subscribe(renderRoom);
-    roomSession.subscribe(() => {
-      const snapshot = roomSession.snapshot;
-      gameSession.setContext(snapshot?.roomId ?? null, roomSession.raidId);
-      onlineMode = Boolean(realtimeUrl && roomSession.state === 'started');
-      render();
-    });
-    element('room-create').onclick = () => {
-      const roomId = `BJTU-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
-      element<HTMLInputElement>('room-code').value = roomId;
-      roomSession.createRoom(user.displayName, roomId);
-    };
-    element('room-join').onclick = () => {
-      const roomId = element<HTMLInputElement>('room-code').value.trim().toUpperCase();
-      if (!roomId) {
-        notify('请输入房间号。');
-        return;
-      }
-      roomSession.joinRoom(user.displayName, roomId);
-    };
-    element('room-ready').onclick = () => {
-      const snapshot = roomSession.snapshot;
-      const own = snapshot?.members.find((member) => member.playerId === roomSession.playerId);
-      if (own) roomSession.setReady(!own.ready);
-    };
-    element('room-start').onclick = () => roomSession.startRoom();
-    element('room-leave').onclick = () => roomSession.leaveRoom();
     let rulesOpen = false;
     let mapOpen = false;
     let codexOpen = false;
@@ -779,8 +701,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
 
     function render(): void {
       syncOrientation();
-      renderRoom();
       lobby.render();
+      element('game-load-status').textContent =
+        sceneError || (sceneReady ? '校园已就绪' : '正在加载校园与角色资源…');
+      element('game-load-status').dataset.state = sceneError
+        ? 'error'
+        : sceneReady
+          ? 'ready'
+          : 'loading';
+      element('reload-game').hidden = !sceneError;
       const prepTarget =
         roomOpen && lobby.isJoined() ? element('room-preparation-slot') : preparationHome;
       if (preparation.parentElement !== prepTarget) prepTarget.append(preparation);
@@ -897,10 +826,20 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('inventory-panel').hidden = !playable;
       element('result-panel').hidden = !['settling', 'success', 'failed'].includes(view.phase);
       element<HTMLButtonElement>('start').disabled = !canStartRaid({
-        busy: view.isBusy,
+        busy: view.isBusy || !sceneReady,
         consented: lobby.isJoined() || element<HTMLInputElement>('risk-consent').checked,
       });
-      element('start').textContent = lobby.isJoined() ? '进入联机房间 ↗' : '开始探索 ↗';
+      element('start').textContent = !sceneReady
+        ? sceneError
+          ? '校园加载失败'
+          : '正在加载校园…'
+        : view.isBusy
+          ? '正在进入校园…'
+          : lobby.isJoined()
+            ? '返回组队准备 ↗'
+            : '开始单人探索 ↗';
+      element('mode-solo').setAttribute('aria-pressed', String(!lobby.isJoined()));
+      element('mode-room').setAttribute('aria-pressed', String(lobby.isJoined()));
       // F02：按钮不再因为「不在区域 / 价值不足」直接禁用，否则点了没有任何反馈。
       element<HTMLButtonElement>('extract').disabled = !playable || view.phase === 'extracting';
       element('extract').textContent =
@@ -914,6 +853,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('retry-save').hidden = !view.saveError || view.phase !== 'settling';
       element<HTMLButtonElement>('retry-save').disabled = view.isBusy;
       element('next').hidden = !['success', 'failed'].includes(view.phase);
+      element('next').textContent = lobby.isJoined() ? '返回组队房间' : '返回大厅';
       element('result-title').textContent = view.saveError ? '存档未保存' : phaseNames[view.phase];
       element('result-detail').textContent = view.saveError
         ? '结果已冻结，重试保存不会重复发奖。不要刷新页面。'
@@ -931,13 +871,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       }
       const archive = save.view();
       const warehouseSignature = JSON.stringify(archive.warehouse);
+      element('mission-status').textContent = archive.unlockedChapterIds.length
+        ? '已完成'
+        : '待调查';
       element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
       element('warehouse-count-label').textContent = `${archive.warehouse.length} 件物品`;
       element('archive-detail').textContent = archive.unlockedChapterIds.length
         ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
         : archive.codexIds.length
           ? `已点亮 ${archive.codexIds.length} 种图鉴；带手记和异常羽毛成功撤离可解锁章节。`
-          : '成功撤离后，物品和图鉴会保存在此浏览器。';
+          : '成功撤离后，物品和图鉴会保存到当前账号的云端仓库。';
       if (lastWarehouse !== warehouseSignature) {
         const select = element<HTMLSelectElement>('loadout');
         select.replaceChildren(new Option('轻装出发 · 不带入物品', ''));
@@ -1041,25 +984,44 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
 
     element('risk-consent').onchange = render;
     async function startExploration(): Promise<boolean> {
-      if (!element<HTMLInputElement>('risk-consent').checked) return false;
+      if (
+        !sceneReady ||
+        !element<HTMLInputElement>('risk-consent').checked ||
+        controller.getView().isBusy
+      )
+        return false;
       // Start playback within the click gesture, before fullscreen or save awaits.
       sound.setMusic(true);
       void requestLandscape();
       const selected = element<HTMLSelectElement>('loadout').value;
       const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
-      const result = await activeController.start(
+      const starting = activeController.start(
         selected ? [selected] : [],
         starterWeapon || undefined,
       );
+      render();
+      const result = await starting;
       notify(
         result.ok
           ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
-          : '无法保存开局，请检查浏览器存储或刷新后重试。',
+          : '开局未成功：请检查网络和云存档状态后重试，当前装备仍保留。',
       );
       render();
-      if (result.ok && mobile()) app.scrollTo(0, 0);
+      if (result.ok) {
+        element<HTMLButtonElement>('start').blur();
+        app.scrollTo(0, 0);
+        window.scrollTo(0, 0);
+      }
       return result.ok;
     }
+    element('reload-game').onclick = () => location.reload();
+    element('mode-room').onclick = () => element('open-room').click();
+    element('mode-solo').onclick = () => {
+      if (controller.getView().phase !== 'preparing') return;
+      if (lobby.isJoined()) lobby.leave();
+      render();
+      element<HTMLInputElement>('risk-consent').focus();
+    };
     element('start').onclick = () => {
       if (lobby.isJoined()) element(mobile() ? 'mobile-room' : 'open-room').click();
       else void startExploration();
@@ -1264,7 +1226,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       });
     }
     render();
-    void roomSession.connect().catch(() => renderRoom());
     if (import.meta.hot) {
       import.meta.hot.dispose(() => {
         save.close();
@@ -1273,8 +1234,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         sound.dispose();
         disposeLayout();
         controller.dispose();
-        roomSession.close();
-        gameSession.close();
         touch.dispose();
         game.destroy(true);
         unlock();
@@ -1283,6 +1242,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
   }
   await bootstrap().catch((error: unknown) => {
     notify(error instanceof Error ? error.message : '启动失败，请查看开发控制台。');
+    element('game-load-status').textContent =
+      error instanceof Error ? error.message : '游戏初始化失败，请重新加载。';
+    element('game-load-status').dataset.state = 'error';
+    element('reload-game').hidden = false;
     element('interaction-label').textContent = '启动尚未完成';
     console.error('Bootstrap failed', error);
   });

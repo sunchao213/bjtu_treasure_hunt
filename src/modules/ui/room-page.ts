@@ -3,7 +3,7 @@ export function roomPageMarkup(): string {
   return `<section id="room-page" class="room-page" aria-labelledby="room-title" hidden>
     <header class="room-header">
       <div><p class="rules-eyebrow">思源密码 / CAMPUS EXTRACTION</p><h1 id="room-title" tabindex="-1">联机大厅</h1></div>
-      <button id="close-room" class="rules-button">返回校园</button>
+      <button id="close-room" class="rules-button">返回游戏大厅</button>
     </header>
     <main class="room-content">
       <div class="room-connection"><p id="network-status" role="status" aria-live="polite">正在连接联机服务…</p><button id="network-connect" class="rules-button">重新连接</button></div>
@@ -29,9 +29,9 @@ export function roomPageMarkup(): string {
         <div class="room-summary"><div><p class="rules-eyebrow">房间号 · 分享给同伴</p><h2 id="room-state-title" class="room-code"></h2></div><div class="room-summary-actions"><span id="room-count" class="build-label">0 / 10 人</span><button id="network-copy" class="rules-button">复制房间号</button><button id="network-leave" class="rules-button">退出房间</button></div></div>
         <div class="room-lobby-layout">
           <section class="side-card" aria-label="房间成员"><div class="section-kicker">集合成员 <span>最多 10 人</span></div><ul id="network-players" class="room-players"></ul></section>
-          <section class="side-card room-preparation" aria-labelledby="room-prepare-title"><div class="section-kicker">行动准备</div><h2 id="room-prepare-title">选择装备，等待出发</h2><div id="room-preparation-slot"></div><p id="room-ready-hint" class="muted" role="status"></p><button id="network-ready" class="primary" aria-pressed="false">准备</button><button id="network-start" class="primary" hidden>开始游戏 <span>↗</span></button></section>
+          <section class="side-card room-preparation" aria-labelledby="room-prepare-title"><div class="section-kicker">行动准备</div><h2 id="room-prepare-title">选择装备，等待出发</h2><div id="room-preparation-slot"></div></section>
         </div>
-        <p class="muted room-note">房主等待所有队友准备后开始游戏。房主退出时，房主身份将自动转交给下一位成员。</p>
+        <footer class="room-launchbar"><p id="room-ready-hint" class="muted" role="status"></p><button id="network-ready" class="primary" aria-pressed="false">准备</button><button id="network-start" class="primary" hidden>开始游戏 <span>↗</span></button></footer>
       </div>
     </main>
   </section>`;

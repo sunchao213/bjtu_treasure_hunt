@@ -48,6 +48,33 @@ class FakeSocket implements NetworkSocket {
 }
 
 describe('network session transport', () => {
+  it('drops invalid coordinates from a hidden canvas without breaking the next frame', () => {
+    const socket = new FakeSocket();
+    const session = new NetworkSession({
+      url: 'wss://example.test',
+      sessionId: 's',
+      displayName: '玩家',
+      socketFactory: () => socket,
+    });
+    session.connect();
+    socket.open();
+    session.createRoom();
+    socket.message(roomState(1, true));
+    const sentBefore = socket.sent.length;
+    for (const movement of [
+      { x: NaN, y: 0 },
+      { x: 0, y: Infinity },
+    ]) {
+      expect(session.sendInput(movement, 0)).toBe(false);
+    }
+    expect(session.sendInput({ x: 0, y: 0 }, NaN)).toBe(false);
+    expect(socket.sent.length).toBe(sentBefore);
+    expect(session.sendInput({ x: 1, y: 0 }, 0)).toBe(true);
+    expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({
+      sequence: 0,
+      movement: { x: 1, y: 0 },
+    });
+  });
   it('sends hello, joins a room and publishes local input', () => {
     const socket = new FakeSocket();
     const session = new NetworkSession({

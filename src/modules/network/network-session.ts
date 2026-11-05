@@ -238,7 +238,10 @@ export class NetworkSession {
       !this.inRoom ||
       !this.roomState?.started ||
       !this.roomState.roundId ||
-      this.getLocalPlayer()?.finished
+      this.getLocalPlayer()?.finished ||
+      !Number.isFinite(movement.x) ||
+      !Number.isFinite(movement.y) ||
+      !Number.isFinite(aim)
     )
       return false;
     const sent = this.send({

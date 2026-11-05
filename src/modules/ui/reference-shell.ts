@@ -16,39 +16,40 @@ export function prepViewMarkup(): string {
         <div class="prep-page">
           <nav class="lobby-nav" aria-label="准备大厅功能">
             <div class="lobby-nav-brand"><span class="lobby-nav-mark">交</span><span><b>思源密码</b><small>OPERATIONS DESK</small></span></div>
-            <div class="lobby-profile-mini"><span class="lobby-avatar">D</span><span><b>夜巡调查员</b><small>海淀校区 · 本地存档</small></span><i class="status-dot"></i></div>
+            <div class="lobby-profile-mini"><span id="lobby-player-avatar" class="lobby-avatar"></span><span><b id="lobby-player-name"></b><small>海淀校区 · 账号云存档</small></span><i class="status-dot"></i></div>
             <p class="lobby-nav-label">行动中心</p>
             <button class="lobby-nav-item is-active" type="button" data-lobby-tab="prepare">出发准备</button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="warehouse">仓库</button>
-            <!-- 商店与好友/邀请不在 V1.0 冻结范围内（不新增经济系统与多人联机）：
-                 界面代码保留，入口先隐藏，排期后再开放。 -->
-            <button class="lobby-nav-item" type="button" data-lobby-tab="shop" hidden>商店</button>
             <p class="lobby-nav-label">系统</p>
-            <button class="lobby-nav-item" type="button" data-lobby-tab="friends" hidden>好友 / 邀请</button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="settings">设置</button>
-            <div class="lobby-nav-footer"><span class="status-dot"></span>本地存档 · 单机运行<br /><small>V1.0 冻结范围</small></div>
+            <div class="lobby-nav-footer"><span class="status-dot"></span>账号云存档<br /><small>准备 · 探索 · 撤离</small></div>
           </nav>
           <section class="lobby-panel is-active" data-lobby-panel="prepare" aria-labelledby="lobby-prepare-title">
           <div class="lobby-commandbar"><div><span class="lobby-eyebrow">准备大厅 / 任务简报</span><strong>夜间行动窗口 · 23:40 - 04:30</strong></div><div class="lobby-weather"><span class="weather-moon">◐</span><span><b>小雨 · 能见度低</b><small>异常活动：轻度</small></span></div></div>
           <header class="prep-hero">
             <p class="prep-kicker">思源密码 · 行前准备</p>
-            <h2 id="lobby-prepare-title">晚归的路上，多看了一眼那盏灯</h2>
-            <p class="prep-brief">你只是忘了带校园卡，回宿舍比平时晚了一点。图书馆外旧书架旁多出一盏从没见过的灯，页脚写着「思源」。今晚把线索带出去，别走地图上没有的路。</p>
-            <div class="lobby-mission-strip"><span class="mission-number">01</span><span><b>第一章 · 明湖边的异常羽毛</b><small>带回两件证据，并从南门安全撤离</small></span><span class="mission-status">未开始</span></div>
+            <h2 id="lobby-prepare-title">今晚，一起平安归来。</h2>
+            <p class="prep-brief">搜集物资，调查校园异闻。携带价值达到 100 后，回到南门安全撤离。</p>
+            <div class="lobby-mission-strip"><span class="mission-number">01</span><span><b>第一章 · 明湖边的异常羽毛</b><small>带回两件证据，并从南门安全撤离</small></span><span id="mission-status" class="mission-status">待调查</span></div>
             <ol class="prep-goals" aria-label="本局目标">
               <li><b>残缺手记</b><span>图书馆外 · 旧书架</span></li>
               <li><b>异常羽毛</b><span>明湖 · 石碑</span></li>
               <li><b>携带价值 ≥ 100</b><span>南门 · 撤离点</span></li>
             </ol>
           </header>
+          <div class="mode-selection" role="group" aria-label="选择游戏模式">
+            <button id="mode-solo" class="mode-option" aria-pressed="true"><span>01 / SOLO</span><b>单人探索</b><small>独自出发，自由调查校园</small></button>
+            <button id="mode-room" class="mode-option" aria-pressed="false"><span>02 / SQUAD</span><b>组队探索 ↗</b><small>创建房间或输入房间号加入</small></button>
+          </div>
           <div id="preparation" class="prep-main">
+            <p id="game-load-status" class="game-load-status" role="status">正在加载校园与角色资源…</p><button id="reload-game" class="secondary" hidden>重新加载校园</button>
             <section class="prep-block prep-kit" aria-labelledby="prep-kit-title">
               <h3 id="prep-kit-title">装备与带入</h3>
               <ul class="prep-equipment">
                 <li><b>手电筒</b><span>电量 100% · 默认开启，照亮搜索点</span></li>
               </ul>
               <label class="field-label" for="starter-weapon">初始武器</label>
-              <select id="starter-weapon"><option value="">不携带武器</option><option value="training-bat">训练棍 · 伤害 35</option><option value="stun-baton">电击器 · 伤害 15 · 可使用 15 次</option></select>
+              <select id="starter-weapon"><option value="">不携带武器</option><option value="training-bat" selected>训练棍 · 伤害 35</option><option value="stun-baton">电击器 · 伤害 15 · 可使用 15 次</option></select>
               <label class="field-label" for="loadout">带入选择 · 从仓库带入一件物品（不计本局价值）</label>
               <select id="loadout"><option value="">轻装出发 · 不带入物品</option></select>
             </section>
@@ -63,9 +64,9 @@ export function prepViewMarkup(): string {
           </section>
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
             <div class="lobby-panel-heading"><div><p class="prep-kicker">永久保存</p><h2 id="lobby-warehouse-title">仓库与剧情档案</h2></div><span class="lobby-panel-meta" id="warehouse-count-label">0 件物品</span></div>
-            <p class="lobby-panel-intro" id="warehouse-panel-intro">成功撤离后，物品和图鉴会保存在此浏览器。</p>
+            <p class="lobby-panel-intro" id="warehouse-panel-intro">成功撤离后，物品和图鉴会保存到当前账号的云端仓库。</p>
             <section class="side-card archive"><div class="section-kicker">永久仓库 <span id="warehouse-count">0 件</span></div>
-              <p id="archive-detail">成功撤离后，物品和图鉴会保存在此浏览器。</p>
+              <p id="archive-detail">成功撤离后，物品和图鉴会保存到当前账号的云端仓库。</p>
               <button id="archive-codex" class="secondary">查看图鉴 / 导出图片</button>
               <details class="codex-panel"><summary>图鉴与剧情档案</summary>
                 <ul id="codex-list" class="codex-list"></ul>
@@ -74,17 +75,6 @@ export function prepViewMarkup(): string {
               <details><summary>存档管理</summary>
                 <button id="export-save" class="secondary">导出存档备份（JSON）</button><button id="reset-save" class="text-button">重置存档</button></details>
             </section>
-          </section>
-          <section class="lobby-panel lobby-panel-wide" data-lobby-panel="shop" hidden aria-labelledby="lobby-shop-title">
-            <div class="lobby-panel-heading"><div><p class="prep-kicker">补给与装备</p><h2 id="lobby-shop-title">商店</h2></div><span class="lobby-panel-meta">范围外预留</span></div>
-            <p class="lobby-panel-intro">商店与经济系统不在 V1.0 冻结范围内，本版不提供入口；当前可在出发准备中选择初始武器。</p>
-            <div class="lobby-empty-state"><span class="lobby-empty-icon">◇</span><strong>未纳入 V1.0</strong><span>开放前需按冻结变更流程评审并更新需求、设计与用例。</span></div>
-          </section>
-          <section class="lobby-panel lobby-panel-wide" data-lobby-panel="friends" hidden aria-labelledby="lobby-friends-title">
-            <div class="lobby-panel-heading"><div><p class="prep-kicker">组队探索</p><h2 id="lobby-friends-title">好友与邀请</h2></div><span class="lobby-panel-meta">范围外预留</span></div>
-            <p class="lobby-panel-intro">多人联机不在 V1.0 冻结范围内，本版不提供入口。</p>
-            <div class="lobby-friends-actions"><button class="secondary" type="button" disabled>邀请好友</button><button class="secondary" type="button" disabled>添加好友</button></div>
-            <div class="lobby-empty-state"><span class="lobby-empty-icon">＋</span><strong>未纳入 V1.0</strong><span>开放前需按冻结变更流程评审并更新需求、设计与用例。</span></div>
           </section>
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="settings" hidden aria-labelledby="lobby-settings-title">
             <div class="lobby-panel-heading"><div><p class="prep-kicker">体验选项</p><h2 id="lobby-settings-title">设置</h2></div></div>
@@ -172,20 +162,12 @@ export function mountShell(root: HTMLElement): void {
             </ul>
             <p id="quest-status" class="muted">线索：图书馆外残缺手记</p>
           </section>
-          <section class="side-card room-card" id="room-panel"><div class="section-kicker">联机房间 <span id="room-connection">未连接</span></div>
-            <p id="room-status" class="muted">开发环境可用双标签页联机演示；配置服务器后自动使用 WebSocket。</p>
-            <label class="field-label" for="room-name">玩家名称</label><input id="room-name" class="room-input" value="探险者" maxlength="12" />
-            <label class="field-label" for="room-code">房间号</label><input id="room-code" class="room-input" placeholder="创建后分享给队友" maxlength="12" />
-            <div class="room-actions"><button id="room-create" class="secondary">创建房间</button><button id="room-join" class="secondary">加入房间</button></div>
-            <div id="room-members" class="room-members" hidden></div>
-            <div class="room-actions" id="room-controls" hidden><button id="room-ready" class="secondary">准备</button><button id="room-start" class="primary">开始房间</button><button id="room-leave" class="text-button">离开</button></div>
-          </section>
           <section class="side-card" id="inventory-panel" hidden><div class="section-kicker">临时背包 <span id="bag-count">0 / 6</span></div>
             <ul id="inventory" class="inventory"></ul>
             <button id="extract" class="primary">在撤离点申请撤离</button>
             <details class="danger-area"><summary>结束当前对局</summary><p>放弃会损失本局携带物。</p><button id="abandon" class="secondary">放弃探索</button></details>
           </section>
-          <section class="side-card result-card" id="result-panel" hidden><h2 id="result-title">本次结算</h2><p id="result-detail"></p>
+          <section class="side-card result-card" id="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden><h2 id="result-title">本次结算</h2><p id="result-detail"></p>
             <p id="quest-unlock" class="quest-unlock" hidden></p><p id="quest-lock" class="muted" hidden></p>
             <button id="retry-save" class="primary" hidden>重试保存</button><button id="next" class="primary" hidden>返回准备</button>
           </section>

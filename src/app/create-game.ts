@@ -12,7 +12,12 @@ export function createGame(scene: WorldScene): Phaser.Game {
     // DOM joysticks handle gameplay touch; allow swiping the canvas to scroll.
     input: { touch: { capture: false } },
     // Measure the unrotated content box; boundingClientRect swaps axes in portrait.
-    scale: { mode: Phaser.Scale.NONE, width: parent.clientWidth, height: parent.clientHeight },
+    // The lobby hides the map while Phaser boots. Never create a zero-size renderer.
+    scale: {
+      mode: Phaser.Scale.NONE,
+      width: parent.clientWidth || 960,
+      height: parent.clientHeight || 540,
+    },
     render: { antialias: false, roundPixels: true },
     scene: [scene],
   });

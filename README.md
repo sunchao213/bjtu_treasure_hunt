@@ -90,10 +90,10 @@ Ubuntu 云服务器的打包、上传、开机启动、存档目录与更新步�
 
 ## 联机客户端第一阶段
 
-当前已加入联机房间客户端骨架：房间协议位于 `src/shared/net/protocol.ts`，传输层和房间会话位于 `src/modules/network/`。开发环境未配置 `VITE_REALTIME_URL` 时，页面使用 `BroadcastChannel` 作为同源演示传输；配置 `VITE_REALTIME_URL` 后会改用 WebSocket 客户端。当前主游戏仍启用单写者存档锁，真正的双客户端联调应使用后续的 WebSocket 服务端或独立联机模式。
+游戏大厅提供“单人探索”和“组队探索”。单人模式确认装备和风险后直接开局；组队模式统一使用同源 `/ws` 服务，由服务器生成 6 位数字房间号。旧的 `BJTU-xxxx` 演示房间已从游戏界面移除，不再使用 `BroadcastChannel` 或 `VITE_REALTIME_URL` 切换正式入口。完整步骤见[联机说明](docs/networking.md)。
 
-客户端同步协议已经预留服务端权威边界：`PlayerInput` 只表达移动、瞄准和按钮意图；`GameSnapshot` 携带 `serverTick`、`ackInputSeq`、玩家/敌人/可见掉落；`GameEvent` 使用 `eventId` 去重；重连通过 `reconnectToken` 请求恢复快照。对应实现位于 `src/modules/network/game-session.ts`，Phaser 场景会发送限频输入并插值显示远程玩家。
+校园资源加载完成后才允许开局；加载失败会显示重新加载入口。局内保留地图、任务、背包和撤离操作，结算后返回大厅或原组队房间。单人、两账号房间、连续两局和手机布局的真实浏览器回归运行 `npm.cmd run test:browser`（需要 Chrome 或 Edge），使用独立本地测试数据库，详见[游戏流程验证](docs/game-flow-verification.md)。
 
-服务端尚未接入时，`RaidController` 仍用于离线流程和客户端联调。接入服务端后，客户端应以服务端快照和事件为准，逐步关闭本地战斗、掉落、背包和撤离判定。
+目前房间共享玩家位置和本轮地图布局，战斗、敌人、掉落和结算仍在各客户端执行，账号存档通过同源接口保存到服务器。
 
-在线客户端适配层位于 `src/modules/network/online-raid-controller.ts` 和 `src/modules/network/online-inventory.ts`。配置 `VITE_REALTIME_URL` 后，主界面和 Phaser 场景会切换到在线控制器；`GameSnapshot.self` 只同步当前玩家的私有背包与结算信息，`players` 只用于队友表现。
+`src/shared/net/protocol.ts`、`game-session.ts`、`online-raid-controller.ts` 和 `online-inventory.ts` 保留为未来服务器权威战斗协议的独立模块与测试，不参与当前游戏入口。正式房间协议位于 `src/modules/network/network-protocol.ts`，连接与房间界面分别由 `network-session.ts` 和 `room-lobby.ts` 管理。

@@ -55,6 +55,8 @@ interface SceneServices {
   sound: SoundManager;
   network?: NetworkSession | null;
   onFrame: (interaction: string, progress: number) => void;
+  onReady?: () => void;
+  onLoadError?: (message: string) => void;
   onInput?: (input: PlayerInput) => void;
   isOnline?: () => boolean;
 }
@@ -149,12 +151,17 @@ export class WorldScene extends Phaser.Scene {
   private releaseDamage?: () => void;
   /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
   private banner: { text: string; untilMs: number } | null = null;
+  private startupFailed = false;
 
   constructor(private readonly services: SceneServices) {
     super('world');
   }
 
   preload(): void {
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+      this.startupFailed = true;
+      this.services.onLoadError?.(`校园资源加载失败（${file.key}），请检查网络并重新加载。`);
+    });
     this.load.image('campus-base', 'assets/maps/campus-night/campus-base.png');
     this.load.spritesheet('treasure-chest', 'assets/props/treasure-chest.png', {
       frameWidth: 256,
@@ -295,6 +302,23 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
+    if (this.startupFailed) return;
+    try {
+      this.createWorld();
+      this.services.onReady?.();
+    } catch (error) {
+      this.startupFailed = true;
+      console.error('Campus initialization failed', error);
+      this.services.onLoadError?.('校园初始化失败，请重新加载；当前装备和仓库尚未带入。');
+    }
+  }
+
+  private createWorld(): void {
+    for (const key of MONSTER_SPRITE_SHEETS) {
+      if (!this.textures.exists(key) || !this.textures.get(key).has('0')) {
+        throw new Error(`Missing animation frames: ${key}`);
+      }
+    }
     this.createPlayerAnimations();
     this.createChestAnimations();
     this.createEnemyAnimations();
@@ -380,8 +404,7 @@ export class WorldScene extends Phaser.Scene {
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeCamera);
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (isTouchLayout()) return;
-      const target = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-      this.aim = angleBetween(this.position, target);
+      this.aimAtPointer(pointer);
     });
     this.releaseDamage = this.services.events.on('DamageTaken', ({ amount, health }) => {
       this.services.sound.play('behit');
@@ -415,6 +438,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
+    if (this.startupFailed) return;
     this.playerActionMs = Math.max(0, this.playerActionMs - Math.max(0, deltaMs));
     if (this.playerAction !== 'death' && this.playerActionMs <= 0) {
       this.playerAction = 'none';
@@ -463,8 +487,7 @@ export class WorldScene extends Phaser.Scene {
       } else if (touchLayout && (movement.x || movement.y)) {
         this.aim = Math.atan2(movement.y, movement.x);
       } else if (pointer && !touchLayout) {
-        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-        this.aim = angleBetween(this.position, worldPoint);
+        this.aimAtPointer(pointer);
       }
       this.playerFacing = this.directionFromAngle(this.aim);
       this.updatePlayerAnimation(this.moving);
@@ -571,8 +594,7 @@ export class WorldScene extends Phaser.Scene {
       } else if (touchLayout && (movement.x || movement.y)) {
         this.aim = Math.atan2(movement.y, movement.x);
       } else if (pointer && !touchLayout) {
-        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-        this.aim = angleBetween(this.position, worldPoint);
+        this.aimAtPointer(pointer);
       }
       this.playerFacing = this.directionFromAngle(this.aim);
       this.updatePlayerAnimation(this.moving);
@@ -819,6 +841,16 @@ export class WorldScene extends Phaser.Scene {
     this.playerAction = action;
     this.playerActionMs = durationMs;
     this.updatePlayerAnimation(this.moving);
+  }
+
+  private aimAtPointer(pointer: Phaser.Input.Pointer): void {
+    // A pointer transformed while the canvas is hidden can contain NaN/Infinity.
+    // Keep the last valid direction until a visible canvas supplies valid coordinates.
+    if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return;
+    const target = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    if (Number.isFinite(target.x) && Number.isFinite(target.y)) {
+      this.aim = angleBetween(this.position, target);
+    }
   }
 
   private directionFromAngle(angle: number): PlayerDirection {
@@ -1382,6 +1414,7 @@ export class WorldScene extends Phaser.Scene {
         0,
         0,
         isMutated ? 'squirrel-mutant-idle' : enemy.kind === 'hug' ? 'squirrel-idle' : 'duck-idle',
+        0,
       )
       .setName('sprite')
       .setOrigin(0.5, 1);

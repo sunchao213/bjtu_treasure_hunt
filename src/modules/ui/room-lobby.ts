@@ -23,6 +23,13 @@ export function bindRoomLobby(options: LobbyOptions) {
   let lastFinishedRound = '';
   let message = '正在连接联机服务…';
   let pendingAction: 'create' | 'join' | 'ready' | 'start' | null = null;
+  let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const clearPending = () => {
+    clearTimeout(pendingTimer);
+    pending = false;
+    pendingAction = null;
+  };
 
   const render = () => {
     const connected = network.getStatus() === 'connected';
@@ -113,6 +120,12 @@ export function bindRoomLobby(options: LobbyOptions) {
     if (pending || !send()) return;
     pending = true;
     pendingAction = action;
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => {
+      clearPending();
+      message = '房间请求超时，请检查网络后重试。';
+      options.onChange();
+    }, 8000);
     message = status;
     options.onChange();
   };
@@ -141,7 +154,7 @@ export function bindRoomLobby(options: LobbyOptions) {
     if (!options.canPrepare()) return;
     request('start', () => network.startGame(), '正在通知队友进入校园…');
   };
-  button('network-leave').onclick = () => {
+  const leave = () => {
     if (!state) return;
     if (
       state.hostId === network.getPlayerId() &&
@@ -151,13 +164,13 @@ export function bindRoomLobby(options: LobbyOptions) {
       return;
     network.leave();
     state = null;
-    pending = false;
-    pendingAction = null;
+    clearPending();
     lastStartedRound = lastFinishedRound = '';
     message = '已退出房间，可以创建或加入其他房间。';
     options.onPlayers([]);
     options.onChange();
   };
+  button('network-leave').onclick = leave;
   button('network-copy').onclick = async () => {
     if (!state) return;
     try {
@@ -169,7 +182,7 @@ export function bindRoomLobby(options: LobbyOptions) {
     render();
   };
   const offStatus = network.onStatus((status) => {
-    if (status !== 'connected') pending = false;
+    if (status !== 'connected') clearPending();
     message = {
       offline: '联机服务未连接，请重新连接。',
       connecting: '正在连接联机服务…',
@@ -183,21 +196,24 @@ export function bindRoomLobby(options: LobbyOptions) {
     if (incoming.type === 'room-state') {
       const previous = state;
       state = incoming;
-      pending = false;
-      pendingAction = null;
+      clearPending();
       message = `房间 ${state.roomId} · ${state.players.length} / ${ROOM_CAPACITY} 人${state.started ? ' · 游戏中' : ''}`;
       if (previous && previous.hostId !== state.hostId && state.hostId === network.getPlayerId())
         message += ' · 你已成为新房主';
       options.onPlayers(state.players);
       options.onChange();
-      if (state.started && state.roundId && state.roundId !== lastStartedRound) {
+      const self = state.players.find((player) => player.playerId === network.getPlayerId());
+      if (state.started && state.roundId && state.roundId !== lastStartedRound && !self?.finished) {
         lastStartedRound = state.roundId;
-        void options.onStart();
+        void options.onStart().catch(() => {
+          message = '进入校园失败，请返回准备后重试。';
+          if (state?.roundId) network.finishGame(state.roundId);
+          options.onChange();
+        });
       }
     } else if (incoming.type === 'player-left') options.onPlayerLeft(incoming.playerId);
     else if (incoming.type === 'error') {
-      pending = false;
-      pendingAction = null;
+      clearPending();
       message = incoming.message;
       if (!network.isInRoom()) state = null;
       options.onChange();
@@ -205,6 +221,7 @@ export function bindRoomLobby(options: LobbyOptions) {
   });
   return {
     render,
+    leave,
     connect: () => {
       if (network.getStatus() === 'offline') network.connect();
     },
@@ -221,6 +238,7 @@ export function bindRoomLobby(options: LobbyOptions) {
         lastFinishedRound = state.roundId;
     },
     dispose: () => {
+      clearPending();
       offStatus();
       offMessage();
     },
