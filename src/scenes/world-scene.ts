@@ -130,6 +130,10 @@ export class WorldScene extends Phaser.Scene {
     string,
     { target: Point; object: Phaser.GameObjects.Container }
   >();
+  private readonly nameplates = new Map<
+    Phaser.GameObjects.Container,
+    { text: Phaser.GameObjects.Text; offsetY: number }
+  >();
   private networkInputElapsed = 0;
   private lastRaidId: string | null = null;
   private previousInteract = false;
@@ -240,18 +244,10 @@ export class WorldScene extends Phaser.Scene {
             ])
             .setName('remote-body')
             .setRotation(snapshot.aim),
-          this.add
-            .text(0, -38, snapshot.displayName.slice(0, 18), {
-              fontFamily: 'Microsoft YaHei',
-              fontSize: '12px',
-              color: '#f4fbff',
-              backgroundColor: '#16323fcc',
-              padding: { x: 4, y: 2 },
-            })
-            .setOrigin(0.5),
         ])
         .setName(`remote-player-${snapshot.playerId}`)
         .setDepth(this.entityDepth(snapshot.position.y));
+      this.createNameplate(snapshot.displayName, marker, -34);
       this.remotePlayers.set(snapshot.playerId, {
         target: { ...snapshot.position },
         object: marker,
@@ -332,9 +328,7 @@ export class WorldScene extends Phaser.Scene {
     this.darkness = this.textures.createCanvas('night-mask', 1, 1) ?? undefined;
     this.darknessImage = this.add.image(0, 0, 'night-mask').setOrigin(0).setDepth(NIGHT_MASK_DEPTH);
     this.flashlight = this.add.graphics().setDepth(EFFECTS_DEPTH);
-    for (const lamp of LAMPS) {
-      this.add.rectangle(lamp.x, lamp.y, 10, 18, 0xffd27b).setDepth(this.entityDepth(lamp.y));
-    }
+    // The campus artwork already contains street lamps; LAMPS supplies their light and charging.
     this.extraction = this.add
       .rectangle(
         WORLD.extraction.x + WORLD.extraction.width / 2,
@@ -358,16 +352,10 @@ export class WorldScene extends Phaser.Scene {
       .setDepth(this.entityDepth(this.position.y));
     this.playPlayerAnimation('idle', this.playerFacing);
     if (this.services.displayName) {
-      this.player.add(
-        this.add
-          .text(0, -38, this.services.displayName, {
-            fontFamily: 'Microsoft YaHei',
-            fontSize: '12px',
-            color: '#f5f0d3',
-            backgroundColor: '#214c40cc',
-            padding: { x: 4, y: 2 },
-          })
-          .setOrigin(0.5),
+      this.createNameplate(
+        this.services.displayName,
+        this.player,
+        -this.playerSprite.displayHeight - 6,
       );
     }
     for (const enemy of this.combat.enemies) {
@@ -401,9 +389,11 @@ export class WorldScene extends Phaser.Scene {
       this.cameras.main.setZoom(
         isTouchLayout() ? Math.max(1.12, Math.min(1.5, (this.scale.width / 960) * 1.38)) : 1.7,
       );
+      this.syncNameplates();
     };
     resizeCamera();
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeCamera);
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncNameplates, this);
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (isTouchLayout()) return;
       this.aimAtPointer(pointer);
@@ -436,6 +426,8 @@ export class WorldScene extends Phaser.Scene {
       document.removeEventListener('visibilitychange', onHidden);
       keyboard?.removeAllKeys(true);
       this.scale.off(Phaser.Scale.Events.RESIZE, resizeCamera);
+      this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncNameplates, this);
+      this.nameplates.clear();
     });
   }
 
@@ -862,6 +854,43 @@ export class WorldScene extends Phaser.Scene {
       return horizontal < 0 ? 'left' : 'right';
     }
     return vertical < 0 ? 'up' : 'down';
+  }
+
+  private createNameplate(
+    displayName: string,
+    owner: Phaser.GameObjects.Container,
+    offsetY: number,
+  ): void {
+    const text = this.add
+      .text(owner.x, owner.y + offsetY, displayName.slice(0, 18), {
+        fontFamily: 'Microsoft YaHei, sans-serif',
+        fontSize: '12px',
+        color: '#f5f0d3',
+        backgroundColor: '#16312dcc',
+        padding: { x: 4, y: 2 },
+      })
+      .setName('nameplate')
+      .setDepth(EFFECTS_DEPTH + 1)
+      .setOrigin(0.5, 1)
+      .setResolution(Math.max(2, window.devicePixelRatio || 1))
+      .setScale(1 / this.cameras.main.zoom);
+    this.nameplates.set(owner, { text, offsetY });
+  }
+
+  private syncNameplates(): void {
+    for (const [owner, { text, offsetY }] of this.nameplates) {
+      if (!owner.scene) {
+        text.destroy();
+        this.nameplates.delete(owner);
+        continue;
+      }
+      // Labels follow feet positions but render above the night mask at a fixed screen size.
+      text
+        .setPosition(owner.x, owner.y + offsetY)
+        .setScale(1 / this.cameras.main.zoom)
+        .setVisible(owner.visible)
+        .setAlpha(owner.alpha);
+    }
   }
 
   private createRemotePlayerObject(player: RemotePlayerSnapshot): Phaser.GameObjects.Container {
