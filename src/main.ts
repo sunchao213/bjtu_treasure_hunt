@@ -37,7 +37,7 @@ import {
 } from './modules/ui/extraction-feedback';
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
 import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
-import { WorldScene } from './scenes/world-scene';
+import { WorldScene, type KeyPrompt } from './scenes/world-scene';
 import { contains } from './modules/world/movement';
 import { WORLD } from './config/world-config';
 import { EventBus } from './shared/events/game-events';
@@ -304,6 +304,7 @@ async function bootstrap(): Promise<void> {
   let renderedAt = 0;
   let interacted = '';
   let searchProgress = 0;
+  let keyPrompt: KeyPrompt | null = null;
   // F02：记录读条开始时的状态，用来判断读条为什么被取消。
   let extractionSnapshot: ExtractionSnapshot | null = null;
   let enteredExtractionZone = false;
@@ -535,9 +536,10 @@ async function bootstrap(): Promise<void> {
     sound,
     onInput: (input) => gameSession.sendInput(input),
     isOnline: () => onlineMode,
-    onFrame: (interaction, progress) => {
+    onFrame: (interaction, progress, prompt) => {
       interacted = interaction;
       searchProgress = progress;
+      keyPrompt = prompt;
       if (performance.now() - renderedAt > 80) {
         render();
         renderedAt = performance.now();
@@ -900,6 +902,19 @@ async function bootstrap(): Promise<void> {
               : interacted.includes('拾')
                 ? '拾取'
                 : '交互';
+    }
+    const hugButton =
+      element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="Q"]');
+    interactButton?.classList.toggle('is-prompt', keyPrompt?.key === 'E');
+    hugButton?.classList.toggle('is-prompt', keyPrompt?.key === 'Q');
+    const promptEl = element('key-prompt');
+    promptEl.hidden = keyPrompt === null;
+    if (keyPrompt) {
+      element('key-prompt-key').textContent = keyPrompt.key;
+      element('key-prompt-label').textContent = keyPrompt.label;
+      promptEl.setAttribute('aria-label', `按 ${keyPrompt.key} ${keyPrompt.label}`);
+      const holding = keyPrompt.label === '搜索' || keyPrompt.label === '安抚';
+      promptEl.style.setProperty('--prompt-progress', holding ? String(searchProgress) : '0');
     }
     element('mobile-hud').textContent =
       `价值 ${view.value}/${view.threshold} · 手电 ${lighting.battery}%`;

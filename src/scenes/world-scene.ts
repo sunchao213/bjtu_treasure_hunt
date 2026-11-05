@@ -44,6 +44,11 @@ import {
 } from '../modules/quests/quest-service';
 import { evidenceStoryBeat } from '../modules/quests/chapter-content';
 
+export interface KeyPrompt {
+  readonly key: 'E' | 'Q';
+  readonly label: string;
+}
+
 interface SceneServices {
   controller: RaidControllerPort;
   inventory: InventoryPort;
@@ -51,7 +56,7 @@ interface SceneServices {
   notify: (message: string) => void;
   touch: TouchControls;
   sound: SoundManager;
-  onFrame: (interaction: string, progress: number) => void;
+  onFrame: (interaction: string, progress: number, prompt: KeyPrompt | null) => void;
   onInput?: (input: PlayerInput) => void;
   isOnline?: () => boolean;
 }
@@ -59,6 +64,8 @@ interface SceneServices {
 const ENTITY_DEPTH_BASE = 100;
 const NIGHT_MASK_DEPTH = 4000;
 const EFFECTS_DEPTH = 4100;
+const PLAYER_FRAME = { width: 128, height: 160 };
+const PLAYER_ATTACK_FRAME = { width: 314, height: 167 };
 
 type CampusBuilding = (typeof WORLD.buildings)[number];
 type PlayerDirection = 'up' | 'down' | 'left' | 'right';
@@ -138,6 +145,7 @@ export class WorldScene extends Phaser.Scene {
   private lastNightDraw = -Infinity;
   private readonly bounds = { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 };
   private interaction = '在准备页确认风险后开始探索';
+  private keyPrompt: KeyPrompt | null = null;
   private releaseDamage?: () => void;
   /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
   private banner: { text: string; untilMs: number } | null = null;
@@ -152,12 +160,16 @@ export class WorldScene extends Phaser.Scene {
       frameWidth: 256,
       frameHeight: 256,
     });
-    for (const state of ['idle', 'walk', 'attack', 'hurt', 'death']) {
+    for (const state of ['idle', 'walk', 'hurt', 'death']) {
       this.load.spritesheet(`player-${state}`, `assets/characters/player/player-${state}.png`, {
-        frameWidth: 128,
-        frameHeight: 160,
+        frameWidth: PLAYER_FRAME.width,
+        frameHeight: PLAYER_FRAME.height,
       });
     }
+    this.load.spritesheet('player-attack', 'assets/characters/player/player-attack.png', {
+      frameWidth: PLAYER_ATTACK_FRAME.width,
+      frameHeight: PLAYER_ATTACK_FRAME.height,
+    });
     this.load.spritesheet(
       'tiny-town-sheet',
       'assets/environment/kenney-tiny-town/Tilemap/tilemap_packed.png',
@@ -339,6 +351,7 @@ export class WorldScene extends Phaser.Scene {
     this.hitStopMs = Math.max(0, this.hitStopMs - Math.max(0, deltaMs));
     this.updateRemotePlayers(deltaMs);
     const view = this.services.controller.getView();
+    this.keyPrompt = null;
     this.services.sound.setLoop('alarm', view.health > 0 && view.health < 20);
     if (view.raidId !== this.lastRaidId) {
       this.resetRaid(view.raidId);
@@ -401,7 +414,11 @@ export class WorldScene extends Phaser.Scene {
       } else {
         this.interaction = '等待服务端对局快照…';
       }
-      this.services.onFrame(this.interaction, snapshot?.self.extractionProgress ?? 0);
+      this.services.onFrame(
+        this.interaction,
+        snapshot?.self.extractionProgress ?? 0,
+        this.keyPrompt,
+      );
       this.drawNight();
       this.services.touch.finishFrame();
       return;
@@ -635,6 +652,7 @@ export class WorldScene extends Phaser.Scene {
         ? this.interaction
         : (activeBanner ?? this.interaction),
       hug ? hug.hugProgress / COMBAT_RULES.hug.calmHoldDurationMs : this.search.progress(),
+      this.keyPrompt,
     );
     this.drawNight();
     this.services.touch.finishFrame();
@@ -644,7 +662,7 @@ export class WorldScene extends Phaser.Scene {
     const definitions = [
       { action: 'idle', frames: 5, frameRate: 4, repeat: -1 },
       { action: 'walk', frames: 5, frameRate: 9, repeat: -1 },
-      { action: 'attack', frames: 5, frameRate: 14, repeat: 0 },
+      { action: 'attack', frames: 4, frameRate: 12, repeat: 0 },
       { action: 'hurt', frames: 5, frameRate: 10, repeat: 0 },
       { action: 'death', frames: 5, frameRate: 8, repeat: 0 },
     ] as const;
@@ -989,6 +1007,7 @@ export class WorldScene extends Phaser.Scene {
     if (hug) {
       this.search.cancel();
       this.interaction = this.hugInstruction(hug);
+      this.keyPrompt = { key: 'Q', label: '安抚' };
       return;
     }
     const loot = [...this.ground.values()]
@@ -1005,6 +1024,7 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
       this.interaction = `按 E 拾取：${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}`;
+      this.keyPrompt = { key: 'E', label: '拾取' };
       if (held && !this.previousInteract) {
         // Carry-in drops retain provenance: only the inventory transfer method may reinsert them.
         const result = this.services.inventory.addLoot(loot.item);
@@ -1043,7 +1063,8 @@ export class WorldScene extends Phaser.Scene {
         }
         return;
       }
-      this.interaction = `长按 E 搜索 · ${ITEM_DEFINITIONS[chest.itemId]?.name ?? '物资'}`;
+      this.interaction = '长按 E 搜索';
+      this.keyPrompt = { key: 'E', label: '搜索' };
       if (!held || this.moving || view.phase !== 'active') {
         this.search.cancel();
         return;
