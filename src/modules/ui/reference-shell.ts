@@ -132,6 +132,10 @@ export function mountShell(root: HTMLElement): void {
           <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-codex">图鉴</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
+          <div id="key-prompt" class="key-prompt" hidden role="status">
+            <div class="key-prompt-ring" aria-hidden="true"><span id="key-prompt-key" class="key-prompt-key">E</span></div>
+            <span id="key-prompt-label" class="key-prompt-label">搜索</span>
+          </div>
           ${tutorialMarkup()}
           <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-label="放大校园地图">
         <canvas id="campus-overview" class="campus-overview" width="180" height="180" aria-hidden="true"></canvas>
