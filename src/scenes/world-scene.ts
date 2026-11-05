@@ -1417,7 +1417,7 @@ export class WorldScene extends Phaser.Scene {
       for (let i = 0, j = flagPolygon.length - 1; i < flagPolygon.length; j = i++) {
         const a = flagPolygon[i]!;
         const b = flagPolygon[j]!;
-        if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) {
+        if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) {
           inside = !inside;
         }
       }
