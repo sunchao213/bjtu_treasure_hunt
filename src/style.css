@@ -2244,6 +2244,28 @@ h2 {
   overflow-y: auto;
   padding-right: 2px;
 }
+.loadout-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #3b443e;
+  border-radius: 6px;
+  background: #191f1b;
+  color: #dce6cb;
+  font-size: 12px;
+  cursor: pointer;
+}
+.loadout-item:has(input:checked) {
+  border-color: #bda05a;
+  background: #29271d;
+}
+.loadout-item input {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+}
 .loadout-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 64px auto;

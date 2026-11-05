@@ -713,9 +713,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const prepTarget =
         roomOpen && lobby.isJoined() ? element('room-preparation-slot') : preparationHome;
       if (preparation.parentElement !== prepTarget) prepTarget.append(preparation);
-      for (const id of ['loadout', 'starter-weapon', 'risk-consent']) {
-        element<HTMLInputElement | HTMLSelectElement>(id).disabled = lobby.isLocked();
-      }
+      element<HTMLSelectElement>('starter-weapon').disabled = lobby.isLocked();
+      element<HTMLInputElement>('risk-consent').disabled = lobby.isLocked();
+      const loadout = element<HTMLDivElement>('loadout');
+      loadout
+        .querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement>(
+          'input, button, select',
+        )
+        .forEach((control) => {
+          control.disabled = lobby.isLocked();
+        });
       const view = activeController.getView();
       const lighting = scene.getLightingStatus();
       const musicState = sound.getMusicState();
@@ -882,13 +889,43 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           ? `已点亮 ${archive.codexIds.length} 种图鉴；带手记和异常羽毛成功撤离可解锁章节。`
           : '成功撤离后，物品和图鉴会保存到当前账号的云端仓库。';
       if (lastWarehouse !== warehouseSignature) {
-        const select = element<HTMLSelectElement>('loadout');
-        select.replaceChildren(new Option('轻装出发 · 不带入物品', ''));
-        for (const item of archive.warehouse) {
-          select.add(
-            new Option(ITEM_DEFINITIONS[item.itemId]?.name ?? item.itemId, item.instanceId),
-          );
+        const loadout = element<HTMLDivElement>('loadout');
+        loadout.replaceChildren();
+        if (!archive.warehouse.length) {
+          const empty = document.createElement('p');
+          empty.className = 'loadout-empty';
+          empty.textContent = '仓库中暂无可带入的功能物品。';
+          loadout.append(empty);
         }
+        for (const item of archive.warehouse) {
+          const definition = ITEM_DEFINITIONS[item.itemId];
+          const row = document.createElement('label');
+          row.className = 'loadout-item';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = item.instanceId;
+          checkbox.dataset.bagSlots = String(definition?.bagSlots ?? 1);
+          checkbox.addEventListener('change', () => {
+            const selected = Array.from(
+              loadout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked'),
+            );
+            const slots = selected.reduce(
+              (sum, entry) => sum + Number(entry.dataset.bagSlots ?? 1),
+              0,
+            );
+            if (slots > RAID_RULES.bagCapacity) {
+              checkbox.checked = false;
+              notify(`带入物品最多占 ${RAID_RULES.bagCapacity} 格。`);
+              return;
+            }
+            element('loadout-slots').textContent = `已选 ${slots} / ${RAID_RULES.bagCapacity} 格`;
+          });
+          const text = document.createElement('span');
+          text.textContent = `${definition?.name ?? item.itemId} · 占 ${definition?.bagSlots ?? 1} 格`;
+          row.append(checkbox, text);
+          loadout.append(row);
+        }
+        element('loadout-slots').textContent = `已选 0 / ${RAID_RULES.bagCapacity} 格`;
         lastWarehouse = warehouseSignature;
       }
       const unlocked = view.result !== null && chapterUnlockGranted(view.result);
@@ -993,12 +1030,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       // Start playback within the click gesture, before fullscreen or save awaits.
       sound.setMusic(true);
       void requestLandscape();
-      const selected = element<HTMLSelectElement>('loadout').value;
+      const selected = Array.from(
+        element<HTMLDivElement>('loadout').querySelectorAll<HTMLInputElement>(
+          'input[type="checkbox"]:checked',
+        ),
+      ).map((input) => input.value);
       const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
-      const starting = activeController.start(
-        selected ? [selected] : [],
-        starterWeapon || undefined,
-      );
+      const starting = activeController.start(selected, starterWeapon || undefined);
       render();
       const result = await starting;
       notify(
