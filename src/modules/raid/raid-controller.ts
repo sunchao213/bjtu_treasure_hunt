@@ -22,6 +22,8 @@ export class RaidController implements RaidControllerPort {
   private extractionStartedAtMs: number | null = null;
   private inZone = false;
   private health = 0;
+  private speedMultiplier = 1;
+  private invulnerableUntil = 0;
   private isBusy = false;
   private saveError = false;
   private result: RaidResult | null = null;
@@ -78,6 +80,8 @@ export class RaidController implements RaidControllerPort {
       this.inventory.begin(raidId, [...loadout, ...starterWeapon]);
       this.raidId = raidId;
       this.health = this.rules.maxHealth;
+      this.speedMultiplier = 1;
+      this.invulnerableUntil = 0;
       this.startedAtMs = this.clock();
       this.endedAtMs = null;
       this.phase = 'active';
@@ -173,6 +177,7 @@ export class RaidController implements RaidControllerPort {
     if (!this.playable() || !Number.isFinite(amount) || amount <= 0) {
       return;
     }
+    if (this.clock() < this.invulnerableUntil) return;
     this.health = Math.max(0, this.health - amount);
     this.cancelExtraction();
     if (this.raidId) {
@@ -189,6 +194,22 @@ export class RaidController implements RaidControllerPort {
       return false;
     }
     this.health = Math.min(this.rules.maxHealth, this.health + amount);
+    return true;
+  }
+
+  getMoveSpeedMultiplier(): number {
+    return this.speedMultiplier;
+  }
+
+  activateInvulnerability(durationMs: number): boolean {
+    if (!this.playable() || !Number.isFinite(durationMs) || durationMs <= 0) return false;
+    this.invulnerableUntil = Math.max(this.invulnerableUntil, this.clock() + durationMs);
+    return true;
+  }
+
+  setSpeedMultiplier(multiplier: number): boolean {
+    if (!this.playable() || !Number.isFinite(multiplier) || multiplier <= 0) return false;
+    this.speedMultiplier = multiplier;
     return true;
   }
 
@@ -261,6 +282,8 @@ export class RaidController implements RaidControllerPort {
     this.inZone = false;
     this.extractionStartedAtMs = null;
     this.health = this.rules.maxHealth;
+    this.speedMultiplier = 1;
+    this.invulnerableUntil = 0;
     this.inventory.clear();
     return true;
   }

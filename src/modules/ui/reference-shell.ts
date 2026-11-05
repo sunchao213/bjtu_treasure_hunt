@@ -48,8 +48,19 @@ export function prepViewMarkup(): string {
               </ul>
               <label class="field-label" for="starter-weapon">初始武器</label>
               <select id="starter-weapon"><option value="">不携带武器</option><option value="training-bat">训练棍 · 伤害 35</option><option value="stun-baton">电击器 · 伤害 15 · 可使用 15 次</option></select>
-              <label class="field-label" for="loadout">带入选择 · 从仓库带入一件物品（不计本局价值）</label>
-              <select id="loadout"><option value="">轻装出发 · 不带入物品</option></select>
+              <label class="field-label" for="loadout-item">仓库带入选择</label>
+              <div id="loadout" class="loadout-options" aria-describedby="loadout-slots"><p class="loadout-empty">仓库中暂无可带入的功能物品。</p></div>
+              <p id="loadout-slots" class="loadout-slots">已选 0 / 6 格</p>
+              <label class="field-label" for="purchase-item">购买辅助道具</label>
+              <div class="purchase-row">
+                <select id="purchase-item" aria-label="购买辅助道具">
+                  <option value="">选择辅助道具</option>
+                  <option value="bandage">创可贴 · 10 交子 · 恢复 10 点生命 · 占 1 格</option>
+                  <option value="yellow-bike">小黄车 · 50 交子 · 移速 +20% · 占 2 格</option>
+                  <option value="thick-down-jacket">超厚羽绒服 · 100 交子 · 无敌 5 秒 · 占 1 格</option>
+                </select>
+                <button id="purchase-item-button" class="secondary" type="button">购买</button>
+              </div>
             </section>
             <section class="prep-block prep-launch" aria-labelledby="prep-launch-title">
               <h3 id="prep-launch-title">出发前确认</h3>
@@ -61,7 +72,7 @@ export function prepViewMarkup(): string {
           </div>
           </section>
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
-            <div class="lobby-panel-heading"><div><p class="prep-kicker">永久保存</p><h2 id="lobby-warehouse-title">仓库与剧情档案</h2></div><span class="lobby-panel-meta" id="warehouse-count-label">0 件物品</span></div>
+            <div class="lobby-panel-heading"><div><p class="prep-kicker">永久保存</p><h2 id="lobby-warehouse-title">仓库与剧情档案</h2></div><span class="lobby-panel-meta" id="warehouse-count-label">0 件物品 · <b id="currency-count">0 交子</b></span></div>
             <p class="lobby-panel-intro" id="warehouse-panel-intro">成功撤离后，物品和图鉴会保存在此浏览器。</p>
             <section class="side-card archive"><div class="section-kicker">永久仓库 <span id="warehouse-count">0 件</span></div>
               <p id="archive-detail">成功撤离后，物品和图鉴会保存在此浏览器。</p>

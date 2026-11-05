@@ -10,6 +10,7 @@ export const FORMAL_SCHEMA_VERSION = 3 as const;
 export interface FormalSaveData {
   schemaVersion: typeof FORMAL_SCHEMA_VERSION;
   warehouse: ItemInstance[];
+  currency: number;
   codexIds: string[];
   unlockedChapterIds: string[];
   activeRaid: { raidId: string; loadout: ItemInstance[] } | null;
@@ -117,6 +118,12 @@ function validData(value: unknown, version: 1 | 2 | 3): value is FormalSaveData 
   ) {
     return false;
   }
+  if (
+    value.currency !== undefined &&
+    (!Number.isSafeInteger(value.currency) || Number(value.currency) < 0)
+  ) {
+    return false;
+  }
 
   const warehouseIds = new Set(value.warehouse.map((item) => item.instanceId));
   if (warehouseIds.size !== value.warehouse.length) {
@@ -168,7 +175,13 @@ function decodeFormal(raw: string): { data: FormalSaveData; sourceSchemaVersion:
     throw new Error('Formal save is not valid JSON; preserve the original before recovery.');
   }
   if (validData(value, FORMAL_SCHEMA_VERSION)) {
-    return { data: structuredClone(value), sourceSchemaVersion: FORMAL_SCHEMA_VERSION };
+    return {
+      data: {
+        ...structuredClone(value),
+        currency: typeof value.currency === 'number' ? value.currency : 0,
+      },
+      sourceSchemaVersion: FORMAL_SCHEMA_VERSION,
+    };
   }
   if (validData(value, 2)) {
     return { data: migratePrevious(value), sourceSchemaVersion: 2 };
@@ -209,6 +222,7 @@ function migratePrevious(legacy: PreviousSaveData): FormalSaveData {
   const migrated: FormalSaveData = {
     schemaVersion: FORMAL_SCHEMA_VERSION,
     warehouse: structuredClone(legacy.warehouse),
+    currency: typeof legacy.currency === 'number' ? legacy.currency : 0,
     codexIds: [...legacy.codexIds],
     unlockedChapterIds: [...legacy.unlockedChapterIds],
     activeRaid: null,
@@ -338,11 +352,11 @@ export class PersistentSave implements SavePort {
           throw new Error('Duplicate instance in settlement');
         }
         warehouseIds.add(item.instanceId);
-        next.warehouse.push(structuredClone(item));
         if (!next.codexIds.includes(item.itemId)) {
           next.codexIds.push(item.itemId);
         }
       }
+      next.warehouse.push(...result.items.map((item) => structuredClone(item)));
       if (chapterUnlockGranted(result) && !next.unlockedChapterIds.includes(QUEST_CHAPTER_ID)) {
         next.unlockedChapterIds.push(QUEST_CHAPTER_ID);
       }
@@ -357,6 +371,23 @@ export class PersistentSave implements SavePort {
     this.commit(this.initial());
   }
 
+  purchaseItem(itemId: string): { ok: true; value: ItemInstance } | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' } {
+    const definition = ITEM_DEFINITIONS[itemId];
+    const price = definition?.price;
+    if (!definition || price === undefined) return { ok: false, error: 'UNKNOWN_ITEM' };
+    if (this.data.currency < price) return { ok: false, error: 'INSUFFICIENT_FUNDS' };
+    const item: ItemInstance = {
+      instanceId: `purchase:${itemId}:${crypto.randomUUID()}`,
+      itemId,
+      origin: { kind: 'carry-in' },
+    };
+    const next = this.view();
+    next.currency -= price;
+    next.warehouse.push(item);
+    this.commit(next);
+    return { ok: true, value: structuredClone(item) };
+  }
+
   private commit(next: FormalSaveData): void {
     if (!validData(next, FORMAL_SCHEMA_VERSION)) {
       throw new Error('Refusing to commit invalid formal save data.');
@@ -369,6 +400,7 @@ export class PersistentSave implements SavePort {
     return {
       schemaVersion: FORMAL_SCHEMA_VERSION,
       warehouse: [],
+      currency: 0,
       codexIds: [],
       unlockedChapterIds: [],
       activeRaid: null,

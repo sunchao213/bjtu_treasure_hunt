@@ -9,6 +9,7 @@ export interface StoragePort {
 export interface SaveData {
   schemaVersion: 1;
   warehouse: ItemInstance[];
+  currency: number;
   codexIds: string[];
   unlockedChapterIds: string[];
   activeRaid: { raidId: string } | null;
@@ -73,6 +74,12 @@ function validSaveInvariants(value: Record<string, unknown>): boolean {
   const activeRaid = value.activeRaid;
   const settledRaidIds = value.settledRaidIds;
   const lastResult = value.lastResult;
+  if (
+    value.currency !== undefined &&
+    (!Number.isSafeInteger(value.currency) || Number(value.currency) < 0)
+  ) {
+    return false;
+  }
   if (
     !Array.isArray(warehouse) ||
     !validUniqueStrings(settledRaidIds) ||
@@ -148,7 +155,10 @@ function decode(raw: string): SaveData {
   ) {
     throw new Error('存档格式不受支持或已经损坏，请先备份，再确认重置。');
   }
-  return value as unknown as SaveData;
+  return {
+    ...value,
+    currency: typeof value.currency === 'number' ? value.currency : 0,
+  } as SaveData;
 }
 
 /** B reference adapter, deliberately isolated from the real game save namespace. */
@@ -222,11 +232,11 @@ export class ReferenceSave implements SavePort {
           throw new Error('Duplicate instance in settlement');
         }
         ids.add(item.instanceId);
-        next.warehouse.push(structuredClone(item));
         if (!next.codexIds.includes(item.itemId)) {
           next.codexIds.push(item.itemId);
         }
       }
+      next.warehouse.push(...result.items.map((item) => structuredClone(item)));
       const hasEvidence = ['torn-notebook', 'anomalous-feather'].every((id) =>
         result.items.some(
           (item) =>
@@ -248,6 +258,19 @@ export class ReferenceSave implements SavePort {
   reset(): void {
     this.commit(this.initial());
   }
+
+  purchaseItem(itemId: string): { ok: true; value: ItemInstance } | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' } {
+    const definition = ITEM_DEFINITIONS[itemId];
+    const price = definition?.price;
+    if (!definition || price === undefined) return { ok: false, error: 'UNKNOWN_ITEM' };
+    if (this.data.currency < price) return { ok: false, error: 'INSUFFICIENT_FUNDS' };
+    const item: ItemInstance = { instanceId: `purchase:${itemId}:${crypto.randomUUID()}`, itemId, origin: { kind: 'carry-in' } };
+    const next = this.view();
+    next.currency -= price;
+    next.warehouse.push(item);
+    this.commit(next);
+    return { ok: true, value: structuredClone(item) };
+  }
   private commit(next: SaveData): void {
     this.storage.setItem(SAVE_KEY, JSON.stringify(next));
     this.data = next;
@@ -256,6 +279,7 @@ export class ReferenceSave implements SavePort {
     return {
       schemaVersion: 1,
       warehouse: [],
+      currency: 0,
       codexIds: [],
       unlockedChapterIds: [],
       activeRaid: null,
