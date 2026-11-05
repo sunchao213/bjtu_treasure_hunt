@@ -31,7 +31,7 @@ export class ReferenceInventory implements InventoryClientPort {
     const allItems = [...loadout, ...equipped];
     if (
       !raidId ||
-      loadout.length > this.capacity ||
+      this.loadoutSlots(loadout) > this.capacity ||
       new Set(allItems.map((item) => item.instanceId)).size !== allItems.length ||
       allItems.some((item) => !this.isValidItem(item, true) || item.origin.kind !== 'carry-in') ||
       equipped.some((item) => this.definitions[item.itemId]?.kind !== 'weapon')
@@ -67,7 +67,7 @@ export class ReferenceInventory implements InventoryClientPort {
     if (this.items.some((owned) => owned.instanceId === item.instanceId)) {
       return { ok: false, error: 'INVALID_ITEM' };
     }
-    if (this.bagCount() >= this.capacity) {
+    if (this.bagCount() + (this.definitions[item.itemId]?.bagSlots ?? 1) > this.capacity) {
       return { ok: false, error: 'INVENTORY_FULL' };
     }
     this.items.push(structuredClone(item));
@@ -113,12 +113,12 @@ export class ReferenceInventory implements InventoryClientPort {
     if (!instanceId) {
       return { ok: false, error: 'ITEM_NOT_FOUND' };
     }
-    if (this.bagCount() >= this.capacity) {
-      return { ok: false, error: 'BAG_FULL' };
-    }
     const item = this.items.find((candidate) => candidate.instanceId === instanceId);
     if (!item) {
       return { ok: false, error: 'INVALID_ITEM' };
+    }
+    if (this.bagCount() + (this.definitions[item.itemId]?.bagSlots ?? 1) > this.capacity) {
+      return { ok: false, error: 'BAG_FULL' };
     }
     this.equipment.delete(slotId);
     this.changed();
@@ -157,6 +157,19 @@ export class ReferenceInventory implements InventoryClientPort {
     return removed;
   }
 
+  consumeUtility(instanceId: string, applyEffect: () => boolean): ActionResult<ItemInstance> {
+    const item = this.items.find((candidate) => candidate.instanceId === instanceId);
+    if (!item) return { ok: false, error: 'ITEM_NOT_FOUND' };
+    if (this.definitions[item.itemId]?.kind !== 'utility') {
+      return { ok: false, error: 'ITEM_NOT_USABLE' };
+    }
+    if (!applyEffect()) return { ok: false, error: 'INVALID_STATE' };
+    const removed = this.remove(instanceId);
+    if (!removed.ok) return removed;
+    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId });
+    return removed;
+  }
+
   clear(): void {
     this.items = [];
     this.equipment.clear();
@@ -164,7 +177,20 @@ export class ReferenceInventory implements InventoryClientPort {
     this.changed();
   }
   private bagCount(): number {
-    return this.items.length - this.equipment.size;
+    return this.items.reduce((total, item) => {
+      const slots = this.definitions[item.itemId]?.bagSlots ?? 1;
+      return (
+        total +
+        (this.equipment.has(
+          [...this.equipment.entries()].find(([, id]) => id === item.instanceId)?.[0] ?? '',
+        )
+          ? 0
+          : slots)
+      );
+    }, 0);
+  }
+  private loadoutSlots(items: readonly ItemInstance[]): number {
+    return items.reduce((total, item) => total + (this.definitions[item.itemId]?.bagSlots ?? 1), 0);
   }
   private isValidItem(item: ItemInstance, allowCarryIn: boolean): boolean {
     if (

@@ -10,6 +10,7 @@ import { FORMAL_SAVE_KEY, type FormalSaveData } from '../../src/modules/save/per
 const empty = (): FormalSaveData => ({
   schemaVersion: 3,
   warehouse: [],
+  currency: 0,
   codexIds: [],
   unlockedChapterIds: [],
   activeRaid: null,

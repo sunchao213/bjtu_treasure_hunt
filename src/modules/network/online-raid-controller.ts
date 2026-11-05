@@ -89,6 +89,17 @@ export class OnlineRaidController implements RaidControllerPort {
     void amount;
     return false;
   }
+  getMoveSpeedMultiplier(): number {
+    return 1;
+  }
+  activateInvulnerability(durationMs: number): boolean {
+    void durationMs;
+    return false;
+  }
+  setSpeedMultiplier(multiplier: number): boolean {
+    void multiplier;
+    return false;
+  }
   applyDamage(amount: number): void {
     void amount;
   }

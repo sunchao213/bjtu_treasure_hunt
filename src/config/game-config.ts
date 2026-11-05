@@ -26,13 +26,18 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],
     ['training-bat', '训练棍', 'common', 'weapon'],
     ['stun-baton', '电击器', 'uncommon', 'weapon'],
-  ].map(([itemId, name, rarity, kind]) => {
+    ['bandage', '创可贴', 'common', 'healing', 1, 10],
+    ['yellow-bike', '小黄车', 'common', 'utility', 2, 50],
+    ['thick-down-jacket', '超厚羽绒服', 'common', 'utility', 1, 100],
+  ].map(([itemId, name, rarity, kind, bagSlots, price]) => {
     // Static configuration; the satisfies check belongs on the typed object below.
     const definition: ItemDefinition = {
-      itemId: itemId ?? '',
-      name: name ?? '',
+      itemId: String(itemId ?? ''),
+      name: String(name ?? ''),
       rarity: rarity as ItemDefinition['rarity'],
       kind: kind as ItemDefinition['kind'],
+      ...(typeof bagSlots === 'number' ? { bagSlots } : {}),
+      ...(typeof price === 'number' ? { price } : {}),
     };
     return [definition.itemId, definition];
   }),
@@ -54,12 +59,16 @@ export const ITEM_CATALOG_IDS = [
   'siyuan-key',
   'training-bat',
   'stun-baton',
+  'bandage',
+  'yellow-bike',
+  'thick-down-jacket',
 ] as const;
 
 /** Healing amounts are effects, not extraction values; values reflect current product rules. */
 export const HEALING_AMOUNTS: Readonly<Record<string, number>> = {
   'portable-medkit': 30,
   'morning-coffee': 25,
+  bandage: 10,
 };
 
 export type CatalogItemId = (typeof ITEM_CATALOG_IDS)[number];

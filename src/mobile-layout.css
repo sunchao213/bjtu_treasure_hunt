@@ -207,6 +207,21 @@ html[data-touch='true'] #app .touch-actions button {
 html[data-touch='true'] #app .touch-interact {
   grid-column: auto;
 }
+html[data-touch='true'] #key-prompt {
+  display: none;
+}
+html[data-touch='true'] #app .touch-actions button.is-prompt {
+  animation: touch-prompt-glow 1.2s ease-in-out infinite;
+}
+@keyframes touch-prompt-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(238 213 164 / 55%);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(238 213 164 / 0%);
+  }
+}
 /* Native modal dialogs live in the top layer, so rotate them separately from #app. */
 html[data-touch='true'] dialog {
   position: fixed;

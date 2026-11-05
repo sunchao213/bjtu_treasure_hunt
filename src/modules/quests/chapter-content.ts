@@ -121,6 +121,9 @@ export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
   'siyuan-key': '思源楼金钥匙，握在手里比看起来沉，像是压着一整栋楼的记忆。',
   'training-bat': '训练棍：入场装备，挥不动人也挥不坏东西。',
   'stun-baton': '电击器：短暂击晕怪物，电量只够使用十五次。',
+  bandage: '创可贴：使用后恢复 10 点生命值。',
+  'yellow-bike': '小黄车：使用后移动速度提升 20%。',
+  'thick-down-jacket': '超厚羽绒服：使用后获得 5 秒无敌状态。',
   'reinforced-bat': '强化训练棍，缠了胶带，手感更稳。',
 };
 

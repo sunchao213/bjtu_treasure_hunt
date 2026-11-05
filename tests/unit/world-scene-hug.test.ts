@@ -141,7 +141,10 @@ describe('hug input, feedback and calming in the world scene', () => {
     s.keys.Q!.isDown = true;
     s.step(700);
     expect(s.hug.hugProgress).toBe(700);
-    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('长按 Q'), 700 / 1500);
+    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('长按 Q'), 700 / 1500, {
+      key: 'Q',
+      label: '安抚',
+    });
     s.step(800);
     expect(s.hug.state).toBe('calmed');
     expect(s.combat.enemies).toEqual([s.hug]);
@@ -158,7 +161,10 @@ describe('hug input, feedback and calming in the world scene', () => {
     Object.assign(s.scene, { banner: { text: '旧的搜索提示', untilMs: 6000 } });
     s.keys.Q!.isDown = true;
     s.step(700);
-    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('安抚抱抱怪'), 700 / 1500);
+    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('安抚抱抱怪'), 700 / 1500, {
+      key: 'Q',
+      label: '安抚',
+    });
   });
 
   it('accepts the held mobile hug button and calms without dropping loot', async () => {
