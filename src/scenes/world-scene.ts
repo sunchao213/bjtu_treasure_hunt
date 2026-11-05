@@ -64,6 +64,8 @@ interface SceneServices {
 const ENTITY_DEPTH_BASE = 100;
 const NIGHT_MASK_DEPTH = 4000;
 const EFFECTS_DEPTH = 4100;
+const PLAYER_FRAME = { width: 128, height: 160 };
+const PLAYER_ATTACK_FRAME = { width: 314, height: 167 };
 
 type CampusBuilding = (typeof WORLD.buildings)[number];
 type PlayerDirection = 'up' | 'down' | 'left' | 'right';
@@ -158,12 +160,16 @@ export class WorldScene extends Phaser.Scene {
       frameWidth: 256,
       frameHeight: 256,
     });
-    for (const state of ['idle', 'walk', 'attack', 'hurt', 'death']) {
+    for (const state of ['idle', 'walk', 'hurt', 'death']) {
       this.load.spritesheet(`player-${state}`, `assets/characters/player/player-${state}.png`, {
-        frameWidth: 128,
-        frameHeight: 160,
+        frameWidth: PLAYER_FRAME.width,
+        frameHeight: PLAYER_FRAME.height,
       });
     }
+    this.load.spritesheet('player-attack', 'assets/characters/player/player-attack.png', {
+      frameWidth: PLAYER_ATTACK_FRAME.width,
+      frameHeight: PLAYER_ATTACK_FRAME.height,
+    });
     this.load.spritesheet(
       'tiny-town-sheet',
       'assets/environment/kenney-tiny-town/Tilemap/tilemap_packed.png',
@@ -656,7 +662,7 @@ export class WorldScene extends Phaser.Scene {
     const definitions = [
       { action: 'idle', frames: 5, frameRate: 4, repeat: -1 },
       { action: 'walk', frames: 5, frameRate: 9, repeat: -1 },
-      { action: 'attack', frames: 5, frameRate: 14, repeat: 0 },
+      { action: 'attack', frames: 4, frameRate: 12, repeat: 0 },
       { action: 'hurt', frames: 5, frameRate: 10, repeat: 0 },
       { action: 'death', frames: 5, frameRate: 8, repeat: 0 },
     ] as const;
