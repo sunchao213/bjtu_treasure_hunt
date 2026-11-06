@@ -83,6 +83,29 @@ select {
 .room-member:last-child {
   border-bottom: 0;
 }
+/* 联机房间卡默认折叠成一行。它排在局内右栏，而准备阶段整块 `.play-layout`
+   本来就是隐藏的，等于这张卡只在最不该出现的时候（对局中）占位；
+   展开时右栏会把「临时背包 / 结算卡」顶出画框。折叠后只留标题和连接状态。 */
+.room-card > summary.section-kicker {
+  justify-content: flex-start;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+}
+.room-card > summary.section-kicker::-webkit-details-marker {
+  display: none;
+}
+.room-card > summary.section-kicker::before {
+  content: '▸';
+  font-size: 10px;
+  color: #8d9b83;
+}
+.room-card[open] > summary.section-kicker::before {
+  content: '▾';
+}
+.room-card > summary.section-kicker #room-connection {
+  margin-left: auto;
+}
 button {
   cursor: pointer;
 }
@@ -244,7 +267,7 @@ input:focus-visible {
 .prologue-next span {
   margin-left: 18px;
 }
-@media (max-width: 650px) {
+@media (max-width: 650px) and (pointer: coarse) {
   .prologue {
     padding: 12px;
   }
@@ -409,15 +432,29 @@ html.prologue-open #app {
 .prologue-continue-hint {
   position: absolute;
   z-index: 3;
-  right: 7%;
-  bottom: 9.6%;
+  /* 与 .prologue-continue-hit 共用同一块几何：悬停框和文字必须同框同心。
+     原先文字按 right/bottom 自适应宽度排，比热区偏右 33px、偏下 18px。 */
+  top: 83.7%;
+  left: 83.2%;
+  width: 9.8%;
+  height: 6.7%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: 0;
   background: none;
   color: #c9b184;
   font-size: 0.95cqw;
   letter-spacing: 0.08em;
+  text-align: center;
+  /* 点击交给同区域的 .prologue-continue-hit，避免文字层挡住热区 */
+  pointer-events: none;
   cursor: pointer;
+}
+/* display: flex 会盖掉 [hidden] 的 display: none，这里补回来 */
+.prologue-continue-hint[hidden] {
+  display: none;
 }
 .prologue-continue-hint:hover {
   color: #ead7a8;
@@ -679,6 +716,31 @@ main {
   padding: 20px 3%;
   margin: auto;
   position: relative;
+}
+/* 对局阶段主区上下留白略收：画框高度恒定 720，右栏四张卡只能在这一屏内排完，
+   纵向空间得从留白里挤（准备页有自己的 padding，不受这条影响）。 */
+#app:not([data-phase='preparing']) main {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+/* 对局中收起网站式的品牌栏：这是游戏画面，不是网页。图鉴 / 规则入口移到画布 HUD 顶栏，
+   省下的 80px 留给右栏，避免「临时背包」被画框下沿裁掉（CHG-30）。 */
+#app:not([data-phase='preparing']) .masthead {
+  display: none;
+}
+/* 底部状态行（#notice）在文档流里排不到位置：对局阶段右栏四张卡已占满 700px，
+   它只能溢出画框、被裁成一条 10px 的浅色残影（实测 710~747，画框底 720）。
+   左栏画布只用掉约 525px，下方本来是空白，把状态行锚到那块空白里：完整可见、
+   不压右栏，也不改任何 DOM 结构（CHG-31）。
+   用 fixed 是因为 #stage 有 transform、本身就是包含块，坐标直接按 1280×720 算，
+   不依赖主区高度（主区在结算阶段会缩到内容高度）。
+   340px = 右栏 320px + 列间距 20px。 */
+html:not([data-touch='true']) #app:not([data-phase='preparing']) #notice {
+  position: fixed;
+  left: 3%;
+  right: calc(340px + 3%);
+  bottom: 10px;
+  margin: 0;
 }
 
 /* ---------- R01 准备页：完整整页首屏（不是浮层卡片） ---------- */
@@ -1212,7 +1274,7 @@ html:not([data-touch='true']) .prep-equipment li {
 html:not([data-touch='true']) .prep-warning {
   line-height: 1.6;
 }
-@media (max-width: 760px) {
+@media (max-width: 760px) and (pointer: coarse) {
   #app[data-phase='preparing'] main {
     display: block;
     height: auto;
@@ -1354,6 +1416,36 @@ h1 span {
   font-style: normal;
   opacity: 0.4;
 }
+/* 对局中品牌栏收起，省下的 80px 让右栏四张卡装进画框；图鉴 / 规则改挂在这条 HUD 顶栏里，
+   本来就有 46px 高，不额外占纵向空间（CHG-30）。 */
+.map-hud-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.map-actions {
+  display: flex;
+  gap: 6px;
+}
+.hud-button {
+  padding: 3px 10px;
+  border: 1px solid #3b403d;
+  border-radius: 5px;
+  background: transparent;
+  color: #c4cebd;
+  font-size: 11px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.hud-button:hover {
+  border-color: #9bb967;
+  color: #e5e7e6;
+}
+.map-scene {
+  margin-left: 10px;
+  font-size: 11px;
+  opacity: 0.55;
+}
 #game-canvas {
   width: 100%;
   height: min(66cqh, 650px);
@@ -1441,7 +1533,9 @@ h1 span {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 150px;
+  /* 竖版校园图保持 1280:1824 原比例；112px 宽时约 160px 高，
+     不再占据主画面近一半高度。 */
+  width: 112px;
   padding: 0;
   border: 1px solid #84917e;
   border-radius: 4px;
@@ -1519,7 +1613,7 @@ h1 span {
   font-size: 11px;
   line-height: 1.5;
 }
-@media (max-width: 580px) {
+@media (max-width: 580px) and (pointer: coarse) {
   .campus-map-button {
     width: 180px;
     top: 8px;
@@ -1637,12 +1731,34 @@ aside {
   display: grid;
   gap: 12px;
 }
+/* 画框恒为 1280×720，右栏四张卡（价值 / 夜间 / 任务 / 背包）必须在这一屏内排完：
+   收紧卡片与卡片之间的间距，把纵向空间让给内容本身（见 CHG-30）。
+   触屏端有自己的排版，不受这条影响。 */
+.play-layout > aside {
+  gap: 6px;
+}
+html:not([data-touch='true']) .play-layout > aside {
+  /* 兜底：临时背包塞满 6 件时列表会把右栏撑高，这里限制在画框内纵向滚动，
+     保证「申请撤离」这类按钮永远不会被画框下沿裁掉（常规状态下不产生滚动条）。 */
+  max-height: calc(720px - 20px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #5c6a60 transparent;
+}
 .side-card {
   border: 0;
   border-bottom: 1px solid #3b403d;
-  padding: 15px 0;
+  padding: 10px 0;
   background: transparent;
   border-radius: 0;
+}
+/* 结算阶段右栏只留「本局物资价值」与结算卡：夜间装备、任务进度属于局内信息，
+   此时已无意义，留着会把结算卡顶出画框下沿。画框外的内容不滚动、只会被裁掉，
+   结算卡上的「返回准备」就点不到了（见 CHG-30）。 */
+#app:is([data-phase='settling'], [data-phase='success'], [data-phase='failed'])
+  :is(.night-card, .quest-card) {
+  display: none;
 }
 .section-kicker {
   display: flex;
@@ -1832,7 +1948,7 @@ footer {
   color: #9aa58f;
   padding-top: 8px;
 }
-@media (max-width: 950px) {
+@media (max-width: 950px) and (pointer: coarse) {
   .play-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1846,7 +1962,7 @@ footer {
     display: block;
   }
 }
-@media (max-width: 580px) {
+@media (max-width: 580px) and (pointer: coarse) {
   .masthead {
     padding: 16px;
   }
@@ -1923,7 +2039,7 @@ footer {
     padding-top: 12px;
   }
 }
-@media (max-height: 500px) and (orientation: landscape) {
+@media (max-height: 500px) and (orientation: landscape) and (pointer: coarse) {
   .masthead,
   .intro {
     display: none;
@@ -2098,7 +2214,7 @@ footer {
 .story-hint {
   color: #b9c6ad;
 }
-@media (max-width: 640px) {
+@media (max-width: 640px) and (pointer: coarse) {
   .story-box {
     width: calc(100% - 16px);
     margin-bottom: 10px;
@@ -2107,6 +2223,86 @@ footer {
   .story-line {
     min-height: 4.6em;
   }
+}
+
+/* 操作确认：取代浏览器原生 confirm（标题会带「127.0.0.1:5173 显示」那种地址栏文案），
+   与剧情、规则共用 <dialog> 体系，在画框内居中并跟着 --stage-scale 一起缩放。 */
+.confirm-dialog {
+  width: min(420px, calc(100% - 28px));
+  padding: 0;
+  border: 1px solid #6c6a55;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1a201df0, #0b0f11fa);
+  box-shadow: 0 24px 64px #000c;
+  color: #e5e7e6;
+}
+.confirm-dialog::backdrop {
+  background: #000a;
+  backdrop-filter: blur(2px);
+}
+.confirm-body {
+  max-height: min(60vh, 280px);
+  padding: 20px 22px 14px;
+  overflow-y: auto;
+}
+.confirm-kicker {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #8d9b83;
+}
+.confirm-title {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.4;
+  color: #f0e6c8;
+}
+.confirm-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.85;
+  color: #bcc6be;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 4px 22px 20px;
+}
+.confirm-actions button {
+  min-height: 38px;
+  padding: 0 18px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.confirm-cancel {
+  border: 1px solid #4a514b;
+  background: #0000;
+  color: #a9b4ab;
+}
+.confirm-cancel:hover,
+.confirm-cancel:focus-visible {
+  border-color: #7d8a80;
+  color: #e5e7e6;
+}
+.confirm-ok {
+  border: 1px solid #3f6e56;
+  background: #234d3e;
+  color: #f5f0d3;
+}
+.confirm-ok:hover {
+  background: #32644d;
+}
+/* 会丢物品或清存档的操作，确认键转警示配色，和普通确认区分开。 */
+.confirm-dialog[data-tone='danger'] .confirm-ok {
+  border-color: #8a4a3c;
+  background: #5a2b24;
+  color: #f4d3c7;
+}
+.confirm-dialog[data-tone='danger'] .confirm-ok:hover {
+  background: #75392f;
 }
 
 .quest-unlock {
@@ -2128,12 +2324,12 @@ footer {
   color: #cfe0c0;
 }
 
-@media (max-width: 950px) {
+@media (max-width: 950px) and (pointer: coarse) {
   .codex-list {
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 580px) {
+@media (max-width: 580px) and (pointer: coarse) {
   .quest-steps li,
   .quest-unlock {
     font-size: 11px;
@@ -2187,7 +2383,7 @@ footer {
   border: 1px solid #607768;
   border-radius: 5px;
 }
-@media (max-height: 420px) and (orientation: landscape) {
+@media (max-height: 420px) and (orientation: landscape) and (pointer: coarse) {
   .touch-stick {
     width: 88px;
     height: 88px;
@@ -2286,7 +2482,7 @@ footer {
   color: #b4c4b9;
   font-size: 12px;
 }
-@media (max-width: 600px) {
+@media (max-width: 600px) and (pointer: coarse) {
   .codex-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;

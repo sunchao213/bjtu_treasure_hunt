@@ -19,6 +19,7 @@ import {
 } from './modules/ui/quest-view';
 import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
 import { bindStoryDialog, stepForEvidence } from './modules/ui/story-dialog';
+import { bindConfirmDialog } from './modules/ui/confirm-dialog';
 import { createTypewriter } from './modules/ui/typewriter';
 import {
   PROLOGUE_AFTER_PAPER,
@@ -59,6 +60,8 @@ if ('scrollRestoration' in history) {
   history.scrollRestoration = 'manual';
 }
 mountShell(app);
+// 全站确认弹窗：取代浏览器原生 confirm，样式跟随画框缩放。
+const confirmDialog = bindConfirmDialog();
 // 一级大厅导航只切换页面内容，不改变对局状态；各模块可独立接入后端数据。
 const lobbyTabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-lobby-tab]'));
 const lobbyPanels = Array.from(document.querySelectorAll<HTMLElement>('[data-lobby-panel]'));
@@ -272,7 +275,13 @@ async function bootstrap(): Promise<void> {
         return;
       }
       try {
-        if (confirm('建议先导出原始存档。确定清空本框架的损坏存档吗？')) {
+        const confirmed = await confirmDialog.ask({
+          title: '清空损坏的存档？',
+          message: '建议先用「导出存档备份」保存原始数据。清空后本框架的存档无法恢复。',
+          confirmText: '清空存档',
+          tone: 'danger',
+        });
+        if (confirmed) {
           localStorage.removeItem(FORMAL_SAVE_KEY);
           location.reload();
         }
@@ -519,6 +528,7 @@ async function bootstrap(): Promise<void> {
     void requestLandscape();
   };
   element('mobile-rules').onclick = () => element('open-rules').click();
+  element('hud-rules').onclick = () => element('open-rules').click();
   element('mobile-sound').onclick = () => {
     if (sound.getMusicState() === 'playing') {
       audibleVolume = sound.getSettings().volume;
@@ -565,7 +575,8 @@ async function bootstrap(): Promise<void> {
     codex.showModal();
     render();
   };
-  for (const id of ['open-codex', 'archive-codex', 'mobile-codex']) {
+  // hud-codex 是「对局中」画布顶栏里的入口：对局时品牌栏会收起，图鉴/规则改从这里进（CHG-30）。
+  for (const id of ['open-codex', 'archive-codex', 'mobile-codex', 'hud-codex']) {
     element(id).onclick = openCodex;
   }
   element('close-codex').onclick = () => codex.close();
@@ -869,9 +880,22 @@ async function bootstrap(): Promise<void> {
       drop.textContent = '丢弃';
       drop.setAttribute('aria-label', `丢弃${definition.name}`);
       drop.onclick = () => {
-        if (definition.kind !== 'quest' || confirm('这是任务物品，确认丢弃？')) {
+        if (definition.kind !== 'quest') {
           scene.drop(item.instanceId);
+          return;
         }
+        void confirmDialog
+          .ask({
+            title: `丢弃${definition.name}？`,
+            message: '这是任务物品，丢弃后本局任务进度会回退，需要重新获取。',
+            confirmText: '丢弃',
+            tone: 'danger',
+          })
+          .then((confirmed) => {
+            if (confirmed) {
+              scene.drop(item.instanceId);
+            }
+          });
       };
       li.append(drop);
       list.append(li);
@@ -915,12 +939,22 @@ async function bootstrap(): Promise<void> {
     render();
   };
   element('abandon').onclick = () => {
-    if (!confirm('确定放弃本次探索吗？本局携带物（包括从仓库带入的物品）将全部损失。')) {
-      return;
-    }
-    activeController.abandon();
-    sound.setMusic(false);
-    render();
+    void confirmDialog
+      .ask({
+        title: '放弃本次探索？',
+        message: '本局携带物（包括从仓库带入的物品）将全部损失，已存进仓库的物品与图鉴不受影响。',
+        confirmText: '放弃探索',
+        cancelText: '继续探索',
+        tone: 'danger',
+      })
+      .then((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        activeController.abandon();
+        sound.setMusic(false);
+        render();
+      });
   };
   element('next').onclick = () => {
     activeController.prepareNext();
@@ -952,15 +986,25 @@ async function bootstrap(): Promise<void> {
       notify('请先结束本局并返回准备页。');
       return;
     }
-    if (confirm('确定清空本框架的联调仓库与图鉴？该操作不能撤销。')) {
-      try {
-        save.reset();
-        render();
-        notify('联调存档已重置。');
-      } catch {
-        notify('重置失败，原有存档未确认改动。');
-      }
-    }
+    void confirmDialog
+      .ask({
+        title: '清空联调存档？',
+        message: '本框架的永久仓库与图鉴会被清空，物品和已点亮的条目都无法恢复。',
+        confirmText: '清空存档',
+        tone: 'danger',
+      })
+      .then((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        try {
+          save.reset();
+          render();
+          notify('联调存档已重置。');
+        } catch {
+          notify('重置失败，原有存档未确认改动。');
+        }
+      });
   };
   element('export-save').onclick = () => {
     const blob = new Blob([save.exportRaw()], { type: 'application/json' });

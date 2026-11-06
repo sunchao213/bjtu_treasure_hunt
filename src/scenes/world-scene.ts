@@ -285,7 +285,9 @@ export class WorldScene extends Phaser.Scene {
     }
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.cameras.main.setFollowOffset(0, -36);
+    // 角色容器的原点在脚底，而 160×0.44 的贴图身体中心在脚底上方约 35px。
+    // 正向偏移让镜头对准身体中心；旧的 -36 会把人物整体顶到上半屏。
+    this.cameras.main.setFollowOffset(0, 35);
     const resizeCamera = () => {
       this.cameras.main.setZoom(
         isTouchLayout() ? Math.max(1.12, Math.min(1.5, (this.scale.width / 960) * 1.38)) : 1.7,
