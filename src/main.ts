@@ -316,7 +316,16 @@ async function bootstrap(): Promise<void> {
     : new BroadcastRoomTransport();
   const roomSession = new RoomSession(realtimeTransport);
   const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
-  const controller = new RaidController(inventory, save, events, RAID_RULES, ITEM_DEFINITIONS);
+  const controller = new RaidController(
+    inventory,
+    save,
+    events,
+    RAID_RULES,
+    ITEM_DEFINITIONS,
+    Date.now,
+    () => crypto.randomUUID(),
+    () => activeQuestChapter(save.view().unlockedChapterIds).id,
+  );
   let lastInventory = '';
   let lastWarehouse = '';
   let lastCodex = '';
@@ -653,6 +662,7 @@ async function bootstrap(): Promise<void> {
   let mapOpen = false;
   let codexOpen = false;
   let storyOpen = false;
+  let pendingEnding: { raidId: string; chapterId: string } | null = null;
   // F04：新手引导。只读局内状态与玩家位置，不写任何玩法数据。
   const tutorial = createTutorial({ store: tutorialStore(window.localStorage) });
   let tutorialRaidId: string | null = null;
@@ -826,6 +836,18 @@ async function bootstrap(): Promise<void> {
       scene.clearInteractions();
       storyOpen = false;
       render();
+      const ending = pendingEnding;
+      pendingEnding = null;
+      if (ending) {
+        void save
+          .unlockChapter(ending.chapterId)
+          .then(() => render())
+          .catch(() => {
+            storyShownPerRaid.delete(`${ending.raidId}:ending`);
+            notify('章节解锁保存失败，请重新查看结尾剧情后重试。');
+            render();
+          });
+      }
     },
   );
   // 每局只弹一次的剧情键：`${raidId}:${itemId}` 为线索，`${raidId}:ending` 为结尾。
@@ -1030,15 +1052,17 @@ async function bootstrap(): Promise<void> {
       renderLoadoutOptions(archive.warehouse);
       lastWarehouse = warehouseSignature;
     }
-    const unlocked = view.result !== null && chapterUnlockGranted(view.result, activeChapter.id);
-    renderChapterUnlock(element('quest-unlock'), unlocked, activeChapter.id);
+    const settlement = view.result ?? (view.phase === 'preparing' ? archive.lastResult : null);
+    const endingReady = settlement !== null && chapterUnlockGranted(settlement, activeChapter.id);
+    renderChapterUnlock(element('quest-unlock'), endingReady, activeChapter.id);
     // R07：成功撤离但证据不齐时，说明本章为什么还没解锁。
-    renderChapterLock(element('quest-lock'), view.result, activeChapter.id);
-    // 结尾剧情（剧情稿 6.4）：成功撤离解锁章节后自动弹出一次。
-    if (unlocked) {
-      const key = `${view.raidId}:ending`;
+    renderChapterLock(element('quest-lock'), settlement, activeChapter.id);
+    // 先完成本章结尾剧情；关闭弹窗后才将下一章写入解锁存档。
+    if (endingReady && settlement && (view.phase === 'success' || view.phase === 'preparing')) {
+      const key = `${settlement.raidId}:ending`;
       if (!storyShownPerRaid.has(key)) {
         storyShownPerRaid.add(key);
+        pendingEnding = { raidId: settlement.raidId, chapterId: activeChapter.id };
         story.open({ kind: 'ending' }, chapterContentById(activeChapter.id));
       }
     }

@@ -114,6 +114,7 @@ export interface InventoryPort {
 export interface SavePort {
   beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]>;
   finalizeRaid(result: RaidResult): Promise<void>;
+  unlockChapter(chapterId: string): Promise<void>;
   purchaseItem?(itemId: string): ActionResult<ItemInstance>;
 }
 

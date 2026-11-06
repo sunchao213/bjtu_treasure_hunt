@@ -51,6 +51,8 @@ describe('formal persistence and migration', () => {
     storage.fail = false;
     await save.finalizeRaid(storyResult);
     await save.finalizeRaid(storyResult);
+    expect(save.view().unlockedChapterIds).toEqual([]);
+    await save.unlockChapter('siyuan-code');
     const reloaded = new PersistentSave(storage);
     expect(reloaded.view().unlockedChapterIds).toEqual(['siyuan-code']);
     expect(reloaded.view().warehouse).toHaveLength(2);
@@ -90,6 +92,12 @@ describe('formal persistence and migration', () => {
         questComplete: testCase.complete,
         items: testCase.outcome === 'failed' || testCase.originRaidId === 'none' ? [] : evidence,
       });
+      expect(save.view().unlockedChapterIds).toEqual([]);
+      if (testCase.unlock) await save.unlockChapter('siyuan-code');
+      else
+        await expect(save.unlockChapter('siyuan-code')).rejects.toThrow(
+          'Chapter unlock is not eligible',
+        );
       expect(save.view().unlockedChapterIds).toEqual(testCase.unlock ? ['siyuan-code'] : []);
     }
   });

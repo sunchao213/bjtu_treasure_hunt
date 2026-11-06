@@ -79,6 +79,8 @@ describe('A to B reference persistence integration', () => {
     expect(save.view().unlockedChapterIds).toEqual([]);
     storage.fail = false;
     await controller.retrySettlement();
+    expect(new ReferenceSave(storage).view().unlockedChapterIds).toEqual([]);
+    await save.unlockChapter('siyuan-code');
     expect(new ReferenceSave(storage).view().unlockedChapterIds).toEqual(['siyuan-code']);
     expect(new ReferenceSave(storage).view().warehouse).toHaveLength(3);
     await controller.retrySettlement();

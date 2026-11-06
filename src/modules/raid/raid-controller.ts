@@ -12,6 +12,7 @@ import type {
   SavePort,
 } from '../../shared/types/game';
 import { calculateExtractionValue } from '../inventory/extraction-value';
+import { isQuestComplete, QUEST_CHAPTER_ID } from '../quests/quest-service';
 
 /** A owns all phase changes. This controller contains no Phaser or DOM dependencies. */
 export class RaidController implements RaidControllerPort {
@@ -41,6 +42,7 @@ export class RaidController implements RaidControllerPort {
     definitions: Readonly<Record<string, ItemDefinition>>,
     private readonly clock: () => number = Date.now,
     private readonly newId: () => string = () => crypto.randomUUID(),
+    private readonly questChapterId: () => string = () => QUEST_CHAPTER_ID,
   ) {
     this.rules = structuredClone(rules);
     this.definitions = structuredClone(definitions);
@@ -343,15 +345,7 @@ export class RaidController implements RaidControllerPort {
       value: this.value(),
       questComplete:
         !reason &&
-        this.steleInvestigated &&
-        this.inventory
-          .getCarriedItems()
-          .some(
-            (item) =>
-              item.itemId === 'torn-notebook' &&
-              item.origin.kind === 'raid-loot' &&
-              item.origin.obtainedInRaidId === this.raidId,
-          ),
+        isQuestComplete(carriedItems, this.raidId, this.questChapterId(), this.steleInvestigated),
     };
     this.phase = 'settling';
     this.extractionStartedAtMs = null;

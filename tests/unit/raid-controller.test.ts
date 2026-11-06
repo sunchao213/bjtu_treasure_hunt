@@ -4,6 +4,7 @@ import { EventBus } from '../../src/shared/events/game-events';
 import { ReferenceInventory } from '../../src/modules/inventory/reference-inventory';
 import { RaidController } from '../../src/modules/raid/raid-controller';
 import type { ItemInstance, RaidResult, SavePort } from '../../src/shared/types/game';
+import { QUEST_CHAPTER_ID, SECOND_CHAPTER_ID } from '../../src/modules/quests/quest-service';
 
 const loot = (id: string, itemId = 'school-badge'): ItemInstance => ({
   instanceId: id,
@@ -17,6 +18,7 @@ async function setup(
   starterWeaponId?: string,
   values: typeof RAID_RULES.values = RAID_RULES.values,
   loadout: readonly ItemInstance[] = [],
+  questChapterId = QUEST_CHAPTER_ID,
 ) {
   let now = 0;
   let rejectSave = false;
@@ -31,6 +33,7 @@ async function setup(
       }
       results.push(result);
     },
+    unlockChapter: async () => {},
   };
   const controller = new RaidController(
     inventory,
@@ -40,6 +43,7 @@ async function setup(
     ITEM_DEFINITIONS,
     () => now,
     () => 'raid-1',
+    () => questChapterId,
   );
   await controller.start([], starterWeaponId);
   return {
@@ -120,6 +124,26 @@ describe('A extraction lifecycle', () => {
       origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
     });
     expect(s.controller.investigateStele()).toBe(true);
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(5_000);
+    await flush();
+    expect(s.results[0]?.questComplete).toBe(true);
+  });
+
+  it('completes the second chapter with its two current-raid evidence items without stele investigation', async () => {
+    const s = await setup(600_000, undefined, RAID_RULES.values, [], SECOND_CHAPTER_ID);
+    s.fill();
+    s.inventory.addLoot({
+      instanceId: 'current-map',
+      itemId: 'campus-map',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
+    });
+    s.inventory.addLoot({
+      instanceId: 'current-key',
+      itemId: 'siyuan-key',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
+    });
     s.controller.setExtractionPresence(true);
     expect(s.controller.startExtraction().ok).toBe(true);
     s.advance(5_000);
@@ -257,6 +281,7 @@ describe('A extraction lifecycle', () => {
         finalizeRaid: async (result) => {
           results.push(result);
         },
+        unlockChapter: async () => {},
       },
       events,
       rules,
@@ -361,6 +386,7 @@ describe('A extraction lifecycle', () => {
           complete = resolve;
         }),
       finalizeRaid: async () => {},
+      unlockChapter: async () => {},
     };
     const events = new EventBus();
     const inventory = new ReferenceInventory(events, 6, ITEM_DEFINITIONS);
@@ -382,6 +408,7 @@ describe('A extraction lifecycle', () => {
           throw new Error('Storage blocked');
         },
         finalizeRaid: async () => {},
+        unlockChapter: async () => {},
       },
       events,
       RAID_RULES,

@@ -159,10 +159,14 @@ describe('存档层按章节递进解锁', () => {
     await save.finalizeRaid(
       result('ch1', [loot('torn-notebook', 'ch1'), loot('anomalous-feather', 'ch1')]),
     );
+    expect(save.view().unlockedChapterIds).toEqual([]);
+    await save.unlockChapter('siyuan-code');
     expect(save.view().unlockedChapterIds).toEqual(['siyuan-code']);
 
     await save.beginRaid('ch2', []);
     await save.finalizeRaid(result('ch2', [loot('campus-map', 'ch2'), loot('siyuan-key', 'ch2')]));
+    expect(save.view().unlockedChapterIds).toEqual(['siyuan-code']);
+    await save.unlockChapter('siyuan-key');
     expect(save.view().unlockedChapterIds).toEqual(['siyuan-code', 'siyuan-key']);
     // 同一局重复结算（重试保存）不会把第二章重复写进列表。
     await save.finalizeRaid(result('ch2', [loot('campus-map', 'ch2'), loot('siyuan-key', 'ch2')]));
@@ -172,6 +176,7 @@ describe('存档层按章节递进解锁', () => {
     await save.finalizeRaid(
       result('ch3', [loot('soothe-charm', 'ch3'), loot('complete-record', 'ch3')]),
     );
+    await save.unlockChapter('soothe-monster');
     expect(save.view().unlockedChapterIds).toEqual(['siyuan-code', 'siyuan-key', 'soothe-monster']);
 
     const reloaded = new PersistentSave(storage);

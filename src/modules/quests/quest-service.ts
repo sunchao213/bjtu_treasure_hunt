@@ -6,7 +6,7 @@ import type { ItemInstance, RaidResult } from '../../shared/types/game';
  * 边界（与 docs/handoff.md 一致）：
  * - 一切判定基于调用方传入的「权威携带物快照」，不维护第二份物品副本；
  * - 只认 origin = raid-loot 且 obtainedInRaidId = 本局 raidId 的证据，带入物与上一局物品无效；
- * - 本模块不写任何永久数据：章节解锁的落库仍由 SavePort.finalizeRaid 完成，
+ * - 本模块不写任何永久数据：章节解锁的落库由 SavePort.unlockChapter 在结尾剧情关闭后完成，
  *   chapterUnlockGranted() 与存档层保持同一套规则，仅供结果展示使用。
  */
 

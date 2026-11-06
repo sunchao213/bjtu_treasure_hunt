@@ -370,18 +370,25 @@ export class PersistentSave implements SavePort {
       );
       next.warehouse = retained.warehouse;
       next.currency = retained.currency;
-      // 只解锁「当前进行中的章节」：第一章通关后，下一次结算会去判定第二章，依次递进。
-      const chapter = activeQuestChapter(next.unlockedChapterIds);
-      if (
-        chapterUnlockGranted(result, chapter.id) &&
-        !next.unlockedChapterIds.includes(chapter.id)
-      ) {
-        next.unlockedChapterIds.push(chapter.id);
-      }
     }
     next.activeRaid = null;
     next.settledRaidIds.push(result.raidId);
     next.lastResult = structuredClone(result);
+    this.commit(next);
+  }
+
+  async unlockChapter(chapterId: string): Promise<void> {
+    if (this.data.unlockedChapterIds.includes(chapterId)) return;
+    const chapter = activeQuestChapter(this.data.unlockedChapterIds);
+    if (
+      chapter.id !== chapterId ||
+      !this.data.lastResult ||
+      !chapterUnlockGranted(this.data.lastResult, chapterId)
+    ) {
+      throw new Error('Chapter unlock is not eligible');
+    }
+    const next = this.view();
+    next.unlockedChapterIds.push(chapterId);
     this.commit(next);
   }
 

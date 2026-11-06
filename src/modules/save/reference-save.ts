@@ -259,17 +259,25 @@ export class ReferenceSave implements SavePort {
       );
       next.warehouse = retained.warehouse;
       next.currency = retained.currency;
-      const chapter = activeQuestChapter(next.unlockedChapterIds);
-      if (
-        chapterUnlockGranted(result, chapter.id) &&
-        !next.unlockedChapterIds.includes(chapter.id)
-      ) {
-        next.unlockedChapterIds.push(chapter.id);
-      }
     }
     next.activeRaid = null;
     next.settledRaidIds.push(result.raidId);
     next.lastResult = structuredClone(result);
+    this.commit(next);
+  }
+
+  async unlockChapter(chapterId: string): Promise<void> {
+    if (this.data.unlockedChapterIds.includes(chapterId)) return;
+    const chapter = activeQuestChapter(this.data.unlockedChapterIds);
+    if (
+      chapter.id !== chapterId ||
+      !this.data.lastResult ||
+      !chapterUnlockGranted(this.data.lastResult, chapterId)
+    ) {
+      throw new Error('Chapter unlock is not eligible');
+    }
+    const next = this.view();
+    next.unlockedChapterIds.push(chapterId);
     this.commit(next);
   }
 
