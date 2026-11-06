@@ -26,7 +26,11 @@ export function clearLootPosition(p: Point, radius = 35): boolean {
 
 /** Finite candidate sampling: even a constant RNG cannot hang the raid. */
 export function generateLootSpawns(random: () => number = Math.random): LootSpawn[] {
-  const result: LootSpawn[] = [];
+  const questChest: LootSpawn = { ...WORLD.questChest, itemId: 'torn-notebook' };
+  if (!clearLootPosition(questChest)) {
+    throw new Error('Fixed quest chest is not in a clear playable position');
+  }
+  const result: LootSpawn[] = [questChest];
   const roll = () => Math.max(0, Math.min(0.999999, random()));
   for (const zone of WORLD.lootZones) {
     const candidates: Point[] = [];
@@ -69,13 +73,8 @@ export function generateLootSpawns(random: () => number = Math.random): LootSpaw
         result.every((other) => Math.hypot(jitter.x - other.x, jitter.y - other.y) >= 90)
           ? jitter
           : point;
-      const pool = ['window-seat', 'morning-coffee', 'school-badge'];
-      const itemId =
-        zone.id === 'library' && i === 0
-          ? 'torn-notebook'
-          : zone.id === 'lake'
-            ? 'anomalous-feather'
-            : pool[Math.floor(roll() * pool.length)]!;
+      const pool = ['window-seat', 'morning-coffee', 'school-badge', 'anomalous-feather'];
+      const itemId = pool[Math.floor(roll() * pool.length)]!;
       result.push({ ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
     }
   }

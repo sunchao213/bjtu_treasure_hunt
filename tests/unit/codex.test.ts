@@ -22,7 +22,7 @@ describe('persistent collection gallery', () => {
       value: 60,
       icon: 'feather',
     });
-    expect(known.description).toContain('本局残缺手记');
+    expect(known.description).toContain('普通收藏物');
   });
 
   it('ignores unknown save IDs and counts duplicate unlock IDs only once', () => {

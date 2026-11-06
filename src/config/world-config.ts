@@ -70,7 +70,8 @@ export const WORLD = {
   buildings,
   lake,
   sportsFields,
-  stone: { x: 1092, y: 970 },
+  stone: { x: 990, y: 230 },
+  questChest: { id: 'siyuan-notebook-chest', x: 240, y: 620, zoneId: 'siyuan' },
   garden: { x: 940, y: 820, width: 286, height: 360, name: '芳华园' },
   treeObstacles,
   obstacles: [

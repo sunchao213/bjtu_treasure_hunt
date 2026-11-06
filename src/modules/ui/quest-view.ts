@@ -1,11 +1,6 @@
 import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS } from '../../config/game-config';
 import { CODEX_ENTRIES, FIRST_CHAPTER } from '../quests/chapter-content';
-import {
-  carriedEvidence,
-  chapterUnlockGranted,
-  EVIDENCE_FEATHER,
-  EVIDENCE_NOTEBOOK,
-} from '../quests/quest-service';
+import { carriedEvidence, chapterUnlockGranted, EVIDENCE_NOTEBOOK } from '../quests/quest-service';
 import type { QuestProgressView } from '../quests/quest-service';
 import type { RaidResult } from '../../shared/types/game';
 
@@ -22,15 +17,13 @@ const STEP_STATE_TEXT: Readonly<Record<StepState, string>> = {
   locked: '未开始：需先取得残缺手记',
 };
 
-/** 第一步无前置；第二步必须先持有本局的残缺手记才可进行。 */
+/** 石碑调查必须先持有本局残缺手记。 */
 function stepState(evidenceId: string | undefined, progress: QuestProgressView): StepState {
   if (evidenceId === EVIDENCE_NOTEBOOK) {
     return progress.notebook ? 'done' : 'active';
   }
-  if (evidenceId === EVIDENCE_FEATHER) {
-    if (progress.feather) {
-      return 'done';
-    }
+  if (evidenceId === 'minghu-stele') {
+    if (progress.steleInvestigated) return 'done';
     return progress.notebook ? 'active' : 'locked';
   }
   return 'locked';
@@ -102,7 +95,7 @@ export function renderCodexPanel(
     // 已解锁：档案显示回看入口，完整第一章在剧情弹窗中呈现。
     const summary = document.createElement('p');
     summary.className = 'muted';
-    summary.textContent = '本章已回收入册：明湖边的异常羽毛。';
+    summary.textContent = '本章已回收入册：思源楼前的残缺手记与明湖石碑。';
     const button = document.createElement('button');
     button.id = 'open-story';
     button.className = 'secondary';
@@ -126,14 +119,8 @@ export function chapterLockHint(result: RaidResult | null): string | null {
   if (result === null || result.outcome !== 'success') return null;
   if (chapterUnlockGranted(result)) return null;
   const evidence = carriedEvidence(result.items, result.raidId);
-  const missing: string[] = [];
-  if (!evidence.notebook) missing.push('「残缺手记」');
-  if (!evidence.feather) missing.push('「异常羽毛」');
-  if (missing.length === 0) {
-    // 两件都在却没解锁：理论上只在主线完成标志缺失时出现，给兜底文案而不是空句。
-    return '本章未解锁：主线条件未满足，请核对任务进度。';
-  }
-  return `本章未解锁：需同时带回${missing.join('和')}。`;
+  if (!evidence.notebook) return '本章未解锁：需带回本局在思源楼前取得的「残缺手记」。';
+  return '本章未解锁：尚未调查明湖石碑。';
 }
 
 export function renderChapterLock(target: HTMLElement, result: RaidResult | null): void {

@@ -39,6 +39,7 @@ export class OnlineRaidController implements RaidControllerPort {
         extractionProgress: 0,
         isBusy: false,
         saveError: false,
+        steleInvestigated: false,
         result: null,
       };
     }
@@ -53,6 +54,7 @@ export class OnlineRaidController implements RaidControllerPort {
       extractionProgress: self.extractionProgress,
       isBusy: false,
       saveError: false,
+      steleInvestigated: false,
       result: self.result ?? null,
     };
   }
@@ -96,8 +98,8 @@ export class OnlineRaidController implements RaidControllerPort {
   setExtractionPresence(isInside: boolean): void {
     void isInside;
   }
-  setQuestComplete(complete: boolean): void {
-    void complete;
+  investigateStele(): boolean {
+    return false;
   }
   tick(): void {}
   dispose(): void {}

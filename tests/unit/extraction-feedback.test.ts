@@ -18,6 +18,7 @@ const view = (overrides: Partial<RaidView> = {}): RaidView => ({
   extractionProgress: 0,
   isBusy: false,
   saveError: false,
+  steleInvestigated: false,
   result: null,
   ...overrides,
 });

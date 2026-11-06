@@ -25,7 +25,7 @@ export class RaidController implements RaidControllerPort {
   private isBusy = false;
   private saveError = false;
   private result: RaidResult | null = null;
-  private questComplete = false;
+  private steleInvestigated = false;
   private pausedAtMs: number | null = null;
   private readonly unsubscribe: () => void;
   private readonly rules: RaidRules;
@@ -77,6 +77,7 @@ export class RaidController implements RaidControllerPort {
         : [];
       this.inventory.begin(raidId, [...loadout, ...starterWeapon]);
       this.raidId = raidId;
+      this.steleInvestigated = false;
       this.health = this.rules.maxHealth;
       this.startedAtMs = this.clock();
       this.endedAtMs = null;
@@ -111,6 +112,7 @@ export class RaidController implements RaidControllerPort {
             ),
       isBusy: this.isBusy,
       saveError: this.saveError,
+      steleInvestigated: this.steleInvestigated,
       result: structuredClone(this.result),
     };
   }
@@ -192,10 +194,24 @@ export class RaidController implements RaidControllerPort {
     return true;
   }
 
-  setQuestComplete(complete: boolean): void {
-    if (this.playable()) {
-      this.questComplete = complete;
+  investigateStele(): boolean {
+    if (
+      !this.playable() ||
+      this.steleInvestigated ||
+      !this.raidId ||
+      !this.inventory
+        .getCarriedItems()
+        .some(
+          (item) =>
+            item.itemId === 'torn-notebook' &&
+            item.origin.kind === 'raid-loot' &&
+            item.origin.obtainedInRaidId === this.raidId,
+        )
+    ) {
+      return false;
     }
+    this.steleInvestigated = true;
+    return true;
   }
 
   tick(): void {
@@ -256,7 +272,7 @@ export class RaidController implements RaidControllerPort {
     this.phase = 'preparing';
     this.raidId = null;
     this.result = null;
-    this.questComplete = false;
+    this.steleInvestigated = false;
     this.pausedAtMs = null;
     this.inZone = false;
     this.extractionStartedAtMs = null;
@@ -304,17 +320,15 @@ export class RaidController implements RaidControllerPort {
       value: this.value(),
       questComplete:
         !reason &&
-        this.questComplete &&
-        ['torn-notebook', 'anomalous-feather'].every((id) =>
-          this.inventory
-            .getCarriedItems()
-            .some(
-              (item) =>
-                item.itemId === id &&
-                item.origin.kind === 'raid-loot' &&
-                item.origin.obtainedInRaidId === this.raidId,
-            ),
-        ),
+        this.steleInvestigated &&
+        this.inventory
+          .getCarriedItems()
+          .some(
+            (item) =>
+              item.itemId === 'torn-notebook' &&
+              item.origin.kind === 'raid-loot' &&
+              item.origin.obtainedInRaidId === this.raidId,
+          ),
     };
     this.phase = 'settling';
     this.extractionStartedAtMs = null;

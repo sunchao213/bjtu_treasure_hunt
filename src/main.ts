@@ -17,7 +17,11 @@ import {
   renderQuestPanel,
 } from './modules/ui/quest-view';
 import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
-import { bindStoryDialog, stepForEvidence } from './modules/ui/story-dialog';
+import {
+  bindStoryDialog,
+  stepForEvidence,
+  stepForLocationInteraction,
+} from './modules/ui/story-dialog';
 import { createTypewriter } from './modules/ui/typewriter';
 import {
   PROLOGUE_AFTER_PAPER,
@@ -629,6 +633,14 @@ async function bootstrap(): Promise<void> {
     storyShownPerRaid.add(key);
     story.open({ kind: 'step', step });
   });
+  events.on('LocationInteracted', ({ raidId, locationId }) => {
+    const step = stepForLocationInteraction(locationId);
+    if (!step) return;
+    const key = `${raidId}:${locationId}`;
+    if (storyShownPerRaid.has(key)) return;
+    storyShownPerRaid.add(key);
+    story.open({ kind: 'step', step });
+  });
   // 剧情档案的「回看」按钮随存档状态重渲染，用事件委托绑定。
   element('story-archive').addEventListener('click', (event) => {
     if ((event.target as HTMLElement).id === 'open-story') {
@@ -783,7 +795,7 @@ async function bootstrap(): Promise<void> {
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = activeInventory.getCarriedItems();
-    renderQuestPanel(questProgress(carried, view.raidId));
+    renderQuestPanel(questProgress(carried, view.raidId, view.steleInvestigated));
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
       renderInventory(carried);
@@ -796,7 +808,7 @@ async function bootstrap(): Promise<void> {
     element('archive-detail').textContent = archive.unlockedChapterIds.length
       ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
       : archive.codexIds.length
-        ? `已点亮 ${archive.codexIds.length} 种图鉴；带手记和异常羽毛成功撤离可解锁章节。`
+        ? `已点亮 ${archive.codexIds.length} 种图鉴；完成石碑调查并带回本局手记成功撤离可解锁章节。`
         : '成功撤离后，物品和图鉴会保存在此浏览器。';
     if (lastWarehouse !== warehouseSignature) {
       const select = element<HTMLSelectElement>('loadout');
@@ -1042,14 +1054,12 @@ async function bootstrap(): Promise<void> {
     };
     const debugScene = scene as unknown as DebugSceneAccess;
     const teleportTargets: Record<string, () => { x: number; y: number } | null> = {
-      'debug-tp-notebook': () =>
-        debugScene.searchPoints.find((point) => point.itemId === 'torn-notebook') ?? null,
-      'debug-tp-feather': () =>
-        debugScene.searchPoints.find((point) => point.itemId === 'anomalous-feather') ?? null,
+      'debug-tp-notebook': () => WORLD.questChest,
+      'debug-tp-feather': () => WORLD.stone,
       'debug-tp-extract': () => ({ ...WORLD.spawn }),
     };
     const questPointNames: Record<string, string> = {
-      'debug-tp-notebook': '图书馆书架',
+      'debug-tp-notebook': '思源楼前固定宝箱',
       'debug-tp-feather': '明湖石碑',
       'debug-tp-extract': '南门撤离点',
     };

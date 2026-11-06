@@ -26,7 +26,7 @@ const details: Record<string, { icon: string; description: string }> = {
   'campus-map': { icon: 'map', description: '一张校园地图线索，作为收藏物计入携带价值。' },
   'torn-notebook': {
     icon: 'paper',
-    description: '图书馆周边的主线线索；与本局异常羽毛一起带回可解锁思源密码章节。',
+    description: '思源楼前固定宝箱中的本局主线线索；调查明湖石碑后携带撤离可解锁思源密码章节。',
   },
   'window-seat': { icon: 'seat', description: '靠窗座位的凭证，校园收藏物。' },
   'morning-coffee': {
@@ -36,7 +36,7 @@ const details: Record<string, { icon: string; description: string }> = {
   'school-badge': { icon: 'badge', description: '刻有校训的徽章，校园收藏物。' },
   'anomalous-feather': {
     icon: 'feather',
-    description: '明湖石碑周边的主线线索；与本局残缺手记一起成功撤离可解锁章节。',
+    description: '校园中偶尔发现的异常收藏物，作为普通收藏物收藏，不影响思源密码主线。',
   },
   'gpa-charm': { icon: 'badge', description: '校园传说中的护符，作为收藏物计分。' },
   'siyuan-key': { icon: 'key', description: '思源楼主题的传说收藏物，具有较高携带价值。' },
@@ -125,7 +125,7 @@ export function renderCodex(ids: readonly string[], chapters: readonly string[])
     `${entries.filter((e) => e.unlocked).length} / ${entries.length}`;
   document.getElementById('codex-chapter')!.textContent = chapters.includes('siyuan-code')
     ? '章节：思源密码已解锁'
-    : '章节：思源密码未解锁 · 需携带本局残缺手记与异常羽毛成功撤离';
+    : '章节：思源密码未解锁 · 调查明湖石碑并携带本局残缺手记成功撤离';
   grid.replaceChildren();
   for (const entry of entries) {
     const card = document.createElement('article');

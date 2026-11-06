@@ -1,10 +1,9 @@
 export {
   carriedEvidence,
   chapterUnlockGranted,
+  hasCurrentRaidNotebook,
   isQuestComplete,
-  prerequisiteHint,
   questProgress,
-  EVIDENCE_FEATHER,
   EVIDENCE_NOTEBOOK,
   NOTEBOOK_PREREQUISITE_HINT,
   QUEST_CHAPTER_ID,

@@ -16,6 +16,7 @@ async function setup(
   durationMs = 600_000,
   starterWeaponId?: string,
   values: typeof RAID_RULES.values = RAID_RULES.values,
+  loadout: readonly ItemInstance[] = [],
 ) {
   let now = 0;
   let rejectSave = false;
@@ -23,7 +24,7 @@ async function setup(
   const events = new EventBus();
   const inventory = new ReferenceInventory(events, 6, ITEM_DEFINITIONS);
   const save: SavePort = {
-    beginRaid: async () => [],
+    beginRaid: async () => loadout,
     finalizeRaid: async (result) => {
       if (rejectSave) {
         throw new Error('Quota');
@@ -62,6 +63,70 @@ async function setup(
 }
 
 describe('A extraction lifecycle', () => {
+  it("only investigates once when carrying this raid's notebook and resets for the next raid", async () => {
+    const s = await setup();
+    expect(s.controller.getView().steleInvestigated).toBe(false);
+    expect(s.controller.investigateStele()).toBe(false);
+
+    s.inventory.addLoot({
+      instanceId: 'old-notebook',
+      itemId: 'torn-notebook',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'previous-raid' },
+    });
+    expect(s.controller.investigateStele()).toBe(false);
+    s.inventory.addLoot({
+      instanceId: 'current-notebook',
+      itemId: 'torn-notebook',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
+    });
+    expect(s.controller.investigateStele()).toBe(true);
+    expect(s.controller.investigateStele()).toBe(false);
+    expect(s.controller.getView().steleInvestigated).toBe(true);
+
+    s.controller.abandon();
+    await flush();
+    expect(s.controller.prepareNext()).toBe(true);
+    expect(s.controller.getView().steleInvestigated).toBe(false);
+  });
+
+  it("does not treat a carried-in notebook as this raid's notebook", async () => {
+    const s = await setup(600_000, undefined, RAID_RULES.values, [
+      { instanceId: 'brought-notebook', itemId: 'torn-notebook', origin: { kind: 'carry-in' } },
+    ]);
+    expect(s.controller.investigateStele()).toBe(false);
+  });
+
+  it('marks the extracted quest complete only after investigation and with the current notebook', async () => {
+    const s = await setup();
+    s.fill();
+    s.inventory.addLoot({
+      instanceId: 'current-notebook',
+      itemId: 'torn-notebook',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
+    });
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(5_000);
+    await flush();
+    expect(s.results[0]?.questComplete).toBe(false);
+  });
+
+  it('completes the extracted quest with an investigated current-raid notebook', async () => {
+    const s = await setup();
+    s.fill();
+    s.inventory.addLoot({
+      instanceId: 'current-notebook',
+      itemId: 'torn-notebook',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
+    });
+    expect(s.controller.investigateStele()).toBe(true);
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(5_000);
+    await flush();
+    expect(s.results[0]?.questComplete).toBe(true);
+  });
+
   it('pauses the raid clock for rules and requires a new extraction after resuming', async () => {
     const s = await setup();
     s.fill();
