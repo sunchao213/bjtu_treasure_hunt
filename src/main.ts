@@ -29,6 +29,7 @@ import {
   chapterUnlockGranted,
   questChapterForEvidence,
   questProgress,
+  QUEST_CHAPTER_ID,
 } from './modules/quests/quest-service';
 import { chapterContentById } from './modules/quests/chapter-content';
 import { bindStoryDialog, stepForEvidence } from './modules/ui/story-dialog';
@@ -834,6 +835,16 @@ async function bootstrap(): Promise<void> {
     const step = stepForEvidence(item.itemId, chapterContentById(chapterId));
     if (!step) return;
     const key = `${raidId}:${item.itemId}`;
+    if (storyShownPerRaid.has(key)) return;
+    storyShownPerRaid.add(key);
+    story.open({ kind: 'step', step }, chapterContentById(chapterId));
+  });
+  events.on('SteleInvestigated', ({ raidId }) => {
+    const chapterId = activeQuestChapter(save.view().unlockedChapterIds).id;
+    if (chapterId !== QUEST_CHAPTER_ID) return;
+    const step = stepForEvidence('minghu-stele', chapterContentById(chapterId));
+    if (!step) return;
+    const key = `${raidId}:minghu-stele`;
     if (storyShownPerRaid.has(key)) return;
     storyShownPerRaid.add(key);
     story.open({ kind: 'step', step }, chapterContentById(chapterId));

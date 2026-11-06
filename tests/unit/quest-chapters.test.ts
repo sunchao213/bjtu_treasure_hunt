@@ -85,7 +85,7 @@ describe('三章进度推进', () => {
 
   it('任务卡文案按当前章节切换，拾取证据能定位到所属章节', () => {
     const progress = questProgress([loot('campus-map')], RAID_ID, 'siyuan-key');
-    expect(progress.statusText).toBe('线索二 · 去思源楼侧门，用手电寻找思源楼金钥匙');
+    expect(progress.statusText).toBe('线索二 · 去思源楼东侧道路，调查思源楼金钥匙');
     expect(questChapterForEvidence('campus-map')).toBe('siyuan-key');
     expect(questChapterForEvidence('soothe-charm')).toBe('soothe-monster');
     expect(questChapterForEvidence('torn-notebook')).toBe('siyuan-code');
@@ -118,8 +118,8 @@ describe('三章进度推进', () => {
 
   it('行前目标清单跟随章节切换证据名与地点', () => {
     expect(prepGoalRows('siyuan-key')).toEqual([
-      { name: '被涂改的校园地图', place: '教学楼群' },
-      { name: '思源楼金钥匙', place: '思源楼侧门' },
+      { name: '被涂改的校园地图', place: '中央教学楼公告栏' },
+      { name: '思源楼金钥匙', place: '思源楼东侧道路' },
       { name: '携带价值 ≥ 100', place: '南门 · 撤离点' },
     ]);
     expect(prepGoalRows('soothe-monster')[0]).toEqual({ name: '安抚护符', place: '芳华园' });
@@ -127,12 +127,24 @@ describe('三章进度推进', () => {
 
   it('每章证据刷新到指定区域，三章都有可读剧情档案', () => {
     expect(questSpawnPlan('siyuan-key')).toEqual([
-      { itemId: 'campus-map', zoneId: 'central-lawn', index: 0 },
-      { itemId: 'siyuan-key', zoneId: 'library', index: 0 },
+      {
+        itemId: 'campus-map',
+        zoneId: 'central-lawn',
+        index: -1,
+        fixedPoint: { id: 'campus-map-point', x: 800, y: 940, zoneId: 'central-lawn' },
+      },
+      {
+        itemId: 'siyuan-key',
+        zoneId: 'siyuan-side-door',
+        index: -1,
+        fixedPoint: { id: 'siyuan-key-point', x: 467, y: 370, zoneId: 'siyuan-side-door' },
+      },
     ]);
     const spawns = generateLootSpawns(() => 0.5, questSpawnPlan('siyuan-key'));
     expect(spawns.find((spawn) => spawn.itemId === 'campus-map')?.zoneId).toBe('central-lawn');
-    expect(spawns.find((spawn) => spawn.itemId === 'siyuan-key')?.zoneId).toBe('library');
+    expect(spawns.find((spawn) => spawn.itemId === 'siyuan-key')?.zoneId).toBe('siyuan-side-door');
+    expect(spawns.find((spawn) => spawn.itemId === 'campus-map')).toMatchObject({ x: 800, y: 940 });
+    expect(spawns.find((spawn) => spawn.itemId === 'siyuan-key')).toMatchObject({ x: 467, y: 370 });
     expect(CHAPTERS['siyuan-key']?.steps).toHaveLength(3);
     expect(CHAPTERS['soothe-monster']?.steps).toHaveLength(3);
   });

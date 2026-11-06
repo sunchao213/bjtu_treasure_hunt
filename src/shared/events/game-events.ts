@@ -3,6 +3,7 @@ import type { ItemInstance, RaidResult } from '../types/game';
 export interface GameEvents {
   InventoryChanged: { readonly raidId: string };
   ItemPicked: { readonly raidId: string; readonly item: ItemInstance };
+  SteleInvestigated: { readonly raidId: string };
   ItemConsumed: { readonly raidId: string; readonly instanceId: string };
   DamageTaken: { readonly raidId: string; readonly amount: number; readonly health: number };
   EnemyDefeated: { readonly raidId: string; readonly enemyId: string };

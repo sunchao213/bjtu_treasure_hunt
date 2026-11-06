@@ -1144,8 +1144,9 @@ export class WorldScene extends Phaser.Scene {
         }
         this.interaction = '按 E 调查明湖石碑';
         this.keyPrompt = { key: 'E', label: '调查' };
-        if (held && !this.previousInteract && view.phase === 'active') {
+        if (held && !this.previousInteract && view.phase === 'active' && view.raidId) {
           if (this.services.controller.investigateStele()) {
+            this.services.events.emit('SteleInvestigated', { raidId: view.raidId });
             this.banner = { text: steleStoryBeat(), untilMs: this.time.now + 6000 };
             this.services.notify('明湖石碑调查完成。');
           }

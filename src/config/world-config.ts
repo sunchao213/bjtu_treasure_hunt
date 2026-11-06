@@ -72,6 +72,11 @@ export const WORLD = {
   sportsFields,
   stone: { x: 990, y: 230 },
   questChest: { id: 'siyuan-notebook-chest', x: 240, y: 620, zoneId: 'siyuan' },
+  // 第二章的两个调查点按地图参考图固定，不随每局随机箱移动。
+  chapterTwoPoints: {
+    campusMap: { id: 'campus-map-point', x: 800, y: 940, zoneId: 'central-lawn' },
+    siyuanKey: { id: 'siyuan-key-point', x: 467, y: 370, zoneId: 'siyuan-side-door' },
+  },
   garden: { x: 940, y: 820, width: 286, height: 360, name: '芳华园' },
   treeObstacles,
   obstacles: [

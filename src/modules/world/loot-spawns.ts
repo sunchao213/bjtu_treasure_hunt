@@ -30,17 +30,32 @@ export interface QuestSpawnPlan {
   itemId: string;
   zoneId: string;
   index: number;
+  fixedPoint?: Point & { id: string };
 }
 
 export function questSpawnPlan(chapterId: string = QUEST_CHAPTER_ID): QuestSpawnPlan[] {
   const chapter = questChapterById(chapterId);
-  const plan = chapter.evidence
+  const plan: QuestSpawnPlan[] = chapter.evidence
     .filter((entry) => entry.spawnZoneId !== '')
     .map((entry) => ({
       itemId: entry.itemId,
       zoneId: entry.spawnZoneId,
       index: entry.spawnIndex,
     }));
+  if (chapter.id === 'siyuan-key') {
+    plan[0] = {
+      itemId: 'campus-map',
+      zoneId: WORLD.chapterTwoPoints.campusMap.zoneId,
+      index: -1,
+      fixedPoint: WORLD.chapterTwoPoints.campusMap,
+    };
+    plan[1] = {
+      itemId: 'siyuan-key',
+      zoneId: WORLD.chapterTwoPoints.siyuanKey.zoneId,
+      index: -1,
+      fixedPoint: WORLD.chapterTwoPoints.siyuanKey,
+    };
+  }
   // 第一章的手记来自思源楼前固定宝箱，不占用随机搜索区。
   if (chapter.id === QUEST_CHAPTER_ID) {
     plan.push({ itemId: 'torn-notebook', zoneId: 'siyuan', index: -1 });
@@ -55,13 +70,37 @@ export function generateLootSpawns(
 ): LootSpawn[] {
   const result: LootSpawn[] = [];
   const roll = () => Math.max(0, Math.min(0.999999, random()));
+  const fixedQuestPoints = plan.filter((quest) => quest.fixedPoint);
+  for (let i = 0; i < fixedQuestPoints.length; i++) {
+    const quest = fixedQuestPoints[i]!;
+    const point = quest.fixedPoint!;
+    if (
+      !clearLootPosition(point) ||
+      Math.hypot(point.x - WORLD.questChest.x, point.y - WORLD.questChest.y) < 90
+    ) {
+      throw new Error(`Invalid fixed quest position for ${quest.itemId}`);
+    }
+    for (let j = 0; j < i; j++) {
+      const other = fixedQuestPoints[j]!.fixedPoint!;
+      if (Math.hypot(point.x - other.x, point.y - other.y) < 90) {
+        throw new Error(`Overlapping fixed quest positions for ${quest.itemId}`);
+      }
+    }
+    result.push({
+      ...point,
+      itemId: quest.itemId,
+      zoneId: quest.zoneId,
+    });
+  }
+  const questItemIds = new Set(plan.map((entry) => entry.itemId));
   for (const zone of WORLD.lootZones) {
     const candidates: Point[] = [];
     for (let x = zone.x + 25; x < zone.x + zone.width - 20; x += 50) {
       for (let y = zone.y + 25; y < zone.y + zone.height - 20; y += 50) {
         if (
           clearLootPosition({ x, y }) &&
-          Math.hypot(x - WORLD.questChest.x, y - WORLD.questChest.y) >= 90
+          Math.hypot(x - WORLD.questChest.x, y - WORLD.questChest.y) >= 90 &&
+          result.every((other) => Math.hypot(x - other.x, y - other.y) >= 90)
         ) {
           candidates.push({ x, y });
         }
@@ -96,8 +135,13 @@ export function generateLootSpawns(
     for (let i = 0; i < quota; i++) {
       const point = selected[i]!;
       const pool = ['window-seat', 'morning-coffee', 'school-badge'];
-      const quest = plan.find((entry) => entry.zoneId === zone.id && entry.index === i);
-      const itemId = quest ? quest.itemId : pool[Math.floor(roll() * pool.length)]!;
+      const quest = plan.find(
+        (entry) => !entry.fixedPoint && entry.zoneId === zone.id && entry.index === i,
+      );
+      const availablePool = pool.filter((candidate) => !questItemIds.has(candidate));
+      const itemId = quest
+        ? quest.itemId
+        : availablePool[Math.floor(roll() * availablePool.length)]!;
       result.push({ ...point, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
     }
   }

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { WORLD } from '../../src/config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../../src/config/game-config';
 import { lineOfSight, distance } from '../../src/modules/world/night-systems';
-import { clearLootPosition, generateLootSpawns } from '../../src/modules/world/loot-spawns';
+import {
+  clearLootPosition,
+  generateLootSpawns,
+  questSpawnPlan,
+} from '../../src/modules/world/loot-spawns';
 
 function seeded(seed: number): () => number {
   return () => {
@@ -76,6 +80,22 @@ describe('portrait campus image map', () => {
   it('明湖石碑的显示锚点与调查地点保持一致', () => {
     expect(WORLD.stone).toEqual({ x: 990, y: 230 });
     expect(clearLootPosition(WORLD.stone, WORLD.playerRadius)).toBe(true);
+  });
+
+  it('第二章地图与金钥匙固定在参考图位置，随机箱不再生成它们', () => {
+    const plan = questSpawnPlan('siyuan-key');
+    const points = generateLootSpawns(seeded(42), plan);
+    expect(WORLD.chapterTwoPoints.campusMap).toMatchObject({ x: 800, y: 940 });
+    expect(WORLD.chapterTwoPoints.siyuanKey).toMatchObject({ x: 467, y: 370 });
+    expect(points.filter((point) => point.itemId === 'campus-map')).toEqual([
+      expect.objectContaining({ id: 'campus-map-point', x: 800, y: 940 }),
+    ]);
+    expect(points.filter((point) => point.itemId === 'siyuan-key')).toEqual([
+      expect.objectContaining({ id: 'siyuan-key-point', x: 467, y: 370 }),
+    ]);
+    expect(
+      points.filter((point) => point.itemId === 'campus-map' || point.itemId === 'siyuan-key'),
+    ).toHaveLength(2);
   });
 
   it('randomizes each raid with enough value and clear spaced positions', () => {

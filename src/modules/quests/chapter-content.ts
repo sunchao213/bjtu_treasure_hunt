@@ -119,10 +119,10 @@ export const SECOND_CHAPTER: ChapterContent = {
       stepId: 'step-1-marked-campus-map',
       stepNumber: 1,
       title: '线索一 · 被涂改的校园地图',
-      locationId: 'teaching-cluster',
+      locationId: 'campus-map-point',
       requiresEvidence: [],
       stepBody:
-        '你在教学楼群的公告栏上发现一张被反复描粗的校园地图，其中一条路线并不通往任何开放入口。' +
+        '你在中央教学楼下方、树丛旁的公告栏上发现一张被反复描粗的校园地图，其中一条路线并不通往任何开放入口。' +
         '地图角落写着：「别走最短的路，走还记得你的路。」' +
         '描粗的线条在夜里微微发亮，一直延伸到思源楼侧门。',
     },
@@ -130,10 +130,10 @@ export const SECOND_CHAPTER: ChapterContent = {
       stepId: 'step-2-keyless-door',
       stepNumber: 2,
       title: '线索二 · 没有钥匙孔的门',
-      locationId: 'siyuan-side-door',
+      locationId: 'siyuan-key-point',
       requiresEvidence: [EVIDENCE_CAMPUS_MAP],
       stepBody:
-        '思源楼侧门没有钥匙孔，只有一块会吞掉反光的金属牌。' +
+        '思源楼东侧道路的门边没有钥匙孔，只有一块会吞掉反光的金属牌。' +
         '你把地图上描粗的路线与门牌对应后，牌面浮出「记录节点 02 已失效」。' +
         '门缝里掉出一把沉重的钥匙，落在地上时扬起一小片不属于这个季节的灰尘。',
     },
@@ -232,8 +232,16 @@ export const STORY_LOCATION_ANCHORS: Readonly<Record<string, StoryLocationAnchor
   },
   'minghu-stele': { placeName: '明湖石碑', kind: 'point', anchorId: 'minghu-stele' },
   'south-extraction-point': { placeName: '南门撤离点', kind: 'gate', anchorId: '南门 · 撤离点' },
-  'teaching-cluster': { placeName: '教学楼群', kind: 'loot-zone', anchorId: 'central-lawn' },
-  'siyuan-side-door': { placeName: '思源楼侧门', kind: 'loot-zone', anchorId: 'library' },
+  'campus-map-point': {
+    placeName: '教学楼群公告栏',
+    kind: 'point',
+    anchorId: 'campus-map-point',
+  },
+  'siyuan-key-point': {
+    placeName: '思源楼东侧道路',
+    kind: 'point',
+    anchorId: 'siyuan-key-point',
+  },
   'garden-sos': { placeName: '芳华园', kind: 'loot-zone', anchorId: 'east-garden' },
 };
 
