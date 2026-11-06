@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
-
 import {
   carriedEvidence,
   chapterUnlockGranted,
+  hasCurrentRaidNotebook,
   isQuestComplete,
   NOTEBOOK_PREREQUISITE_HINT,
-  prerequisiteHint,
   QUEST_COMPLETE_HINT,
   questProgress,
 } from '../../src/modules/quests/quest-service';
@@ -36,86 +35,73 @@ function result(overrides: Partial<RaidResult> = {}): RaidResult {
   };
 }
 
-describe('地点调查前置判定', () => {
-  it('未持本局残缺手记时，明湖石碑被拦截并给出提示', () => {
-    expect(prerequisiteHint('anomalous-feather', [], RAID_ID)).toBe(NOTEBOOK_PREREQUISITE_HINT);
+describe('本局手记身份判定', () => {
+  it('只认本局新获得且仍携带的残缺手记', () => {
+    expect(hasCurrentRaidNotebook([notebook], RAID_ID)).toBe(true);
+    expect(hasCurrentRaidNotebook([carryIn('carry', 'torn-notebook')], RAID_ID)).toBe(false);
+    expect(hasCurrentRaidNotebook([loot('old', 'torn-notebook', 'raid-old')], RAID_ID)).toBe(false);
+    expect(hasCurrentRaidNotebook([notebook], null)).toBe(false);
   });
 
-  it('持本局手记后允许调查石碑', () => {
-    expect(prerequisiteHint('anomalous-feather', [notebook], RAID_ID)).toBeNull();
-  });
-
-  it('非任务搜索点一律放行', () => {
-    expect(prerequisiteHint('torn-notebook', [], RAID_ID)).toBeNull();
-    expect(prerequisiteHint('scratch-paper', [], RAID_ID)).toBeNull();
-  });
-
-  it('带入物与上一局手记都不满足前置', () => {
-    expect(prerequisiteHint('anomalous-feather', [carryIn('c1', 'torn-notebook')], RAID_ID)).toBe(
-      NOTEBOOK_PREREQUISITE_HINT,
-    );
-    expect(
-      prerequisiteHint('anomalous-feather', [loot('old', 'torn-notebook', 'raid-old')], RAID_ID),
-    ).toBe(NOTEBOOK_PREREQUISITE_HINT);
+  it('异常羽毛按普通收藏处理，不计入任务进度', () => {
+    expect(carriedEvidence([feather], RAID_ID)).toEqual({ notebook: false, collected: 0 });
+    expect(isQuestComplete([notebook, feather], RAID_ID, false)).toBe(false);
+    expect(isQuestComplete([notebook], RAID_ID, true)).toBe(true);
   });
 });
 
-describe('本局任务进度', () => {
-  it('凑齐两件证据时判定完成', () => {
-    expect(isQuestComplete([notebook, feather], RAID_ID)).toBe(true);
-    expect(isQuestComplete([notebook], RAID_ID)).toBe(false);
-    expect(isQuestComplete([], RAID_ID)).toBe(false);
+describe('明湖石碑任务进度', () => {
+  it('必须同时持有本局手记并已调查石碑才完成', () => {
+    expect(isQuestComplete([], RAID_ID, true)).toBe(false);
+    expect(isQuestComplete([notebook], RAID_ID, false)).toBe(false);
+    expect(isQuestComplete([carryIn('carry', 'torn-notebook')], RAID_ID, true)).toBe(false);
+    expect(isQuestComplete([loot('old', 'torn-notebook', 'raid-old')], RAID_ID, true)).toBe(false);
+    expect(isQuestComplete([notebook], RAID_ID, true)).toBe(true);
   });
 
-  it('证据统计只认本局 raid-loot', () => {
-    const evidence = carriedEvidence([carryIn('c1', 'torn-notebook'), feather], RAID_ID);
-    expect(evidence).toEqual({ notebook: false, feather: true, collected: 1 });
-  });
+  it('进度卡显示取得手记与调查石碑两步', () => {
+    expect(questProgress([], null).statusText).toBe('开始探索后，可按线索推进任务。');
+    const initial = questProgress([], RAID_ID);
+    expect(initial.statusText).toContain('思源楼前');
+    expect(initial.collected).toBe(0);
 
-  it('任务卡文案按进度推进，并给出下一步方位指引', () => {
-    expect(questProgress([], null).statusText).toBe('开始探索后，可按线索搜集任务证据。');
-    expect(questProgress([], RAID_ID).statusText).toBe('线索一 · 去图书馆周边，用手电寻找残缺手记');
-    expect(questProgress([notebook], RAID_ID).statusText).toBe(
-      '线索二 · 去明湖石碑周边，用手电寻找异常羽毛',
-    );
-    const done = questProgress([notebook, feather], RAID_ID);
-    expect(done.statusText).toBe('线索齐备：带回南门撤离可解锁第一章。');
+    const notebookOnly = questProgress([notebook], RAID_ID);
+    expect(notebookOnly.statusText).toContain('明湖石碑');
+    expect(notebookOnly.collected).toBe(1);
+    expect(notebookOnly.complete).toBe(false);
+
+    const done = questProgress([notebook], RAID_ID, true);
+    expect(done.statusText).toBe(QUEST_COMPLETE_HINT);
     expect(done.collected).toBe(2);
     expect(done.complete).toBe(true);
   });
+
+  it('石碑先于手记调查时提示先取得本局手记', () => {
+    expect(questProgress([], RAID_ID, true).statusText).toBe(NOTEBOOK_PREREQUISITE_HINT);
+  });
 });
 
-describe('章节解锁判定（与 SavePort.finalizeRaid 规则一致）', () => {
-  it('成功 + questComplete + 两件本局证据 → 解锁', () => {
-    expect(chapterUnlockGranted(result())).toBe(true);
+describe('章节解锁判定', () => {
+  it('成功撤离、任务已完成且携带本局手记时解锁，羽毛无关', () => {
+    expect(chapterUnlockGranted(result({ items: [notebook] }))).toBe(true);
+    expect(chapterUnlockGranted(result({ items: [notebook, feather] }))).toBe(true);
   });
 
-  it('questComplete 缺失或为 false 时不解锁', () => {
+  it('缺手记、未调查或任务标记缺失时不解锁', () => {
+    expect(chapterUnlockGranted(result({ items: [feather] }))).toBe(false);
     expect(chapterUnlockGranted(result({ questComplete: false }))).toBe(false);
     expect(chapterUnlockGranted(result({ questComplete: undefined }))).toBe(false);
   });
 
-  it('失败结算永不解锁', () => {
+  it('上一局或带入的手记不解锁，失败撤离也不解锁', () => {
+    expect(
+      chapterUnlockGranted(result({ items: [loot('old', 'torn-notebook', 'raid-old')] })),
+    ).toBe(false);
+    expect(chapterUnlockGranted(result({ items: [carryIn('carry', 'torn-notebook')] }))).toBe(
+      false,
+    );
     expect(chapterUnlockGranted(result({ outcome: 'failed', reason: 'timeout', items: [] }))).toBe(
       false,
     );
-  });
-
-  it('证据只有一件或不属于本局时不解锁', () => {
-    expect(chapterUnlockGranted(result({ items: [notebook] }))).toBe(false);
-    expect(
-      chapterUnlockGranted(result({ items: [loot('n', 'torn-notebook', 'raid-old'), feather] })),
-    ).toBe(false);
-  });
-
-  it('凑齐后丢弃任一证据（不在结算 items 中）→ 不解锁', () => {
-    expect(chapterUnlockGranted(result({ items: [feather] }))).toBe(false);
-  });
-});
-
-describe('文案契约（剧情稿 v1.1 表 7）', () => {
-  it('场景与界面使用同一组文案常量', () => {
-    expect(NOTEBOOK_PREREQUISITE_HINT).toBe('湖畔线索：缺少本局残缺手记。');
-    expect(QUEST_COMPLETE_HINT).toBe('线索齐备：带回南门撤离可解锁第一章。');
   });
 });

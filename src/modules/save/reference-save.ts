@@ -246,15 +246,13 @@ export class ReferenceSave implements SavePort {
       );
       next.warehouse = retained.warehouse;
       next.currency = retained.currency;
-      const hasEvidence = ['torn-notebook', 'anomalous-feather'].every((id) =>
-        result.items.some(
-          (item) =>
-            item.itemId === id &&
-            item.origin.kind === 'raid-loot' &&
-            item.origin.obtainedInRaidId === result.raidId,
-        ),
+      const hasNotebook = result.items.some(
+        (item) =>
+          item.itemId === 'torn-notebook' &&
+          item.origin.kind === 'raid-loot' &&
+          item.origin.obtainedInRaidId === result.raidId,
       );
-      if (result.questComplete && hasEvidence && !next.unlockedChapterIds.includes('siyuan-code')) {
+      if (result.questComplete && hasNotebook && !next.unlockedChapterIds.includes('siyuan-code')) {
         next.unlockedChapterIds.push('siyuan-code');
       }
     }

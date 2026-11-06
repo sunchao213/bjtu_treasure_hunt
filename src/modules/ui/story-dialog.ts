@@ -1,5 +1,5 @@
 import { type ChapterContent, type ChapterStep, FIRST_CHAPTER } from '../quests/chapter-content';
-import { EVIDENCE_FEATHER, EVIDENCE_NOTEBOOK } from '../quests/quest-service';
+import { EVIDENCE_NOTEBOOK } from '../quests/quest-service';
 import { createTypewriter, toSegments, type StorySegment } from './typewriter';
 
 /**
@@ -11,7 +11,7 @@ import { createTypewriter, toSegments, type StorySegment } from './typewriter';
  * - 全部段落读完后自动关闭。
  *
  * 触发约定（与剧情稿 v1.1 一致）：
- * - step：拾取任务证据时自动弹出对应线索全文（表 4）；
+ * - step：取得手记或调查石碑时自动弹出对应线索全文；
  * - ending：成功撤离解锁章节后自动弹出结尾与下一章钩子（6.4）；
  * - full-chapter：剧情档案「回看」入口，完整重读本章。
  * 开场由序章（prologue-stage）承担，不再重复弹窗。
@@ -49,7 +49,6 @@ export function storySegments(
 /** 拾取证据 → 对应剧情步骤（表 4 的两段线索正文；撤离段由 ending 呈现）。 */
 const EVIDENCE_STEP_INDEX: Readonly<Record<string, number>> = {
   [EVIDENCE_NOTEBOOK]: 0,
-  [EVIDENCE_FEATHER]: 1,
 };
 
 /** 拾取到任务证据时返回应自动弹出的剧情步骤；非任务证据返回 undefined。 */
@@ -59,6 +58,14 @@ export function stepForEvidence(
 ): ChapterStep | undefined {
   const index = EVIDENCE_STEP_INDEX[itemId];
   return index === undefined ? undefined : chapter.steps[index];
+}
+
+export function stepForLocationInteraction(
+  locationId: string,
+  chapter: ChapterContent = FIRST_CHAPTER,
+): ChapterStep | undefined {
+  if (locationId === 'minghu-stele') return chapter.steps[1];
+  return undefined;
 }
 
 export function storyDialogMarkup(): string {

@@ -69,6 +69,7 @@ export interface RaidView {
   readonly extractionProgress: number;
   readonly isBusy: boolean;
   readonly saveError: boolean;
+  readonly steleInvestigated: boolean;
   readonly result: RaidResult | null;
 }
 
@@ -89,7 +90,7 @@ export interface RaidControllerPort {
   applyDamage(amount: number): void;
   cancelExtraction(): void;
   setExtractionPresence(isInside: boolean): void;
-  setQuestComplete(complete: boolean): void;
+  investigateStele(): boolean;
   tick(): void;
   dispose(): void;
 }

@@ -38,9 +38,10 @@ import type { GameSnapshot, PlayerInput, RemotePlayerSnapshot } from '../shared/
 import type { TouchControls } from '../modules/world/touch-controls';
 import type { SoundManager } from '../modules/ui/sound-manager';
 import {
+  hasCurrentRaidNotebook,
   isQuestComplete,
-  prerequisiteHint,
   QUEST_COMPLETE_HINT,
+  NOTEBOOK_PREREQUISITE_HINT,
 } from '../modules/quests/quest-service';
 import { evidenceStoryBeat } from '../modules/quests/chapter-content';
 
@@ -156,6 +157,7 @@ export class WorldScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image('campus-base', 'assets/maps/campus-night/campus-base.jpg');
+    this.load.image('minghu-stele', 'assets/environment/minghu-stele.png');
     this.load.spritesheet('treasure-chest', 'assets/props/treasure-chest.png', {
       frameWidth: 256,
       frameHeight: 256,
@@ -1010,6 +1012,36 @@ export class WorldScene extends Phaser.Scene {
       this.keyPrompt = { key: 'Q', label: '安抚' };
       return;
     }
+    if (distance(WORLD.stone, this.position) < 82) {
+      this.search.cancel();
+      if (view.steleInvestigated) {
+        this.interaction = '明湖石碑 · 已调查';
+        return;
+      }
+      if (!hasCurrentRaidNotebook(carried, view.raidId)) {
+        this.interaction = NOTEBOOK_PREREQUISITE_HINT;
+        return;
+      }
+      this.interaction = '按 E 调查明湖石碑';
+      this.keyPrompt = { key: 'E', label: '调查' };
+      if (held && !this.previousInteract && view.phase === 'active') {
+        if (this.services.controller.investigateStele()) {
+          const raidId = view.raidId;
+          if (raidId) {
+            this.services.events.emit('LocationInteracted', { raidId, locationId: 'minghu-stele' });
+          }
+          this.services.sound.play('pick');
+          this.banner = {
+            text: isQuestComplete(carried, view.raidId, true)
+              ? QUEST_COMPLETE_HINT
+              : '【线索二 · 明湖石碑上的记号】石碑刻痕与手记中的符号吻合。',
+            untilMs: this.time.now + 6000,
+          };
+          this.services.notify('已调查明湖石碑，任务完成。');
+        }
+      }
+      return;
+    }
     const loot = [...this.ground.values()]
       .filter(
         (drop) =>
@@ -1048,12 +1080,6 @@ export class WorldScene extends Phaser.Scene {
         this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
     );
     if (chest) {
-      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId);
-      if (prerequisite !== null) {
-        this.search.cancel();
-        this.interaction = prerequisite;
-        return;
-      }
       // 满包时不启动搜索进度：否则每次 2 秒读条失败重来，玩家只看得到进度条循环。
       if (bagFull) {
         this.search.cancel();
@@ -1088,15 +1114,10 @@ export class WorldScene extends Phaser.Scene {
             raidId: view.raidId,
             locationId: chest.id,
           });
-          if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)) {
-            this.services.controller.setQuestComplete(true);
-          }
         }
         if (result.ok) {
           const definition = ITEM_DEFINITIONS[chest.itemId];
-          const beat = isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)
-            ? QUEST_COMPLETE_HINT
-            : evidenceStoryBeat(chest.itemId);
+          const beat = evidenceStoryBeat(chest.itemId);
           const pickup =
             beat ??
             `已拾取：${definition?.name ?? chest.itemId}${
@@ -1620,5 +1641,9 @@ export class WorldScene extends Phaser.Scene {
 
   private drawCampus(): void {
     this.add.image(0, 0, 'campus-base').setOrigin(0).setDepth(-1);
+    this.add
+      .image(WORLD.stone.x, WORLD.stone.y, 'minghu-stele')
+      .setOrigin(0.5, 1)
+      .setDepth(this.entityDepth(WORLD.stone.y));
   }
 }

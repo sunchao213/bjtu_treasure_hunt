@@ -31,12 +31,12 @@ export function prepViewMarkup(): string {
           <div class="lobby-commandbar"><div><span class="lobby-eyebrow">准备大厅 / 任务简报</span><strong>夜间行动窗口 · 23:40 - 04:30</strong></div><div class="lobby-weather"><span class="weather-moon">◐</span><span><b>小雨 · 能见度低</b><small>异常活动：轻度</small></span></div></div>
           <header class="prep-hero">
             <p class="prep-kicker">思源密码 · 行前准备</p>
-            <h2 id="lobby-prepare-title">晚归的路上，多看了一眼那盏灯</h2>
-            <p class="prep-brief">你只是忘了带校园卡，回宿舍比平时晚了一点。图书馆外旧书架旁多出一盏从没见过的灯，页脚写着「思源」。今晚把线索带出去，别走地图上没有的路。</p>
-            <div class="lobby-mission-strip"><span class="mission-number">01</span><span><b>第一章 · 明湖边的异常羽毛</b><small>带回两件证据，并从南门安全撤离</small></span><span class="mission-status">未开始</span></div>
+            <h2 id="lobby-prepare-title">晚归的路上，遇见一只陌生的宝箱</h2>
+            <p class="prep-brief">你只是忘了带校园卡，回宿舍比平时晚了一点。思源楼前多出一个从没见过的宝箱，里面夹着半本被水浸过的手记。今晚把手记带出去，别走地图上没有的路。</p>
+            <div class="lobby-mission-strip"><span class="mission-number">01</span><span><b>第一章 · 思源楼的残缺手记</b><small>调查明湖石碑，带回本局手记并从南门安全撤离</small></span><span class="mission-status">未开始</span></div>
             <ol class="prep-goals" aria-label="本局目标">
-              <li><b>残缺手记</b><span>图书馆外 · 旧书架</span></li>
-              <li><b>异常羽毛</b><span>明湖 · 石碑</span></li>
+              <li><b>残缺手记</b><span>思源楼前 · 固定宝箱</span></li>
+              <li><b>调查石碑</b><span>明湖 · 靠近后按 E</span></li>
               <li><b>携带价值 ≥ 100</b><span>南门 · 撤离点</span></li>
             </ol>
           </header>
@@ -109,7 +109,7 @@ export function mountShell(root: HTMLElement): void {
   root.innerHTML = `
     <section id="prologue" class="prologue" aria-label="序章对话" aria-modal="true" role="dialog" tabindex="-1">
       <div class="prologue-stage">
-        <img id="prologue-image" class="prologue-image" src="/images/prologue-discovery.svg" alt="图书馆外的夜路、旧书架与被路灯照亮的草稿纸" />
+        <img id="prologue-image" class="prologue-image" src="/images/prologue-discovery.svg" alt="夜路上被路灯照亮的草稿纸" />
         <p id="prologue-progress" class="prologue-progress">序章</p>
         <div id="prologue-story-overlay" class="prologue-story-overlay" hidden>
           <div id="prologue-story-box" class="prologue-story-box">
@@ -180,10 +180,10 @@ export function mountShell(root: HTMLElement): void {
           </section>
           <section class="side-card quest-card" id="quest-panel"><div class="section-kicker">思源密码 · 任务进度 <span id="quest-count">0 / 2</span></div>
             <ul id="quest-steps" class="quest-steps">
-              <li data-evidence="torn-notebook">残缺手记 · 图书馆外</li>
-              <li data-evidence="anomalous-feather">异常羽毛 · 明湖石碑</li>
+              <li data-evidence="torn-notebook">取得残缺手记 · 思源楼前</li>
+              <li data-evidence="minghu-stele">调查明湖石碑</li>
             </ul>
-            <p id="quest-status" class="muted">线索：图书馆外残缺手记</p>
+            <p id="quest-status" class="muted">前往思源楼前打开固定宝箱</p>
           </section>
           <section class="side-card room-card" id="room-panel"><div class="section-kicker">联机房间 <span id="room-connection">未连接</span></div>
             <p id="room-status" class="muted">开发环境可用双标签页联机演示；配置服务器后自动使用 WebSocket。</p>
@@ -202,7 +202,7 @@ export function mountShell(root: HTMLElement): void {
             <p id="quest-unlock" class="quest-unlock" hidden></p><p id="quest-lock" class="muted" hidden></p>
             <button id="retry-save" class="primary" hidden>重试保存</button><button id="next" class="primary" hidden>返回准备</button>
           </section>
-          <details id="debug-panel" class="debug" hidden><summary>开发调试</summary><button id="damage" class="secondary">模拟受到 25 点伤害</button><button id="fatal" class="text-button">模拟死亡</button><button id="debug-grant-uncommon" class="secondary">发放 1 件稀有（25）</button><button id="debug-grant-epic" class="secondary">发放 1 件史诗（60）</button><button id="debug-grant-notebook" class="secondary">发放残缺手记（主线）</button><button id="debug-grant-feather" class="secondary">发放异常羽毛（主线）</button><button id="debug-tp-notebook" class="secondary">传送·图书馆书架</button><button id="debug-tp-feather" class="secondary">传送·明湖石碑</button><button id="debug-tp-extract" class="secondary">传送·南门撤离点</button></details>
+          <details id="debug-panel" class="debug" hidden><summary>开发调试</summary><button id="damage" class="secondary">模拟受到 25 点伤害</button><button id="fatal" class="text-button">模拟死亡</button><button id="debug-grant-uncommon" class="secondary">发放 1 件稀有（25）</button><button id="debug-grant-epic" class="secondary">发放 1 件史诗（60）</button><button id="debug-grant-notebook" class="secondary">发放残缺手记（主线）</button><button id="debug-grant-feather" class="secondary">发放异常羽毛（普通收藏）</button><button id="debug-tp-notebook" class="secondary">传送·思源楼固定宝箱</button><button id="debug-tp-feather" class="secondary">传送·明湖石碑</button><button id="debug-tp-extract" class="secondary">传送·南门撤离点</button></details>
         </aside>
       </div>
       <p id="notice" class="notice" role="status" aria-live="polite">南门集合，等待出发。</p>

@@ -20,7 +20,7 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['window-seat', '靠窗座凭证', 'uncommon', 'collectible'],
     ['morning-coffee', '早八不困咖啡', 'uncommon', 'healing'],
     ['school-badge', '校训徽章', 'uncommon', 'collectible'],
-    ['anomalous-feather', '异常羽毛', 'epic', 'quest'],
+    ['anomalous-feather', '异常羽毛', 'epic', 'collectible'],
     ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible'],
     ['library-reward-ticket', '图书馆奖励券', 'epic', 'collectible'],
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],

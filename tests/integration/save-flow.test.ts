@@ -66,7 +66,7 @@ describe('A to B reference persistence integration', () => {
         ).ok,
       ).toBe(true);
     }
-    controller.setQuestComplete(true);
+    expect(controller.investigateStele()).toBe(true);
     expect(controller.getView().value).toBe(110);
     controller.setExtractionPresence(true);
     controller.startExtraction();
@@ -108,7 +108,7 @@ describe('A to B reference persistence integration', () => {
         origin: { kind: 'raid-loot', obtainedInRaidId: 'drop' },
       });
     }
-    controller.setQuestComplete(true);
+    expect(controller.investigateStele()).toBe(true);
     inventory.remove('drop-0');
     controller.setExtractionPresence(true);
     controller.startExtraction();
