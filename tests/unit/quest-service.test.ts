@@ -44,7 +44,11 @@ describe('本局手记身份判定', () => {
   });
 
   it('异常羽毛按普通收藏处理，不计入任务进度', () => {
-    expect(carriedEvidence([feather], RAID_ID)).toEqual({ notebook: false, collected: 0 });
+    expect(carriedEvidence([feather], RAID_ID)).toEqual({
+      notebook: false,
+      feather: false,
+      collected: 0,
+    });
     expect(isQuestComplete([notebook, feather], RAID_ID, false)).toBe(false);
     expect(isQuestComplete([notebook], RAID_ID, true)).toBe(true);
   });
@@ -60,7 +64,7 @@ describe('明湖石碑任务进度', () => {
   });
 
   it('进度卡显示取得手记与调查石碑两步', () => {
-    expect(questProgress([], null).statusText).toBe('开始探索后，可按线索推进任务。');
+    expect(questProgress([], null).statusText).toBe('开始探索后，可按线索搜集任务证据。');
     const initial = questProgress([], RAID_ID);
     expect(initial.statusText).toContain('思源楼前');
     expect(initial.collected).toBe(0);

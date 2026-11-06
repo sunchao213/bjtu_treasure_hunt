@@ -1,4 +1,5 @@
 import { WORLD } from '../../config/world-config';
+import { questChapterById, QUEST_CHAPTER_ID } from '../quests/quest-service';
 import type { Point } from '../../shared/types/game';
 
 export interface LootSpawn extends Point {
@@ -24,19 +25,46 @@ export function clearLootPosition(p: Point, radius = 35): boolean {
   );
 }
 
-/** Finite candidate sampling: even a constant RNG cannot hang the raid. */
-export function generateLootSpawns(random: () => number = Math.random): LootSpawn[] {
-  const questChest: LootSpawn = { ...WORLD.questChest, itemId: 'torn-notebook' };
-  if (!clearLootPosition(questChest)) {
-    throw new Error('Fixed quest chest is not in a clear playable position');
+/** 任务证据刷新计划：每个章节的两件证据各占一个区域的固定搜索点。 */
+export interface QuestSpawnPlan {
+  itemId: string;
+  zoneId: string;
+  index: number;
+}
+
+export function questSpawnPlan(chapterId: string = QUEST_CHAPTER_ID): QuestSpawnPlan[] {
+  const chapter = questChapterById(chapterId);
+  const plan = chapter.evidence
+    .filter((entry) => entry.spawnZoneId !== '')
+    .map((entry) => ({
+      itemId: entry.itemId,
+      zoneId: entry.spawnZoneId,
+      index: entry.spawnIndex,
+    }));
+  // 第一章的手记来自思源楼前固定宝箱，不占用随机搜索区。
+  if (chapter.id === QUEST_CHAPTER_ID) {
+    plan.push({ itemId: 'torn-notebook', zoneId: 'siyuan', index: -1 });
   }
-  const result: LootSpawn[] = [questChest];
+  return plan;
+}
+
+/** Finite candidate sampling: even a constant RNG cannot hang the raid. */
+export function generateLootSpawns(
+  random: () => number = Math.random,
+  plan: readonly QuestSpawnPlan[] = questSpawnPlan(),
+): LootSpawn[] {
+  const result: LootSpawn[] = [];
   const roll = () => Math.max(0, Math.min(0.999999, random()));
   for (const zone of WORLD.lootZones) {
     const candidates: Point[] = [];
     for (let x = zone.x + 25; x < zone.x + zone.width - 20; x += 50) {
       for (let y = zone.y + 25; y < zone.y + zone.height - 20; y += 50) {
-        if (clearLootPosition({ x, y })) candidates.push({ x, y });
+        if (
+          clearLootPosition({ x, y }) &&
+          Math.hypot(x - WORLD.questChest.x, y - WORLD.questChest.y) >= 90
+        ) {
+          candidates.push({ x, y });
+        }
       }
     }
     const quota = zone.id === 'lake' ? 1 : 3;
@@ -67,16 +95,14 @@ export function generateLootSpawns(random: () => number = Math.random): LootSpaw
     if (!selected) throw new Error(`No accessible loot positions in ${zone.id}`);
     for (let i = 0; i < quota; i++) {
       const point = selected[i]!;
-      const jitter = { x: point.x + (roll() - 0.5) * 20, y: point.y + (roll() - 0.5) * 20 };
-      const position =
-        clearLootPosition(jitter) &&
-        result.every((other) => Math.hypot(jitter.x - other.x, jitter.y - other.y) >= 90)
-          ? jitter
-          : point;
-      const pool = ['window-seat', 'morning-coffee', 'school-badge', 'anomalous-feather'];
-      const itemId = pool[Math.floor(roll() * pool.length)]!;
-      result.push({ ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
+      const pool = ['window-seat', 'morning-coffee', 'school-badge'];
+      const quest = plan.find((entry) => entry.zoneId === zone.id && entry.index === i);
+      const itemId = quest ? quest.itemId : pool[Math.floor(roll() * pool.length)]!;
+      result.push({ ...point, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
     }
+  }
+  if (plan.some((entry) => entry.itemId === 'torn-notebook')) {
+    result.push({ ...WORLD.questChest, itemId: 'torn-notebook' });
   }
   return result;
 }

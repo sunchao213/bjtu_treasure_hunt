@@ -68,7 +68,7 @@ describe('portrait campus image map', () => {
           itemId: 'torn-notebook',
         }),
       ]);
-      for (const other of points.slice(1))
+      for (const other of points.filter((point) => point.id !== WORLD.questChest.id))
         expect(distance(WORLD.questChest, other)).toBeGreaterThanOrEqual(90);
     }
   });

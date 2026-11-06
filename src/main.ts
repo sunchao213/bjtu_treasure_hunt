@@ -1,8 +1,14 @@
 import './style.css';
 import './mobile-layout.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
+import { bindStage } from './modules/ui/stage';
 import { createGame } from './app/create-game';
-import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
+import {
+  HEALING_AMOUNTS,
+  isPurchasedItem,
+  ITEM_DEFINITIONS,
+  RAID_RULES,
+} from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
 import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save';
@@ -14,14 +20,19 @@ import {
   renderChapterLock,
   renderChapterUnlock,
   renderCodexPanel,
+  renderLobbyMissions,
+  renderPrepGoals,
   renderQuestPanel,
 } from './modules/ui/quest-view';
-import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
 import {
-  bindStoryDialog,
-  stepForEvidence,
-  stepForLocationInteraction,
-} from './modules/ui/story-dialog';
+  activeQuestChapter,
+  chapterUnlockGranted,
+  questChapterForEvidence,
+  questProgress,
+} from './modules/quests/quest-service';
+import { chapterContentById } from './modules/quests/chapter-content';
+import { bindStoryDialog, stepForEvidence } from './modules/ui/story-dialog';
+import { bindConfirmDialog } from './modules/ui/confirm-dialog';
 import { createTypewriter } from './modules/ui/typewriter';
 import {
   PROLOGUE_AFTER_PAPER,
@@ -62,6 +73,8 @@ if ('scrollRestoration' in history) {
   history.scrollRestoration = 'manual';
 }
 mountShell(app);
+// 全站确认弹窗：取代浏览器原生 confirm，样式跟随画框缩放。
+const confirmDialog = bindConfirmDialog();
 // 一级大厅导航只切换页面内容，不改变对局状态；各模块可独立接入后端数据。
 const lobbyTabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-lobby-tab]'));
 const lobbyPanels = Array.from(document.querySelectorAll<HTMLElement>('[data-lobby-panel]'));
@@ -275,7 +288,13 @@ async function bootstrap(): Promise<void> {
         return;
       }
       try {
-        if (confirm('建议先导出原始存档。确定清空本框架的损坏存档吗？')) {
+        const confirmed = await confirmDialog.ask({
+          title: '清空损坏的存档？',
+          message: '建议先用「导出存档备份」保存原始数据。清空后本框架的存档无法恢复。',
+          confirmText: '清空存档',
+          tone: 'danger',
+        });
+        if (confirmed) {
           localStorage.removeItem(FORMAL_SAVE_KEY);
           location.reload();
         }
@@ -452,6 +471,42 @@ async function bootstrap(): Promise<void> {
     updateOptions();
     syncLoadoutControls();
   };
+
+  const renderWarehouse = (warehouse: readonly ItemInstance[]): void => {
+    const groups = new Map<'exploration' | 'purchase', Map<string, number>>([
+      ['exploration', new Map()],
+      ['purchase', new Map()],
+    ]);
+    for (const item of warehouse) {
+      const definition = ITEM_DEFINITIONS[item.itemId];
+      if (!definition || definition.kind === 'collectible') continue;
+      const section = isPurchasedItem(item) ? 'purchase' : 'exploration';
+      const counts = groups.get(section)!;
+      counts.set(item.itemId, (counts.get(item.itemId) ?? 0) + 1);
+    }
+    const renderSection = (
+      section: 'exploration' | 'purchase',
+      listId: string,
+      emptyId: string,
+    ) => {
+      const list = element<HTMLUListElement>(listId);
+      list.replaceChildren();
+      const entries = groups.get(section)!;
+      for (const [itemId, quantity] of entries) {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = ITEM_DEFINITIONS[itemId]?.name ?? itemId;
+        const count = document.createElement('b');
+        count.className = 'warehouse-item-count';
+        count.textContent = `数量：${quantity}`;
+        li.append(name, count);
+        list.append(li);
+      }
+      element(emptyId).hidden = entries.size > 0;
+    };
+    renderSection('exploration', 'exploration-warehouse', 'exploration-warehouse-empty');
+    renderSection('purchase', 'purchase-warehouse', 'purchase-warehouse-empty');
+  };
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
   let onlineMode = Boolean(realtimeUrl);
@@ -493,6 +548,8 @@ async function bootstrap(): Promise<void> {
   const scene = new WorldScene({
     controller: activeController,
     inventory: activeInventory,
+    /** 当前章节实时读取存档：第一关通关后，下一局自动切到第二章。 */
+    questChapter: () => activeQuestChapter(save.view().unlockedChapterIds).id,
     events,
     notify,
     touch,
@@ -659,12 +716,15 @@ async function bootstrap(): Promise<void> {
     render();
   };
   const disposeLayout = bindMobileLayout(app, () => queueMicrotask(onResize));
+  // 固定画框先把缩放比例写好，再让 Phaser 量画布尺寸，避免首帧按窗口尺寸渲染。
+  const disposeStage = bindStage(() => queueMicrotask(onResize));
   // Establish the logical landscape box before Phaser measures its canvas.
   const game = createGame(scene);
   element('mobile-fullscreen').onclick = () => {
     void requestLandscape();
   };
   element('mobile-rules').onclick = () => element('open-rules').click();
+  element('hud-rules').onclick = () => element('open-rules').click();
   element('mobile-sound').onclick = () => {
     if (sound.getMusicState() === 'playing') {
       audibleVolume = sound.getSettings().volume;
@@ -711,7 +771,8 @@ async function bootstrap(): Promise<void> {
     codex.showModal();
     render();
   };
-  for (const id of ['open-codex', 'archive-codex', 'mobile-codex']) {
+  // hud-codex 是「对局中」画布顶栏里的入口：对局时品牌栏会收起，图鉴/规则改从这里进（CHG-30）。
+  for (const id of ['open-codex', 'archive-codex', 'mobile-codex', 'hud-codex']) {
     element(id).onclick = openCodex;
   }
   element('close-codex').onclick = () => codex.close();
@@ -769,25 +830,20 @@ async function bootstrap(): Promise<void> {
   // 每局只弹一次的剧情键：`${raidId}:${itemId}` 为线索，`${raidId}:ending` 为结尾。
   const storyShownPerRaid = new Set<string>();
   events.on('ItemPicked', ({ raidId, item }) => {
-    const step = stepForEvidence(item.itemId);
+    const chapterId = questChapterForEvidence(item.itemId);
+    const step = stepForEvidence(item.itemId, chapterContentById(chapterId));
     if (!step) return;
     const key = `${raidId}:${item.itemId}`;
     if (storyShownPerRaid.has(key)) return;
     storyShownPerRaid.add(key);
-    story.open({ kind: 'step', step });
+    story.open({ kind: 'step', step }, chapterContentById(chapterId));
   });
-  events.on('LocationInteracted', ({ raidId, locationId }) => {
-    const step = stepForLocationInteraction(locationId);
-    if (!step) return;
-    const key = `${raidId}:${locationId}`;
-    if (storyShownPerRaid.has(key)) return;
-    storyShownPerRaid.add(key);
-    story.open({ kind: 'step', step });
-  });
-  // 剧情档案的「回看」按钮随存档状态重渲染，用事件委托绑定。
+  // 剧情档案的「回看」按钮随存档状态重渲染，用事件委托绑定；每章一个回看入口。
   element('story-archive').addEventListener('click', (event) => {
-    if ((event.target as HTMLElement).id === 'open-story') {
-      story.open({ kind: 'full-chapter' });
+    const button = event.target as HTMLElement;
+    const chapterId = button.dataset.chapterStory;
+    if (chapterId !== undefined) {
+      story.open({ kind: 'full-chapter' }, chapterContentById(chapterId));
     }
   });
 
@@ -938,41 +994,49 @@ async function bootstrap(): Promise<void> {
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = activeInventory.getCarriedItems();
-    renderQuestPanel(questProgress(carried, view.raidId, view.steleInvestigated));
+    const archive = save.view();
+    const activeChapter = activeQuestChapter(archive.unlockedChapterIds);
+    renderQuestPanel(questProgress(carried, view.raidId, activeChapter.id, view.steleInvestigated));
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
       renderInventory(carried);
       lastInventory = signature;
     }
-    const archive = save.view();
     const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
-    element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
+    const functionalWarehouse = archive.warehouse.filter(
+      (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
+    );
+    element('warehouse-count').textContent = `${functionalWarehouse.length} 件功能道具`;
     element('warehouse-count-label').innerHTML =
-      `${archive.warehouse.length} 件物品 · <b id="currency-count">${archive.currency} 交子</b>`;
+      `${functionalWarehouse.length} 件功能道具 · <b id="currency-count">${archive.currency} 交子</b>`;
     element('archive-detail').textContent = archive.unlockedChapterIds.length
-      ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
+      ? `探索发现已收入图鉴；已解锁 ${archive.unlockedChapterIds.length} 章思源密码记录。`
       : archive.codexIds.length
-        ? `已点亮 ${archive.codexIds.length} 种图鉴；完成石碑调查并带回本局手记成功撤离可解锁章节。`
-        : '成功撤离后，物品和图鉴会保存在此浏览器。';
+        ? `探索发现已点亮 ${archive.codexIds.length} 种图鉴；功能物品保存在仓库。`
+        : '探索物品成功撤离后会收入图鉴，功能物品会保存在仓库。';
     if (lastWarehouse !== warehouseSignature) {
+      renderWarehouse(archive.warehouse);
       renderLoadoutOptions(archive.warehouse);
       lastWarehouse = warehouseSignature;
     }
-    const unlocked = view.result !== null && chapterUnlockGranted(view.result);
-    renderChapterUnlock(element('quest-unlock'), unlocked);
+    const unlocked = view.result !== null && chapterUnlockGranted(view.result, activeChapter.id);
+    renderChapterUnlock(element('quest-unlock'), unlocked, activeChapter.id);
     // R07：成功撤离但证据不齐时，说明本章为什么还没解锁。
-    renderChapterLock(element('quest-lock'), view.result);
+    renderChapterLock(element('quest-lock'), view.result, activeChapter.id);
     // 结尾剧情（剧情稿 6.4）：成功撤离解锁章节后自动弹出一次。
     if (unlocked) {
       const key = `${view.raidId}:ending`;
       if (!storyShownPerRaid.has(key)) {
         storyShownPerRaid.add(key);
-        story.open({ kind: 'ending' });
+        story.open({ kind: 'ending' }, chapterContentById(activeChapter.id));
       }
     }
     const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
     if (codexSignature !== lastCodex) {
       renderCodexPanel(element('codex-list'), element('story-archive'), archive);
+      // 大厅任务简报与行前目标跟随章节推进：通关一章后在这里追加下一章。
+      renderLobbyMissions(element('lobby-missions'), archive.unlockedChapterIds);
+      renderPrepGoals(element('prep-goals'), activeChapter.id);
       if (codex.open) renderCodex(archive.codexIds, archive.unlockedChapterIds);
       lastCodex = codexSignature;
     }
@@ -1062,9 +1126,22 @@ async function bootstrap(): Promise<void> {
       drop.textContent = '丢弃';
       drop.setAttribute('aria-label', `丢弃${definition.name}`);
       drop.onclick = () => {
-        if (definition.kind !== 'quest' || confirm('这是任务物品，确认丢弃？')) {
+        if (definition.kind !== 'quest') {
           scene.drop(item.instanceId);
+          return;
         }
+        void confirmDialog
+          .ask({
+            title: `丢弃${definition.name}？`,
+            message: '这是任务物品，丢弃后本局任务进度会回退，需要重新获取。',
+            confirmText: '丢弃',
+            tone: 'danger',
+          })
+          .then((confirmed) => {
+            if (confirmed) {
+              scene.drop(item.instanceId);
+            }
+          });
       };
       li.append(drop);
       list.append(li);
@@ -1121,12 +1198,22 @@ async function bootstrap(): Promise<void> {
     render();
   };
   element('abandon').onclick = () => {
-    if (!confirm('确定放弃本次探索吗？本局携带物（包括从仓库带入的物品）将全部损失。')) {
-      return;
-    }
-    activeController.abandon();
-    sound.setMusic(false);
-    render();
+    void confirmDialog
+      .ask({
+        title: '放弃本次探索？',
+        message: '本局携带物（包括从仓库带入的物品）将全部损失，已存进仓库的物品与图鉴不受影响。',
+        confirmText: '放弃探索',
+        cancelText: '继续探索',
+        tone: 'danger',
+      })
+      .then((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        activeController.abandon();
+        sound.setMusic(false);
+        render();
+      });
   };
   element('next').onclick = () => {
     activeController.prepareNext();
@@ -1158,15 +1245,25 @@ async function bootstrap(): Promise<void> {
       notify('请先结束本局并返回准备页。');
       return;
     }
-    if (confirm('确定清空本框架的联调仓库与图鉴？该操作不能撤销。')) {
-      try {
-        save.reset();
-        render();
-        notify('联调存档已重置。');
-      } catch {
-        notify('重置失败，原有存档未确认改动。');
-      }
-    }
+    void confirmDialog
+      .ask({
+        title: '清空联调存档？',
+        message: '本框架的永久仓库与图鉴会被清空，物品和已点亮的条目都无法恢复。',
+        confirmText: '清空存档',
+        tone: 'danger',
+      })
+      .then((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        try {
+          save.reset();
+          render();
+          notify('联调存档已重置。');
+        } catch {
+          notify('重置失败，原有存档未确认改动。');
+        }
+      });
   };
   element('export-save').onclick = () => {
     const blob = new Blob([save.exportRaw()], { type: 'application/json' });
@@ -1236,12 +1333,12 @@ async function bootstrap(): Promise<void> {
     };
     const debugScene = scene as unknown as DebugSceneAccess;
     const teleportTargets: Record<string, () => { x: number; y: number } | null> = {
-      'debug-tp-notebook': () => WORLD.questChest,
-      'debug-tp-feather': () => WORLD.stone,
+      'debug-tp-notebook': () => ({ ...WORLD.questChest }),
+      'debug-tp-feather': () => ({ ...WORLD.stone }),
       'debug-tp-extract': () => ({ ...WORLD.spawn }),
     };
     const questPointNames: Record<string, string> = {
-      'debug-tp-notebook': '思源楼前固定宝箱',
+      'debug-tp-notebook': '思源楼前',
       'debug-tp-feather': '明湖石碑',
       'debug-tp-extract': '南门撤离点',
     };
@@ -1301,6 +1398,7 @@ async function bootstrap(): Promise<void> {
     import.meta.hot.dispose(() => {
       sound.dispose();
       disposeLayout();
+      disposeStage();
       controller.dispose();
       roomSession.close();
       gameSession.close();

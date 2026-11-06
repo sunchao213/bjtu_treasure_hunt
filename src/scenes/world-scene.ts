@@ -8,7 +8,7 @@ import {
   monsterAnimationFor,
   monsterScaleFor,
 } from '../config/monster-sprites';
-import { generateLootSpawns, type LootSpawn } from '../modules/world/loot-spawns';
+import { generateLootSpawns, questSpawnPlan, type LootSpawn } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
@@ -38,12 +38,13 @@ import type { GameSnapshot, PlayerInput, RemotePlayerSnapshot } from '../shared/
 import type { TouchControls } from '../modules/world/touch-controls';
 import type { SoundManager } from '../modules/ui/sound-manager';
 import {
-  hasCurrentRaidNotebook,
   isQuestComplete,
-  QUEST_COMPLETE_HINT,
-  NOTEBOOK_PREREQUISITE_HINT,
+  hasCurrentRaidNotebook,
+  prerequisiteHint,
+  questChapterById,
+  QUEST_CHAPTER_ID,
 } from '../modules/quests/quest-service';
-import { evidenceStoryBeat } from '../modules/quests/chapter-content';
+import { evidenceStoryBeat, steleStoryBeat } from '../modules/quests/chapter-content';
 
 export interface KeyPrompt {
   readonly key: 'E' | 'Q';
@@ -53,6 +54,8 @@ export interface KeyPrompt {
 interface SceneServices {
   controller: RaidControllerPort;
   inventory: InventoryPort;
+  /** 当前进行中的章节 id，由大厅按存档实时给出（章节推进后下一局自动换章）。 */
+  questChapter?: () => string;
   events: EventBus;
   notify: (message: string) => void;
   touch: TouchControls;
@@ -153,6 +156,11 @@ export class WorldScene extends Phaser.Scene {
 
   constructor(private readonly services: SceneServices) {
     super('world');
+  }
+
+  /** 当前章节 id；未接线时退回第一章，保证单测与旧调用方行为不变。 */
+  private questChapterId(): string {
+    return this.services.questChapter?.() ?? QUEST_CHAPTER_ID;
   }
 
   preload(): void {
@@ -299,7 +307,9 @@ export class WorldScene extends Phaser.Scene {
     }
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.cameras.main.setFollowOffset(0, -36);
+    // 角色容器的原点在脚底，而 160×0.44 的贴图身体中心在脚底上方约 35px。
+    // 正向偏移让镜头对准身体中心；旧的 -36 会把人物整体顶到上半屏。
+    this.cameras.main.setFollowOffset(0, 35);
     const resizeCamera = () => {
       this.cameras.main.setZoom(
         isTouchLayout() ? Math.max(1.12, Math.min(1.5, (this.scale.width / 960) * 1.38)) : 1.7,
@@ -1004,42 +1014,13 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const carried = this.services.inventory.getCarriedItems();
+    const chapter = questChapterById(this.questChapterId());
     const bagFull = carried.length >= RAID_RULES.bagCapacity;
     const hug = this.nearbyHug();
     if (hug) {
       this.search.cancel();
       this.interaction = this.hugInstruction(hug);
       this.keyPrompt = { key: 'Q', label: '安抚' };
-      return;
-    }
-    if (distance(WORLD.stone, this.position) < 82) {
-      this.search.cancel();
-      if (view.steleInvestigated) {
-        this.interaction = '明湖石碑 · 已调查';
-        return;
-      }
-      if (!hasCurrentRaidNotebook(carried, view.raidId)) {
-        this.interaction = NOTEBOOK_PREREQUISITE_HINT;
-        return;
-      }
-      this.interaction = '按 E 调查明湖石碑';
-      this.keyPrompt = { key: 'E', label: '调查' };
-      if (held && !this.previousInteract && view.phase === 'active') {
-        if (this.services.controller.investigateStele()) {
-          const raidId = view.raidId;
-          if (raidId) {
-            this.services.events.emit('LocationInteracted', { raidId, locationId: 'minghu-stele' });
-          }
-          this.services.sound.play('pick');
-          this.banner = {
-            text: isQuestComplete(carried, view.raidId, true)
-              ? QUEST_COMPLETE_HINT
-              : '【线索二 · 明湖石碑上的记号】石碑刻痕与手记中的符号吻合。',
-            untilMs: this.time.now + 6000,
-          };
-          this.services.notify('已调查明湖石碑，任务完成。');
-        }
-      }
       return;
     }
     const loot = [...this.ground.values()]
@@ -1080,6 +1061,12 @@ export class WorldScene extends Phaser.Scene {
         this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
     );
     if (chest) {
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapter.id);
+      if (prerequisite !== null) {
+        this.search.cancel();
+        this.interaction = prerequisite;
+        return;
+      }
       // 满包时不启动搜索进度：否则每次 2 秒读条失败重来，玩家只看得到进度条循环。
       if (bagFull) {
         this.search.cancel();
@@ -1114,10 +1101,18 @@ export class WorldScene extends Phaser.Scene {
             raidId: view.raidId,
             locationId: chest.id,
           });
+          // RaidController derives questComplete from the authoritative raid state.
         }
         if (result.ok) {
           const definition = ITEM_DEFINITIONS[chest.itemId];
-          const beat = evidenceStoryBeat(chest.itemId);
+          const beat = isQuestComplete(
+            this.services.inventory.getCarriedItems(),
+            view.raidId,
+            chapter.id,
+            view.steleInvestigated,
+          )
+            ? chapter.completeHint
+            : evidenceStoryBeat(chest.itemId);
           const pickup =
             beat ??
             `已拾取：${definition?.name ?? chest.itemId}${
@@ -1134,6 +1129,29 @@ export class WorldScene extends Phaser.Scene {
         }
       }
       return;
+    }
+    if (chapter.id === QUEST_CHAPTER_ID) {
+      const steleDistance = distance(WORLD.stone, this.position);
+      if (steleDistance < 78) {
+        this.search.cancel();
+        if (!hasCurrentRaidNotebook(carried, view.raidId)) {
+          this.interaction = '明湖石碑 · 先取得本局残缺手记';
+          return;
+        }
+        if (view.steleInvestigated) {
+          this.interaction = '明湖石碑 · 已调查';
+          return;
+        }
+        this.interaction = '按 E 调查明湖石碑';
+        this.keyPrompt = { key: 'E', label: '调查' };
+        if (held && !this.previousInteract && view.phase === 'active') {
+          if (this.services.controller.investigateStele()) {
+            this.banner = { text: steleStoryBeat(), untilMs: this.time.now + 6000 };
+            this.services.notify('明湖石碑调查完成。');
+          }
+        }
+        return;
+      }
     }
     if (view.inExtractionZone) {
       this.search.cancel();
@@ -1213,7 +1231,9 @@ export class WorldScene extends Phaser.Scene {
     }
     this.chestObjects.clear();
     this.chestSprites.clear();
-    this.searchPoints = raidId ? generateLootSpawns() : [];
+    this.searchPoints = raidId
+      ? generateLootSpawns(Math.random, questSpawnPlan(this.questChapterId()))
+      : [];
     for (const point of this.searchPoints) {
       const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
       const chest = this.add
@@ -1641,9 +1661,12 @@ export class WorldScene extends Phaser.Scene {
 
   private drawCampus(): void {
     this.add.image(0, 0, 'campus-base').setOrigin(0).setDepth(-1);
-    this.add
-      .image(WORLD.stone.x, WORLD.stone.y, 'minghu-stele')
-      .setOrigin(0.5, 1)
-      .setDepth(this.entityDepth(WORLD.stone.y));
+    if (this.textures.exists('minghu-stele')) {
+      this.add
+        .image(WORLD.stone.x, WORLD.stone.y, 'minghu-stele')
+        .setOrigin(0.5, 1)
+        .setScale(0.82)
+        .setDepth(this.entityDepth(WORLD.stone.y) + 2);
+    }
   }
 }

@@ -83,6 +83,29 @@ select {
 .room-member:last-child {
   border-bottom: 0;
 }
+/* 联机房间卡默认折叠成一行。它排在局内右栏，而准备阶段整块 `.play-layout`
+   本来就是隐藏的，等于这张卡只在最不该出现的时候（对局中）占位；
+   展开时右栏会把「临时背包 / 结算卡」顶出画框。折叠后只留标题和连接状态。 */
+.room-card > summary.section-kicker {
+  justify-content: flex-start;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+}
+.room-card > summary.section-kicker::-webkit-details-marker {
+  display: none;
+}
+.room-card > summary.section-kicker::before {
+  content: '▸';
+  font-size: 10px;
+  color: #8d9b83;
+}
+.room-card[open] > summary.section-kicker::before {
+  content: '▾';
+}
+.room-card > summary.section-kicker #room-connection {
+  margin-left: auto;
+}
 button {
   cursor: pointer;
 }
@@ -121,7 +144,7 @@ input:focus-visible {
   display: grid;
   grid-template-columns: minmax(240px, 0.95fr) minmax(320px, 1.05fr);
   width: min(1080px, 100%);
-  min-height: min(610px, 80vh);
+  min-height: min(610px, 80cqh);
   overflow: hidden;
   border: 1px solid #64707866;
   background: #10171df2;
@@ -190,7 +213,7 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: clamp(28px, 5vw, 64px);
+  padding: clamp(28px, 5cqw, 64px);
 }
 .prologue-kicker {
   color: #c9a86d;
@@ -207,7 +230,7 @@ input:focus-visible {
   margin: 0 0 22px;
   color: #eee6d5;
   font-family: 'Songti SC', 'SimSun', serif;
-  font-size: clamp(34px, 5vw, 52px);
+  font-size: clamp(34px, 5cqw, 52px);
   font-weight: 500;
   letter-spacing: 0.12em;
 }
@@ -216,7 +239,7 @@ input:focus-visible {
   margin: 0;
   color: #c4c9c5;
   font-family: 'Songti SC', 'SimSun', serif;
-  font-size: clamp(16px, 2vw, 19px);
+  font-size: clamp(16px, 2cqw, 19px);
   line-height: 2.1;
   letter-spacing: 0.04em;
 }
@@ -244,7 +267,7 @@ input:focus-visible {
 .prologue-next span {
   margin-left: 18px;
 }
-@media (max-width: 650px) {
+@media (max-width: 650px) and (pointer: coarse) {
   .prologue {
     padding: 12px;
   }
@@ -409,15 +432,29 @@ html.prologue-open #app {
 .prologue-continue-hint {
   position: absolute;
   z-index: 3;
-  right: 7%;
-  bottom: 9.6%;
+  /* 与 .prologue-continue-hit 共用同一块几何：悬停框和文字必须同框同心。
+     原先文字按 right/bottom 自适应宽度排，比热区偏右 33px、偏下 18px。 */
+  top: 83.7%;
+  left: 83.2%;
+  width: 9.8%;
+  height: 6.7%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: 0;
   background: none;
   color: #c9b184;
   font-size: 0.95cqw;
   letter-spacing: 0.08em;
+  text-align: center;
+  /* 点击交给同区域的 .prologue-continue-hit，避免文字层挡住热区 */
+  pointer-events: none;
   cursor: pointer;
+}
+/* display: flex 会盖掉 [hidden] 的 display: none，这里补回来 */
+.prologue-continue-hint[hidden] {
+  display: none;
 }
 .prologue-continue-hint:hover {
   color: #ead7a8;
@@ -495,7 +532,7 @@ html.prologue-open #app {
 }
 .rules-dialog {
   width: min(720px, calc(100% - 24px));
-  max-height: min(860px, calc(100svh - 24px));
+  max-height: min(860px, calc(100cqh - 24px));
   padding: 0;
   border: 1px solid #556057;
   border-radius: 8px;
@@ -680,6 +717,31 @@ main {
   margin: auto;
   position: relative;
 }
+/* 对局阶段主区上下留白略收：画框高度恒定 720，右栏四张卡只能在这一屏内排完，
+   纵向空间得从留白里挤（准备页有自己的 padding，不受这条影响）。 */
+#app:not([data-phase='preparing']) main {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+/* 对局中收起网站式的品牌栏：这是游戏画面，不是网页。图鉴 / 规则入口移到画布 HUD 顶栏，
+   省下的 80px 留给右栏，避免「临时背包」被画框下沿裁掉（CHG-30）。 */
+#app:not([data-phase='preparing']) .masthead {
+  display: none;
+}
+/* 底部状态行（#notice）在文档流里排不到位置：对局阶段右栏四张卡已占满 700px，
+   它只能溢出画框、被裁成一条 10px 的浅色残影（实测 710~747，画框底 720）。
+   左栏画布只用掉约 525px，下方本来是空白，把状态行锚到那块空白里：完整可见、
+   不压右栏，也不改任何 DOM 结构（CHG-31）。
+   用 fixed 是因为 #stage 有 transform、本身就是包含块，坐标直接按 1280×720 算，
+   不依赖主区高度（主区在结算阶段会缩到内容高度）。
+   340px = 右栏 320px + 列间距 20px。 */
+html:not([data-touch='true']) #app:not([data-phase='preparing']) #notice {
+  position: fixed;
+  left: 3%;
+  right: calc(340px + 3%);
+  bottom: 10px;
+  margin: 0;
+}
 
 /* ---------- R01 准备页：完整整页首屏（不是浮层卡片） ---------- */
 /* 准备阶段让出探索界面：地图与右侧 HUD 都收起，整页交给准备内容。 */
@@ -847,7 +909,7 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
 .lobby-panel {
   min-width: 0;
   overflow: auto;
-  padding: 0 clamp(22px, 3.4vw, 52px) 20px;
+  padding: 0 clamp(22px, 3.4cqw, 52px) 20px;
   background: radial-gradient(700px 330px at 88% 0%, #34362236, transparent 70%);
 }
 .lobby-panel[hidden] {
@@ -992,7 +1054,7 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   width: 100%;
 }
 .prep-hero {
-  padding: clamp(16px, 2.5vh, 26px) 0 14px;
+  padding: clamp(16px, 2.5cqh, 26px) 0 14px;
   border-bottom: 1px solid #363a39;
 }
 .prep-kicker {
@@ -1003,7 +1065,7 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
 }
 .prep-hero h2 {
   margin: 0 0 10px;
-  font-size: clamp(24px, 2.8vw, 34px);
+  font-size: clamp(24px, 2.8cqw, 34px);
   letter-spacing: 0.02em;
   color: #f5e7b3;
 }
@@ -1073,6 +1135,24 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   color: #c8a66a;
   font-size: 10px;
 }
+/* 章节简报列表：第一章常驻，通关后在其下方追加下一章。 */
+.lobby-missions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.lobby-missions .lobby-mission-strip {
+  margin-top: 0;
+}
+.mission-status.active {
+  border-color: #bc9253;
+  background: #2a2418;
+  color: #e3c184;
+}
+.mission-status.done {
+  border-color: #4c6b4a;
+  color: #9dc69a;
+}
 .prep-goals span {
   font-size: 11px;
   color: #8a9a8d;
@@ -1080,13 +1160,13 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
 .prep-main {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: clamp(12px, 1.5vw, 20px);
+  gap: clamp(12px, 1.5cqw, 20px);
   margin-top: 12px;
 }
 .prep-block {
   display: flex;
   flex-direction: column;
-  padding: clamp(11px, 1.5vh, 17px) clamp(14px, 1.6vw, 22px);
+  padding: clamp(11px, 1.5cqh, 17px) clamp(14px, 1.6cqw, 22px);
   border: 1px solid #3b403d;
   border-radius: 10px;
   background: linear-gradient(180deg, #171b19, #121514);
@@ -1179,173 +1259,40 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   padding: 8px 12px;
   font-size: 12px;
 }
-@media (min-width: 761px) and (max-height: 850px) {
-  .lobby-commandbar {
-    min-height: 56px;
-  }
-  .prep-hero {
-    padding-top: 12px;
-    padding-bottom: 10px;
-  }
-  .prep-hero h2 {
-    margin-bottom: 5px;
-    font-size: 27px;
-  }
-  .prep-brief {
-    font-size: 13px;
-    line-height: 1.6;
-  }
-  .prep-goals li {
-    padding: 5px 9px;
-  }
-  .prep-main {
-    margin-top: 9px;
-  }
-  .prep-block h3 {
-    margin-bottom: 7px;
-  }
-  .prep-equipment li {
-    margin-bottom: 4px;
-    padding: 5px 8px;
-  }
-  .prep-warning {
-    line-height: 1.6;
-  }
+/* 画框恒为 1280×720，这一档不再按窗口高度判断，改为桌面端常驻，
+   保证任何窗口下都是同一套排版（原 ≤850 档，见 CHG-29）。 */
+html:not([data-touch='true']) .lobby-commandbar {
+  min-height: 56px;
 }
-/* DEF-05：上一档只压到 850px，1100×640 实测仍溢出 77px、900×600 溢出 133px，
-   「开始探索」被推出视口底部，必须滚动才能点到——主操作不该藏在滚动区里。
-   这一档把消息栏以上的信息区进一步收紧，目标让 640px 高的窗口一屏装下；
-   760px 以下交给触屏布局，不在这里处理。 */
-@media (min-width: 761px) and (max-height: 730px) {
-  #app[data-phase='preparing'] main {
-    padding: 6px 2% 6px;
-  }
-  .lobby-weather {
-    display: none;
-  }
-  .lobby-commandbar {
-    min-height: 46px;
-  }
-  /* 18px 的余量靠底部内边距与按钮高度抹平，保证不出滚动条。 */
-  .lobby-panel {
-    padding-bottom: 8px;
-  }
-  .prep-start {
-    min-height: 44px;
-  }
-  .prep-tutorial {
-    padding-top: 4px;
-  }
-  .prep-hero {
-    padding: 7px 0;
-  }
-  .prep-kicker {
-    margin-bottom: 2px;
-    font-size: 10px;
-  }
-  .prep-hero h2 {
-    margin-bottom: 4px;
-    font-size: 22px;
-  }
-  .prep-brief {
-    margin-bottom: 6px;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-  .lobby-mission-strip {
-    margin-top: 6px;
-    padding: 4px 10px;
-  }
-  .prep-goals {
-    gap: 7px;
-  }
-  .prep-goals li {
-    padding: 3px 10px;
-    font-size: 12px;
-  }
-  .prep-main {
-    margin-top: 7px;
-  }
-  .prep-block {
-    padding: 10px 13px;
-  }
-  .prep-block h3 {
-    margin-bottom: 6px;
-    font-size: 13px;
-  }
-  .prep-equipment li {
-    margin-bottom: 5px;
-    padding: 5px 9px;
-    font-size: 12px;
-  }
-  .prep-warning {
-    margin-bottom: 6px;
-    padding: 6px 9px;
-    line-height: 1.6;
-  }
-  .prep-block .consent {
-    margin-bottom: 6px;
-    font-size: 12px;
-  }
+html:not([data-touch='true']) .prep-hero {
+  padding-top: 12px;
+  padding-bottom: 10px;
 }
-/* DEF-05 续：620px 以下再收一档。900×600 实测 .lobby-panel 仍高出可视区 45px，
-   左下「带入选择」下拉被裁掉一半——表单控件被切一半不可接受，比滚动更糟。
-   这一档只压间距与控件内边距，不删信息。 */
-@media (min-width: 761px) and (max-height: 620px) {
-  .prep-hero {
-    padding: 6px 0;
-  }
-  .lobby-mission-strip {
-    margin-top: 5px;
-    padding: 3px 9px;
-  }
-  .mission-number {
-    font-size: 16px;
-  }
-  .prep-goals li {
-    padding: 3px 9px;
-  }
-  .prep-main {
-    margin-top: 5px;
-  }
-  .prep-equipment li {
-    margin-bottom: 3px;
-    padding: 4px 8px;
-  }
-  .field-label {
-    margin: 6px 0 4px;
-  }
-  .prep-block select,
-  .prep-block input[type='text'] {
-    padding: 6px 5px;
-  }
-  /* 461px 的可用高度仍差约 50px。这里去掉与顶部命令栏重复的
-     「思源密码 · 行前准备」小标题，并压低主按钮高度，不删任何任务信息。 */
-  .lobby-panel {
-    padding-bottom: 4px;
-  }
-  .prep-kicker {
-    display: none;
-  }
-  .prep-hero h2 {
-    font-size: 20px;
-  }
-  .prep-brief {
-    line-height: 1.42;
-  }
-  .prep-warning {
-    padding: 5px 8px;
-    line-height: 1.5;
-  }
-  .prep-start {
-    min-height: 40px;
-    font-size: 15px;
-  }
-  .prep-tutorial {
-    padding-top: 3px;
-  }
+html:not([data-touch='true']) .prep-hero h2 {
+  margin-bottom: 5px;
+  font-size: 27px;
 }
-@media (max-width: 760px) {
+html:not([data-touch='true']) .prep-brief {
+  font-size: 13px;
+  line-height: 1.6;
+}
+html:not([data-touch='true']) .prep-goals li {
+  padding: 5px 9px;
+}
+html:not([data-touch='true']) .prep-main {
+  margin-top: 9px;
+}
+html:not([data-touch='true']) .prep-block h3 {
+  margin-bottom: 7px;
+}
+html:not([data-touch='true']) .prep-equipment li {
+  margin-bottom: 4px;
+  padding: 5px 8px;
+}
+html:not([data-touch='true']) .prep-warning {
+  line-height: 1.6;
+}
+@media (max-width: 760px) and (pointer: coarse) {
   #app[data-phase='preparing'] main {
     display: block;
     height: auto;
@@ -1487,9 +1434,39 @@ h1 span {
   font-style: normal;
   opacity: 0.4;
 }
+/* 对局中品牌栏收起，省下的 80px 让右栏四张卡装进画框；图鉴 / 规则改挂在这条 HUD 顶栏里，
+   本来就有 46px 高，不额外占纵向空间（CHG-30）。 */
+.map-hud-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.map-actions {
+  display: flex;
+  gap: 6px;
+}
+.hud-button {
+  padding: 3px 10px;
+  border: 1px solid #3b403d;
+  border-radius: 5px;
+  background: transparent;
+  color: #c4cebd;
+  font-size: 11px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.hud-button:hover {
+  border-color: #9bb967;
+  color: #e5e7e6;
+}
+.map-scene {
+  margin-left: 10px;
+  font-size: 11px;
+  opacity: 0.55;
+}
 #game-canvas {
   width: 100%;
-  height: min(66vh, 650px);
+  height: min(66cqh, 650px);
   min-height: 400px;
 }
 #game-canvas canvas {
@@ -1637,6 +1614,7 @@ h1 span {
   position: absolute;
   top: 12px;
   right: 12px;
+  /* 小地图改为 164×164 圆形，配合 main 的跟随玩家雷达模式。 */
   width: 164px;
   height: 164px;
   padding: 0;
@@ -1670,8 +1648,8 @@ h1 span {
   font-size: 11px;
 }
 .campus-map-dialog {
-  width: min(900px, calc(100vw - 24px));
-  max-height: calc(100svh - 16px);
+  width: min(900px, calc(100cqw - 24px));
+  max-height: calc(100cqh - 16px);
   padding: 0;
   border: 1px solid #84917e;
   border-radius: 6px;
@@ -1707,7 +1685,7 @@ h1 span {
   border-radius: 4px;
 }
 .campus-map-scroll {
-  max-height: calc(100svh - 125px);
+  max-height: calc(100cqh - 125px);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -1723,7 +1701,7 @@ h1 span {
   font-size: 11px;
   line-height: 1.5;
 }
-@media (max-width: 580px) {
+@media (max-width: 580px) and (pointer: coarse) {
   .campus-map-button {
     width: 142px;
     height: 142px;
@@ -1842,12 +1820,34 @@ aside {
   display: grid;
   gap: 12px;
 }
+/* 画框恒为 1280×720，右栏四张卡（价值 / 夜间 / 任务 / 背包）必须在这一屏内排完：
+   收紧卡片与卡片之间的间距，把纵向空间让给内容本身（见 CHG-30）。
+   触屏端有自己的排版，不受这条影响。 */
+.play-layout > aside {
+  gap: 6px;
+}
+html:not([data-touch='true']) .play-layout > aside {
+  /* 兜底：临时背包塞满 6 件时列表会把右栏撑高，这里限制在画框内纵向滚动，
+     保证「申请撤离」这类按钮永远不会被画框下沿裁掉（常规状态下不产生滚动条）。 */
+  max-height: calc(720px - 20px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #5c6a60 transparent;
+}
 .side-card {
   border: 0;
   border-bottom: 1px solid #3b403d;
-  padding: 15px 0;
+  padding: 10px 0;
   background: transparent;
   border-radius: 0;
+}
+/* 结算阶段右栏只留「本局物资价值」与结算卡：夜间装备、任务进度属于局内信息，
+   此时已无意义，留着会把结算卡顶出画框下沿。画框外的内容不滚动、只会被裁掉，
+   结算卡上的「返回准备」就点不到了（见 CHG-30）。 */
+#app:is([data-phase='settling'], [data-phase='success'], [data-phase='failed'])
+  :is(.night-card, .quest-card) {
+  display: none;
 }
 .section-kicker {
   display: flex;
@@ -1969,6 +1969,55 @@ h2 {
   color: #8a9a8d;
   font-size: 11px;
 }
+.warehouse-sections {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+}
+.warehouse-section {
+  padding: 13px 15px;
+  border: 1px solid #303934;
+  border-radius: 8px;
+  background: #171c19;
+}
+.warehouse-section h3 {
+  margin: 0;
+  color: #d9e2d5;
+  font-size: 14px;
+}
+.warehouse-subtitle {
+  margin: 4px 0 9px;
+  color: #829087;
+  font-size: 11px;
+}
+.warehouse-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 7px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.warehouse-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: #202722;
+  color: #bdc9be;
+  font-size: 12px;
+}
+.warehouse-item-count {
+  color: #d5a64d;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.warehouse-empty {
+  margin: 0;
+  color: #657269;
+  font-size: 11px;
+}
 select {
   width: 100%;
   padding: 9px 5px;
@@ -2088,7 +2137,7 @@ footer {
   color: #9aa58f;
   padding-top: 8px;
 }
-@media (max-width: 950px) {
+@media (max-width: 950px) and (pointer: coarse) {
   .play-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2102,7 +2151,7 @@ footer {
     display: block;
   }
 }
-@media (max-width: 580px) {
+@media (max-width: 580px) and (pointer: coarse) {
   .masthead {
     padding: 16px;
   }
@@ -2179,7 +2228,7 @@ footer {
     padding-top: 12px;
   }
 }
-@media (max-height: 500px) and (orientation: landscape) {
+@media (max-height: 500px) and (orientation: landscape) and (pointer: coarse) {
   .masthead,
   .intro {
     display: none;
@@ -2298,7 +2347,8 @@ footer {
 .story-box {
   position: relative;
   width: min(980px, calc(100% - 32px));
-  margin-bottom: clamp(16px, 6vh, 56px);
+  /* 底部留白按画框高度算：给对话框抬到安全区，避免贴边被画框裁掉。 */
+  margin-bottom: clamp(28px, 10cqh, 80px);
   padding: 16px 22px 12px;
   border: 1px solid #6c6a55;
   border-radius: 10px;
@@ -2337,7 +2387,7 @@ footer {
 .story-line {
   margin: 0;
   min-height: 3.8em;
-  font-size: clamp(13px, 1.2vw, 16px);
+  font-size: clamp(13px, 1.2cqw, 16px);
   line-height: 1.95;
   color: #dfe6e0;
   white-space: pre-wrap;
@@ -2354,7 +2404,7 @@ footer {
 .story-hint {
   color: #b9c6ad;
 }
-@media (max-width: 640px) {
+@media (max-width: 640px) and (pointer: coarse) {
   .story-box {
     width: calc(100% - 16px);
     margin-bottom: 10px;
@@ -2363,6 +2413,86 @@ footer {
   .story-line {
     min-height: 4.6em;
   }
+}
+
+/* 操作确认：取代浏览器原生 confirm（标题会带「127.0.0.1:5173 显示」那种地址栏文案），
+   与剧情、规则共用 <dialog> 体系，在画框内居中并跟着 --stage-scale 一起缩放。 */
+.confirm-dialog {
+  width: min(420px, calc(100% - 28px));
+  padding: 0;
+  border: 1px solid #6c6a55;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1a201df0, #0b0f11fa);
+  box-shadow: 0 24px 64px #000c;
+  color: #e5e7e6;
+}
+.confirm-dialog::backdrop {
+  background: #000a;
+  backdrop-filter: blur(2px);
+}
+.confirm-body {
+  max-height: min(60vh, 280px);
+  padding: 20px 22px 14px;
+  overflow-y: auto;
+}
+.confirm-kicker {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #8d9b83;
+}
+.confirm-title {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.4;
+  color: #f0e6c8;
+}
+.confirm-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.85;
+  color: #bcc6be;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 4px 22px 20px;
+}
+.confirm-actions button {
+  min-height: 38px;
+  padding: 0 18px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.confirm-cancel {
+  border: 1px solid #4a514b;
+  background: #0000;
+  color: #a9b4ab;
+}
+.confirm-cancel:hover,
+.confirm-cancel:focus-visible {
+  border-color: #7d8a80;
+  color: #e5e7e6;
+}
+.confirm-ok {
+  border: 1px solid #3f6e56;
+  background: #234d3e;
+  color: #f5f0d3;
+}
+.confirm-ok:hover {
+  background: #32644d;
+}
+/* 会丢物品或清存档的操作，确认键转警示配色，和普通确认区分开。 */
+.confirm-dialog[data-tone='danger'] .confirm-ok {
+  border-color: #8a4a3c;
+  background: #5a2b24;
+  color: #f4d3c7;
+}
+.confirm-dialog[data-tone='danger'] .confirm-ok:hover {
+  background: #75392f;
 }
 
 .quest-unlock {
@@ -2384,12 +2514,12 @@ footer {
   color: #cfe0c0;
 }
 
-@media (max-width: 950px) {
+@media (max-width: 950px) and (pointer: coarse) {
   .codex-list {
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 580px) {
+@media (max-width: 580px) and (pointer: coarse) {
   .quest-steps li,
   .quest-unlock {
     font-size: 11px;
@@ -2443,7 +2573,7 @@ footer {
   border: 1px solid #607768;
   border-radius: 5px;
 }
-@media (max-height: 420px) and (orientation: landscape) {
+@media (max-height: 420px) and (orientation: landscape) and (pointer: coarse) {
   .touch-stick {
     width: 88px;
     height: 88px;
@@ -2542,7 +2672,7 @@ footer {
   color: #b4c4b9;
   font-size: 12px;
 }
-@media (max-width: 600px) {
+@media (max-width: 600px) and (pointer: coarse) {
   .codex-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
@@ -2557,4 +2687,76 @@ footer {
     flex-wrap: wrap;
     gap: 8px;
   }
+}
+
+/* ---------- 固定画框（仅桌面端）----------
+   端游做法：按 1280×720 基准排一张完整画面，窗口多大就整张等比缩放，
+   不重排版、不产生滚动条；任何窗口下看到的是同一张画面，只是大小不同。
+   触屏端（data-touch='true'）本来就是整屏横屏，保持原有的容器自适应，不进入这套。
+   缩放比例由 src/modules/ui/stage.ts 写入 --stage-scale。 */
+html:not([data-touch='true']) {
+  --stage-scale: 1;
+  height: 100%;
+  overflow: hidden;
+  background: #080c12;
+}
+html:not([data-touch='true']) body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #080c12;
+}
+/* 画框即这一层的「视口」：尺寸固定，绕自身中心缩放并居中，
+   窗口多出来的部分露出背景色，不做拉伸、不裁切内容。 */
+html:not([data-touch='true']) #stage {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 1280px;
+  height: 720px;
+  transform: translate(-50%, -50%) scale(var(--stage-scale));
+  transform-origin: center center;
+  overflow: hidden;
+  container-type: size;
+}
+/* 两个 ID 是有意的：要盖过 html.lobby-open:not(...) #app 里的 height: 100dvh。 */
+html:not([data-touch='true']) #stage > #app {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+/* 序章按画框铺满，不再按窗口高度算。 */
+html:not([data-touch='true']) #stage .prologue {
+  height: 100%;
+  padding: 0;
+}
+html:not([data-touch='true']) #stage .prologue-stage {
+  width: 100%;
+  min-height: 0;
+}
+/* showModal() 的弹窗进入浏览器顶层，会脱离 #stage 的 transform，
+   这里用同一个比例单独缩放；位置显式居中，避免窗口小于画框时 margin:auto 失效。 */
+html:not([data-touch='true']) #stage dialog[open] {
+  position: fixed;
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%) scale(var(--stage-scale));
+  transform-origin: center center;
+}
+/* 弹窗高度按画框算（720 − 边距），不跟着窗口高度变。 */
+html:not([data-touch='true']) #stage .rules-dialog {
+  max-height: 696px;
+}
+/* 剧情对话是铺满画框的透明遮罩层：尺寸必须等同 1280×720，
+   否则会按浏览器窗口高度贴底，缩放后跑到画框外、卡片被裁掉。 */
+html:not([data-touch='true']) #stage .story-dialog[open] {
+  width: 1280px;
+  height: 720px;
+  max-height: 720px;
+}
+html:not([data-touch='true']) #stage .campus-map-dialog {
+  width: 900px;
+  max-height: 704px;
 }
