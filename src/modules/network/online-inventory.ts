@@ -61,6 +61,19 @@ export class OnlineInventory implements InventoryClientPort {
     return { ok: true, value: structuredClone(item) };
   }
 
+  consumeUtility(instanceId: string, applyEffect: () => boolean): ActionResult<ItemInstance> {
+    void applyEffect;
+    const item = this.carriedItems.find((candidate) => candidate.instanceId === instanceId);
+    if (!item) return { ok: false, error: 'ITEM_NOT_FOUND' };
+    if (this.definitions[item.itemId]?.kind !== 'utility') {
+      return { ok: false, error: 'ITEM_NOT_USABLE' };
+    }
+    if (!this.session.requestAction('use-item', instanceId)) {
+      return { ok: false, error: 'INVALID_STATE' };
+    }
+    return { ok: true, value: structuredClone(item) };
+  }
+
   clear(): void {
     this.carriedItems = [];
     this.bus.emit('InventoryChanged', { raidId: this.raidId });

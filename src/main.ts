@@ -3,7 +3,12 @@ import './mobile-layout.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { bindStage } from './modules/ui/stage';
 import { createGame } from './app/create-game';
-import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
+import {
+  HEALING_AMOUNTS,
+  isPurchasedItem,
+  ITEM_DEFINITIONS,
+  RAID_RULES,
+} from './config/game-config';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
 import { FORMAL_SAVE_KEY, PersistentSave } from './modules/save/persistent-save';
@@ -34,7 +39,7 @@ import {
 } from './modules/ui/extraction-feedback';
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
 import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
-import { WorldScene } from './scenes/world-scene';
+import { WorldScene, type KeyPrompt } from './scenes/world-scene';
 import { contains } from './modules/world/movement';
 import { WORLD } from './config/world-config';
 import { EventBus } from './shared/events/game-events';
@@ -309,11 +314,191 @@ async function bootstrap(): Promise<void> {
   let renderedAt = 0;
   let interacted = '';
   let searchProgress = 0;
+  let keyPrompt: KeyPrompt | null = null;
   // F02：记录读条开始时的状态，用来判断读条为什么被取消。
   let extractionSnapshot: ExtractionSnapshot | null = null;
   let enteredExtractionZone = false;
   let leftExtractionZone = false;
   let zoneRaidId: string | null = null;
+
+  const selectedLoadoutIds = (): string[] => {
+    const capacity = Math.max(
+      0,
+      RAID_RULES.bagCapacity - (element<HTMLSelectElement>('starter-weapon').value ? 1 : 0),
+    );
+    const ids: string[] = [];
+    let used = 0;
+    for (const row of Array.from(
+      element('loadout').querySelectorAll<HTMLElement>('.loadout-row'),
+    )) {
+      const input = row.querySelector<HTMLInputElement>('input[type="number"]');
+      const select = row.querySelector<HTMLSelectElement>('select');
+      if (!input || !select || !select.value) continue;
+      const quantity = Math.max(0, Math.floor(Number(input.value) || 0));
+      const slots = ITEM_DEFINITIONS[select.value]?.bagSlots ?? 1;
+      const allowed = Math.max(0, Math.min(quantity, Math.floor((capacity - used) / slots)));
+      ids.push(...(row.dataset.instanceIds ?? '').split(',').filter(Boolean).slice(0, allowed));
+      used += allowed * slots;
+    }
+    return ids;
+  };
+
+  const syncLoadoutControls = (): void => {
+    const capacity = Math.max(
+      0,
+      RAID_RULES.bagCapacity - (element<HTMLSelectElement>('starter-weapon').value ? 1 : 0),
+    );
+    let used = 0;
+    for (const row of Array.from(
+      element('loadout').querySelectorAll<HTMLElement>('.loadout-row'),
+    )) {
+      const input = row.querySelector<HTMLInputElement>('input[type="number"]');
+      const select = row.querySelector<HTMLSelectElement>('select');
+      if (!input || !select) continue;
+      const slots = ITEM_DEFINITIONS[select.value]?.bagSlots ?? 1;
+      const max = Math.max(
+        0,
+        Math.min(Number(input.max) || 0, Math.floor((capacity - used) / slots)),
+      );
+      const quantity = Math.max(0, Math.min(max, Math.floor(Number(input.value) || 0)));
+      input.value = String(quantity);
+      input.disabled = !select.value;
+      used += quantity * slots;
+    }
+    element('loadout-slots').textContent =
+      `已选 ${used + (capacity < RAID_RULES.bagCapacity ? 1 : 0)} / ${RAID_RULES.bagCapacity} 格`;
+  };
+
+  const renderLoadoutOptions = (warehouse: readonly ItemInstance[]): void => {
+    const container = element('loadout');
+    container.replaceChildren();
+    const groups = new Map<string, ItemInstance[]>();
+    for (const item of warehouse) {
+      const definition = ITEM_DEFINITIONS[item.itemId];
+      // Collectibles are memorials and are converted/retained at settlement;
+      // only items with a gameplay effect can be brought into the next raid.
+      if (!definition || definition.kind === 'collectible') continue;
+      const group = groups.get(item.itemId) ?? [];
+      group.push(item);
+      groups.set(item.itemId, group);
+    }
+    if (!groups.size) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'loadout-add secondary';
+      add.textContent = '添加另一种物品';
+      add.disabled = true;
+      container.append(add);
+      element('loadout-slots').textContent =
+        `已选 ${element<HTMLSelectElement>('starter-weapon').value ? 1 : 0} / ${RAID_RULES.bagCapacity} 格`;
+      return;
+    }
+    const updateOptions = (): void => {
+      const rows = Array.from(container.querySelectorAll<HTMLElement>('.loadout-row'));
+      const selected = new Set(
+        rows
+          .map((row) => row.querySelector<HTMLSelectElement>('select')?.value)
+          .filter((value): value is string => Boolean(value)),
+      );
+      for (const row of rows) {
+        const select = row.querySelector<HTMLSelectElement>('select');
+        if (!select) continue;
+        for (const option of Array.from(select.options)) {
+          option.disabled = Boolean(
+            option.value && option.value !== select.value && selected.has(option.value),
+          );
+        }
+      }
+      const add = container.querySelector<HTMLButtonElement>('.loadout-add');
+      if (add) add.disabled = rows.length >= groups.size;
+    };
+    const addRow = (): void => {
+      const row = document.createElement('div');
+      row.className = 'loadout-row';
+      const select = document.createElement('select');
+      select.className = 'loadout-item';
+      select.setAttribute('aria-label', '选择带入物品');
+      select.id = container.querySelectorAll('.loadout-row').length === 0 ? 'loadout-item' : '';
+      select.add(new Option('选择带入物品', ''));
+      for (const [itemId, items] of groups) {
+        const definition = ITEM_DEFINITIONS[itemId]!;
+        select.add(new Option(`${definition.name} · 数量：${items.length}`, itemId));
+      }
+      const quantity = document.createElement('input');
+      quantity.type = 'number';
+      quantity.className = 'loadout-quantity';
+      quantity.min = '0';
+      quantity.value = '0';
+      quantity.disabled = true;
+      quantity.setAttribute('aria-label', '带入数量');
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'loadout-remove';
+      remove.textContent = '移除';
+      remove.onclick = () => {
+        row.remove();
+        updateOptions();
+        syncLoadoutControls();
+      };
+      select.onchange = () => {
+        const items = groups.get(select.value);
+        row.dataset.instanceIds = items?.map((item) => item.instanceId).join(',') ?? '';
+        quantity.max = String(items?.length ?? 0);
+        quantity.value = items?.length ? '1' : '0';
+        quantity.disabled = !items;
+        updateOptions();
+        syncLoadoutControls();
+      };
+      quantity.oninput = syncLoadoutControls;
+      row.append(select, quantity, remove);
+      container.insertBefore(row, container.querySelector('.loadout-add'));
+      updateOptions();
+    };
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'loadout-add secondary';
+    add.textContent = '添加另一种物品';
+    add.onclick = addRow;
+    container.append(add);
+    updateOptions();
+    syncLoadoutControls();
+  };
+
+  const renderWarehouse = (warehouse: readonly ItemInstance[]): void => {
+    const groups = new Map<'exploration' | 'purchase', Map<string, number>>([
+      ['exploration', new Map()],
+      ['purchase', new Map()],
+    ]);
+    for (const item of warehouse) {
+      const definition = ITEM_DEFINITIONS[item.itemId];
+      if (!definition || definition.kind === 'collectible') continue;
+      const section = isPurchasedItem(item) ? 'purchase' : 'exploration';
+      const counts = groups.get(section)!;
+      counts.set(item.itemId, (counts.get(item.itemId) ?? 0) + 1);
+    }
+    const renderSection = (
+      section: 'exploration' | 'purchase',
+      listId: string,
+      emptyId: string,
+    ) => {
+      const list = element<HTMLUListElement>(listId);
+      list.replaceChildren();
+      const entries = groups.get(section)!;
+      for (const [itemId, quantity] of entries) {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = ITEM_DEFINITIONS[itemId]?.name ?? itemId;
+        const count = document.createElement('b');
+        count.className = 'warehouse-item-count';
+        count.textContent = `数量：${quantity}`;
+        li.append(name, count);
+        list.append(li);
+      }
+      element(emptyId).hidden = entries.size > 0;
+    };
+    renderSection('exploration', 'exploration-warehouse', 'exploration-warehouse-empty');
+    renderSection('purchase', 'purchase-warehouse', 'purchase-warehouse-empty');
+  };
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
   let onlineMode = Boolean(realtimeUrl);
@@ -361,9 +546,10 @@ async function bootstrap(): Promise<void> {
     sound,
     onInput: (input) => gameSession.sendInput(input),
     isOnline: () => onlineMode,
-    onFrame: (interaction, progress) => {
+    onFrame: (interaction, progress, prompt) => {
       interacted = interaction;
       searchProgress = progress;
+      keyPrompt = prompt;
       if (performance.now() - renderedAt > 80) {
         render();
         renderedAt = performance.now();
@@ -731,6 +917,19 @@ async function bootstrap(): Promise<void> {
                 ? '拾取'
                 : '交互';
     }
+    const hugButton =
+      element('touch-controls').querySelector<HTMLButtonElement>('[data-touch-action="Q"]');
+    interactButton?.classList.toggle('is-prompt', keyPrompt?.key === 'E');
+    hugButton?.classList.toggle('is-prompt', keyPrompt?.key === 'Q');
+    const promptEl = element('key-prompt');
+    promptEl.hidden = keyPrompt === null;
+    if (keyPrompt) {
+      element('key-prompt-key').textContent = keyPrompt.key;
+      element('key-prompt-label').textContent = keyPrompt.label;
+      promptEl.setAttribute('aria-label', `按 ${keyPrompt.key} ${keyPrompt.label}`);
+      const holding = keyPrompt.label === '搜索' || keyPrompt.label === '安抚';
+      promptEl.style.setProperty('--prompt-progress', holding ? String(searchProgress) : '0');
+    }
     element('mobile-hud').textContent =
       `价值 ${view.value}/${view.threshold} · 手电 ${lighting.battery}%`;
     element('phase-label').textContent = phaseNames[view.phase];
@@ -789,20 +988,21 @@ async function bootstrap(): Promise<void> {
       lastInventory = signature;
     }
     const archive = save.view();
-    const warehouseSignature = JSON.stringify(archive.warehouse);
-    element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
-    element('warehouse-count-label').textContent = `${archive.warehouse.length} 件物品`;
+    const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
+    const functionalWarehouse = archive.warehouse.filter(
+      (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
+    );
+    element('warehouse-count').textContent = `${functionalWarehouse.length} 件功能道具`;
+    element('warehouse-count-label').innerHTML =
+      `${functionalWarehouse.length} 件功能道具 · <b id="currency-count">${archive.currency} 交子</b>`;
     element('archive-detail').textContent = archive.unlockedChapterIds.length
-      ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
+      ? `探索发现已收入图鉴；已解锁思源密码章节。`
       : archive.codexIds.length
-        ? `已点亮 ${archive.codexIds.length} 种图鉴；带手记和异常羽毛成功撤离可解锁章节。`
-        : '成功撤离后，物品和图鉴会保存在此浏览器。';
+        ? `探索发现已点亮 ${archive.codexIds.length} 种图鉴；功能物品保存在仓库。`
+        : '探索物品成功撤离后会收入图鉴，功能物品会保存在仓库。';
     if (lastWarehouse !== warehouseSignature) {
-      const select = element<HTMLSelectElement>('loadout');
-      select.replaceChildren(new Option('轻装出发 · 不带入物品', ''));
-      for (const item of archive.warehouse) {
-        select.add(new Option(ITEM_DEFINITIONS[item.itemId]?.name ?? item.itemId, item.instanceId));
-      }
+      renderWarehouse(archive.warehouse);
+      renderLoadoutOptions(archive.warehouse);
       lastWarehouse = warehouseSignature;
     }
     const unlocked = view.result !== null && chapterUnlockGranted(view.result);
@@ -826,7 +1026,11 @@ async function bootstrap(): Promise<void> {
   }
 
   function renderInventory(items: readonly ItemInstance[]): void {
-    element('bag-count').textContent = `${items.length} / ${RAID_RULES.bagCapacity}`;
+    const usedSlots = items.reduce(
+      (sum, item) => sum + (ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1),
+      0,
+    );
+    element('bag-count').textContent = `${usedSlots} / ${RAID_RULES.bagCapacity}`;
     const list = element('inventory');
     list.replaceChildren();
     if (!items.length) {
@@ -875,6 +1079,31 @@ async function bootstrap(): Promise<void> {
         };
         li.append(use);
       }
+      if (definition.kind === 'utility') {
+        const use = document.createElement('button');
+        use.className = 'mini';
+        use.textContent = '使用';
+        use.onclick = () => {
+          const state = activeController.getView();
+          if (state.phase !== 'active' && state.phase !== 'extracting') return;
+          const applied =
+            item.itemId === 'yellow-bike'
+              ? activeController.setSpeedMultiplier(1.2)
+              : item.itemId === 'thick-down-jacket'
+                ? activeController.activateInvulnerability(5_000)
+                : false;
+          const consumed = activeInventory.consumeUtility(item.instanceId, () => applied);
+          if (consumed.ok)
+            notify(
+              item.itemId === 'yellow-bike'
+                ? '小黄车已使用，移速提升 20%。'
+                : '超厚羽绒服已使用，5 秒内无敌。',
+            );
+          else notify('当前无法使用该道具，物品没有消耗。');
+          render();
+        };
+        li.append(use);
+      }
       const drop = document.createElement('button');
       drop.className = 'mini';
       drop.textContent = '丢弃';
@@ -903,6 +1132,22 @@ async function bootstrap(): Promise<void> {
   }
 
   element('risk-consent').onchange = render;
+  element('starter-weapon').onchange = syncLoadoutControls;
+  element<HTMLButtonElement>('purchase-item-button').onclick = () => {
+    const itemId = element<HTMLSelectElement>('purchase-item').value;
+    if (!itemId) return;
+    const result = save.purchaseItem?.(itemId);
+    if (!result) return;
+    notify(
+      result.ok
+        ? `已购买${ITEM_DEFINITIONS[itemId]?.name ?? itemId}。`
+        : result.error === 'INSUFFICIENT_FUNDS'
+          ? '交子不足，无法购买该道具。'
+          : '该道具暂不可购买。',
+    );
+    if (result.ok) element<HTMLSelectElement>('purchase-item').value = '';
+    render();
+  };
   element('start').onclick = async () => {
     if (!element<HTMLInputElement>('risk-consent').checked) {
       return;
@@ -910,12 +1155,9 @@ async function bootstrap(): Promise<void> {
     // Start playback within the click gesture, before fullscreen or save awaits.
     sound.setMusic(true);
     void requestLandscape();
-    const selected = element<HTMLSelectElement>('loadout').value;
+    const selected = selectedLoadoutIds();
     const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
-    const result = await activeController.start(
-      selected ? [selected] : [],
-      starterWeapon || undefined,
-    );
+    const result = await activeController.start(selected, starterWeapon || undefined);
     notify(
       result.ok
         ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'

@@ -1458,6 +1458,69 @@ h1 span {
   position: relative;
 }
 /* R02：撤离差额、读条中断等原因直接显示在画面内，不再只落在侧栏。 */
+.key-prompt {
+  --prompt-progress: 0;
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: key-prompt-breathe 1.6s ease-in-out infinite;
+}
+.key-prompt[hidden] {
+  display: none;
+}
+.key-prompt-ring {
+  width: 76px;
+  height: 76px;
+  padding: 4px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(
+    #eed5a4 calc(var(--prompt-progress) * 360deg),
+    rgb(238 213 164 / 22%) 0
+  );
+  box-shadow: 0 8px 22px #0008;
+}
+.key-prompt-key {
+  width: 100%;
+  height: 100%;
+  border: 2px solid #bda05a;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #102824;
+  color: #eed5a4;
+  font-family: Georgia, 'Microsoft YaHei', serif;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+}
+.key-prompt-label {
+  padding: 2px 10px;
+  border: 1px solid #bda05a;
+  border-radius: 999px;
+  background: #14181aeb;
+  color: #f0d9a6;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+@keyframes key-prompt-breathe {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.05);
+  }
+}
 .map-toast {
   position: absolute;
   bottom: 16px;
@@ -1533,15 +1596,16 @@ h1 span {
   position: absolute;
   top: 12px;
   right: 12px;
-  /* 竖版校园图保持 1280:1824 原比例；112px 宽时约 160px 高，
-     不再占据主画面近一半高度。 */
-  width: 112px;
+  /* 小地图改为 164×164 圆形，配合 main 的跟随玩家雷达模式。 */
+  width: 164px;
+  height: 164px;
   padding: 0;
-  border: 1px solid #84917e;
-  border-radius: 4px;
+  border: 2px solid #84917e;
+  border-radius: 50%;
   background: #14221e;
   color: #f4f1df;
   overflow: hidden;
+  box-shadow: 0 8px 20px #0008;
 }
 .campus-map-button:focus-visible {
   outline: 2px solid #ffe3a0;
@@ -1550,13 +1614,19 @@ h1 span {
 .campus-overview {
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 1280 / 1824;
+  height: 100%;
+  aspect-ratio: 1;
   pointer-events: none;
 }
 .campus-map-button span {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  left: 10px;
   display: block;
-  padding: 3px;
+  padding: 3px 4px;
+  border-radius: 999px;
+  background: #101713c9;
   font-size: 11px;
 }
 .campus-map-dialog {
@@ -1615,7 +1685,8 @@ h1 span {
 }
 @media (max-width: 580px) and (pointer: coarse) {
   .campus-map-button {
-    width: 180px;
+    width: 142px;
+    height: 142px;
     top: 8px;
     right: 8px;
   }
@@ -1828,6 +1899,106 @@ h2 {
   font-size: 11px;
   margin: 14px 0 7px;
   color: #adbdb3;
+}
+.loadout-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.loadout-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 2px 0;
+}
+.loadout-row select {
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 6px;
+  border: 1px solid #ccd7c8;
+  border-radius: 7px;
+  background: #252927;
+  color: #e4e6e1;
+  font-size: 12px;
+}
+.loadout-quantity {
+  width: 64px;
+  padding: 5px 4px;
+  text-align: center;
+}
+.loadout-remove {
+  padding: 5px 7px;
+  color: #aeb8af;
+  background: transparent;
+  border: 1px solid #3b443e;
+  border-radius: 5px;
+  font-size: 11px;
+}
+.loadout-add {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px;
+  font-size: 11px;
+}
+.loadout-slots,
+.loadout-empty {
+  margin: 6px 0 0;
+  color: #8a9a8d;
+  font-size: 11px;
+}
+.warehouse-sections {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+}
+.warehouse-section {
+  padding: 13px 15px;
+  border: 1px solid #303934;
+  border-radius: 8px;
+  background: #171c19;
+}
+.warehouse-section h3 {
+  margin: 0;
+  color: #d9e2d5;
+  font-size: 14px;
+}
+.warehouse-subtitle {
+  margin: 4px 0 9px;
+  color: #829087;
+  font-size: 11px;
+}
+.warehouse-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 7px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.warehouse-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: #202722;
+  color: #bdc9be;
+  font-size: 12px;
+}
+.warehouse-item-count {
+  color: #d5a64d;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.warehouse-empty {
+  margin: 0;
+  color: #657269;
+  font-size: 11px;
 }
 select {
   width: 100%;

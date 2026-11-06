@@ -12,7 +12,11 @@ const loot = (id: string, itemId = 'school-badge'): ItemInstance => ({
 });
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
-async function setup(durationMs = 600_000, starterWeaponId?: string) {
+async function setup(
+  durationMs = 600_000,
+  starterWeaponId?: string,
+  values: typeof RAID_RULES.values = RAID_RULES.values,
+) {
   let now = 0;
   let rejectSave = false;
   const results: RaidResult[] = [];
@@ -31,7 +35,7 @@ async function setup(durationMs = 600_000, starterWeaponId?: string) {
     inventory,
     save,
     events,
-    { ...RAID_RULES, durationMs },
+    { ...RAID_RULES, durationMs, values },
     ITEM_DEFINITIONS,
     () => now,
     () => 'raid-1',
@@ -124,6 +128,16 @@ describe('A extraction lifecycle', () => {
     await flush();
     expect(s.controller.getView().phase).toBe('success');
     expect(s.results[0]?.value).toBe(100);
+  });
+
+  it('rejects extraction at exactly 99 value', async () => {
+    const s = await setup(600_000, undefined, { ...RAID_RULES.values, common: 9, uncommon: 30 });
+    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    s.inventory.addLoot(loot('rare', 'window-seat'));
+    s.inventory.addLoot(loot('common', 'scratch-paper'));
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.getView().value).toBe(99);
+    expect(s.controller.startExtraction()).toEqual({ ok: false, error: 'VALUE_TOO_LOW' });
   });
 
   it('cancels immediately when 110 drops to 85; restored eligibility needs a fresh 5 seconds', async () => {

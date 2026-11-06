@@ -1,5 +1,11 @@
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
-import { assertKnownItemId, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import {
+  assertKnownItemId,
+  isExplorationItem,
+  ITEM_DEFINITIONS,
+  RAID_RULES,
+} from '../../config/game-config';
+import { retainSettlementItems } from './settlement-retention';
 
 export interface StoragePort {
   getItem(key: string): string | null;
@@ -9,6 +15,7 @@ export interface StoragePort {
 export interface SaveData {
   schemaVersion: 1;
   warehouse: ItemInstance[];
+  currency: number;
   codexIds: string[];
   unlockedChapterIds: string[];
   activeRaid: { raidId: string } | null;
@@ -40,7 +47,9 @@ function validItem(value: unknown): value is ItemInstance {
   }
   return (
     value.origin.kind === 'carry-in' ||
-    (value.origin.kind === 'raid-loot' && typeof value.origin.obtainedInRaidId === 'string')
+    (value.origin.kind === 'raid-loot' &&
+      typeof value.origin.obtainedInRaidId === 'string' &&
+      value.origin.obtainedInRaidId.length > 0)
   );
 }
 
@@ -71,6 +80,12 @@ function validSaveInvariants(value: Record<string, unknown>): boolean {
   const activeRaid = value.activeRaid;
   const settledRaidIds = value.settledRaidIds;
   const lastResult = value.lastResult;
+  if (
+    value.currency !== undefined &&
+    (!Number.isSafeInteger(value.currency) || Number(value.currency) < 0)
+  ) {
+    return false;
+  }
   if (
     !Array.isArray(warehouse) ||
     !validUniqueStrings(settledRaidIds) ||
@@ -103,9 +118,10 @@ function validSaveInvariants(value: Record<string, unknown>): boolean {
     }
     if (
       lastResult.outcome === 'success' &&
-      lastResult.items.some(
-        (item) =>
-          item.origin.kind !== 'raid-loot' || item.origin.obtainedInRaidId !== lastResult.raidId,
+      lastResult.items.some((item) =>
+        item.origin.kind === 'raid-loot'
+          ? item.origin.obtainedInRaidId !== lastResult.raidId
+          : item.origin.kind !== 'carry-in',
       )
     ) {
       return false;
@@ -127,7 +143,9 @@ function validSettlementResult(result: RaidResult): boolean {
     return result.items.length === 0;
   }
   return result.items.every(
-    (item) => item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === result.raidId,
+    (item) =>
+      item.origin.kind === 'carry-in' ||
+      (item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === result.raidId),
   );
 }
 
@@ -146,7 +164,10 @@ function decode(raw: string): SaveData {
   ) {
     throw new Error('存档格式不受支持或已经损坏，请先备份，再确认重置。');
   }
-  return value as unknown as SaveData;
+  return {
+    ...value,
+    currency: typeof value.currency === 'number' ? value.currency : 0,
+  } as SaveData;
 }
 
 /** B reference adapter, deliberately isolated from the real game save namespace. */
@@ -196,7 +217,11 @@ export class ReferenceSave implements SavePort {
       if (!item) {
         throw new Error('Missing loadout item');
       }
-      return { ...structuredClone(item), origin: { kind: 'carry-in' as const } };
+      const source = item.origin.kind === 'carry-in' ? item.origin.source : undefined;
+      return {
+        ...structuredClone(item),
+        origin: source ? { kind: 'carry-in' as const, source } : { kind: 'carry-in' as const },
+      };
     });
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
@@ -220,11 +245,19 @@ export class ReferenceSave implements SavePort {
           throw new Error('Duplicate instance in settlement');
         }
         ids.add(item.instanceId);
-        next.warehouse.push(structuredClone(item));
-        if (!next.codexIds.includes(item.itemId)) {
+        if (isExplorationItem(item) && !next.codexIds.includes(item.itemId)) {
           next.codexIds.push(item.itemId);
         }
       }
+      const retained = retainSettlementItems(
+        next.warehouse,
+        result.items,
+        next.currency,
+        ITEM_DEFINITIONS,
+        RAID_RULES.values,
+      );
+      next.warehouse = retained.warehouse;
+      next.currency = retained.currency;
       const hasEvidence = ['torn-notebook', 'anomalous-feather'].every((id) =>
         result.items.some(
           (item) =>
@@ -246,6 +279,27 @@ export class ReferenceSave implements SavePort {
   reset(): void {
     this.commit(this.initial());
   }
+
+  purchaseItem(
+    itemId: string,
+  ):
+    | { ok: true; value: ItemInstance }
+    | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' } {
+    const definition = ITEM_DEFINITIONS[itemId];
+    const price = definition?.price;
+    if (!definition || price === undefined) return { ok: false, error: 'UNKNOWN_ITEM' };
+    if (this.data.currency < price) return { ok: false, error: 'INSUFFICIENT_FUNDS' };
+    const item: ItemInstance = {
+      instanceId: `purchase:${itemId}:${crypto.randomUUID()}`,
+      itemId,
+      origin: { kind: 'carry-in', source: 'purchase' },
+    };
+    const next = this.view();
+    next.currency -= price;
+    next.warehouse.push(item);
+    this.commit(next);
+    return { ok: true, value: structuredClone(item) };
+  }
   private commit(next: SaveData): void {
     this.storage.setItem(SAVE_KEY, JSON.stringify(next));
     this.data = next;
@@ -254,6 +308,7 @@ export class ReferenceSave implements SavePort {
     return {
       schemaVersion: 1,
       warehouse: [],
+      currency: 0,
       codexIds: [],
       unlockedChapterIds: [],
       activeRaid: null,

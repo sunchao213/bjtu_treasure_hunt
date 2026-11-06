@@ -21,10 +21,10 @@ class MemoryStorage implements StoragePort {
     this.data.set(key, value);
   }
 }
-function result(raidId: string): RaidResult {
+function result(raidId: string, itemId = 'school-badge'): RaidResult {
   const items: ItemInstance[] = Array.from({ length: 4 }, (_, index) => ({
     instanceId: `${raidId}-${index}`,
-    itemId: 'school-badge',
+    itemId,
     origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
   }));
   return { raidId, outcome: 'success', reason: null, items, value: 100 };
@@ -126,7 +126,8 @@ describe('A to B reference persistence integration', () => {
     await save.finalizeRaid(result('1'));
     await save.finalizeRaid(result('1'));
     const reloaded = new ReferenceSave(storage);
-    expect(reloaded.view().warehouse).toHaveLength(4);
+    expect(reloaded.view().warehouse).toEqual([result('1').items[3]]);
+    expect(reloaded.view().currency).toBe(3 * RAID_RULES.values.uncommon);
     expect(reloaded.view().codexIds).toEqual(['school-badge']);
     expect(reloaded.view().activeRaid).toBeNull();
   });
@@ -134,7 +135,8 @@ describe('A to B reference persistence integration', () => {
     const storage = new MemoryStorage();
     const save = new ReferenceSave(storage);
     await save.beginRaid('1', []);
-    await save.finalizeRaid(result('1'));
+    // Functional items remain separate instances available for carry-in.
+    await save.finalizeRaid(result('1', 'morning-coffee'));
     const items = await save.beginRaid('2', ['1-0']);
     expect(items[0]?.origin.kind).toBe('carry-in');
     expect(save.view().warehouse).toHaveLength(3);
@@ -159,6 +161,28 @@ describe('A to B reference persistence integration', () => {
   it('rejects unknown schema and item definitions', () => {
     const storage = new MemoryStorage();
     storage.setItem(SAVE_KEY, JSON.stringify({ schemaVersion: 99 }));
+    expect(() => new ReferenceSave(storage)).toThrow();
+  });
+  it('rejects raid-loot with an empty source raid id', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      SAVE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        warehouse: [
+          {
+            instanceId: 'invalid-source',
+            itemId: 'school-badge',
+            origin: { kind: 'raid-loot', obtainedInRaidId: '' },
+          },
+        ],
+        codexIds: [],
+        unlockedChapterIds: [],
+        activeRaid: null,
+        settledRaidIds: [],
+        lastResult: null,
+      }),
+    );
     expect(() => new ReferenceSave(storage)).toThrow();
   });
   it('rejects duplicate settled raids and an active raid that was already settled', () => {
@@ -237,7 +261,8 @@ describe('A to B reference persistence integration', () => {
     controller.tick();
     await Promise.resolve();
     expect(controller.getView().phase).toBe('success');
-    expect(save.view().warehouse).toHaveLength(4);
+    expect(save.view().warehouse).toEqual([result('integrated').items[3]]);
+    expect(save.view().currency).toBe(3 * RAID_RULES.values.uncommon);
     expect(controller.prepareNext()).toBe(true);
     expect(inventory.getCarriedItems()).toHaveLength(0);
   });

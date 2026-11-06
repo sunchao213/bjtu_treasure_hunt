@@ -4,11 +4,16 @@ export interface ItemDefinition {
   readonly itemId: string;
   readonly name: string;
   readonly rarity: Rarity;
-  readonly kind: 'collectible' | 'healing' | 'quest' | 'weapon';
+  readonly kind: 'collectible' | 'healing' | 'quest' | 'weapon' | 'utility';
+  /** Number of raid bag slots occupied by one instance. */
+  readonly bagSlots?: number;
+  /** Purchase price in the persistent warehouse currency. */
+  readonly price?: number;
 }
 
 export type ItemOrigin =
-  { readonly kind: 'carry-in' } | { readonly kind: 'raid-loot'; readonly obtainedInRaidId: string };
+  | { readonly kind: 'carry-in'; readonly source?: 'exploration' | 'purchase' }
+  | { readonly kind: 'raid-loot'; readonly obtainedInRaidId: string };
 
 export interface ItemInstance {
   readonly instanceId: string;
@@ -39,6 +44,8 @@ export type ErrorCode =
   | 'EQUIPMENT_SLOT_OCCUPIED'
   | 'BAG_FULL'
   | 'INVALID_ITEM'
+  | 'UNKNOWN_ITEM'
+  | 'INSUFFICIENT_FUNDS'
   | 'SAVE_FAILED';
 export type ActionResult<T = undefined> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: ErrorCode };
@@ -77,6 +84,9 @@ export interface RaidControllerPort {
   prepareNext(): boolean;
   retrySettlement(): Promise<void>;
   heal(amount: number): boolean;
+  getMoveSpeedMultiplier(): number;
+  setSpeedMultiplier(multiplier: number): boolean;
+  activateInvulnerability(durationMs: number): boolean;
   applyDamage(amount: number): void;
   cancelExtraction(): void;
   setExtractionPresence(isInside: boolean): void;
@@ -87,6 +97,7 @@ export interface RaidControllerPort {
 
 export interface InventoryClientPort extends InventoryPort {
   consumeHealing(instanceId: string, applyEffect: () => boolean): ActionResult<ItemInstance>;
+  consumeUtility(instanceId: string, applyEffect: () => boolean): ActionResult<ItemInstance>;
 }
 
 /** B replaces the reference inventory behind this port; never expose mutable arrays. */
@@ -102,6 +113,7 @@ export interface InventoryPort {
 export interface SavePort {
   beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]>;
   finalizeRaid(result: RaidResult): Promise<void>;
+  purchaseItem?(itemId: string): ActionResult<ItemInstance>;
 }
 
 export interface Point {
