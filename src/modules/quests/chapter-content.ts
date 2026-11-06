@@ -1,4 +1,14 @@
-import { EVIDENCE_FEATHER, EVIDENCE_NOTEBOOK, QUEST_CHAPTER_ID } from './quest-service';
+import {
+  EVIDENCE_CAMPUS_MAP,
+  EVIDENCE_COMPLETE_RECORD,
+  EVIDENCE_FEATHER,
+  EVIDENCE_NOTEBOOK,
+  EVIDENCE_SIYUAN_KEY,
+  EVIDENCE_SOOTHE_CHARM,
+  QUEST_CHAPTER_ID,
+  SECOND_CHAPTER_ID,
+  THIRD_CHAPTER_ID,
+} from './quest-service';
 
 /**
  * D 的剧情内容（与逻辑分离的纯数据，便于评审文案与后续扩章）。
@@ -89,6 +99,122 @@ export const FIRST_CHAPTER: ChapterContent = {
   ],
 };
 
+export const SECOND_CHAPTER: ChapterContent = {
+  chapterId: SECOND_CHAPTER_ID,
+  title: '第二章 · 失效的思源钥匙',
+  subtitle: '思源记录册 · 第二章档案（学生记录摘录）',
+  unlockHint: '完成第一章，并携带被涂改的校园地图与思源楼金钥匙成功撤离后，可回看本章剧情。',
+  prologue:
+    '手记上「思源楼」三个字还没有完全干透，册页就自己浮出新的记录：「记录节点 02 已失效。」' +
+    '你翻开校园地图，发现好几条路线被人反复描粗，其中一条并不通向任何开放入口，却在夜里指向思源楼侧门。' +
+    '地图角落多了一行小字：「别走最短的路，走还记得你的路。」',
+  epilogue:
+    '钥匙并没有打开门，而是打开了一段被封存的记录。' +
+    '上一位记录者留在里面的讯息说，自己不是失踪，而是主动删去了某段记录，因为那段记录会把所有情绪反应都变成怪物。' +
+    '最后一句话被擦去，只剩「不要让它独自醒来」。' +
+    '册页随即浮出：「记录节点 02 已恢复。」远处的芳华园里，有什么正在发出断断续续的求助。',
+  settlementSummary:
+    '第二章已解锁。思源记录册新增：失效的思源钥匙。下一目标：回应芳华园的不稳定信号。',
+  steps: [
+    {
+      stepId: 'step-1-marked-campus-map',
+      stepNumber: 1,
+      title: '线索一 · 被涂改的校园地图',
+      locationId: 'teaching-cluster',
+      requiresEvidence: [],
+      stepBody:
+        '你在教学楼群的公告栏上发现一张被反复描粗的校园地图，其中一条路线并不通往任何开放入口。' +
+        '地图角落写着：「别走最短的路，走还记得你的路。」' +
+        '描粗的线条在夜里微微发亮，一直延伸到思源楼侧门。',
+    },
+    {
+      stepId: 'step-2-keyless-door',
+      stepNumber: 2,
+      title: '线索二 · 没有钥匙孔的门',
+      locationId: 'siyuan-side-door',
+      requiresEvidence: [EVIDENCE_CAMPUS_MAP],
+      stepBody:
+        '思源楼侧门没有钥匙孔，只有一块会吞掉反光的金属牌。' +
+        '你把地图上描粗的路线与门牌对应后，牌面浮出「记录节点 02 已失效」。' +
+        '门缝里掉出一把沉重的钥匙，落在地上时扬起一小片不属于这个季节的灰尘。',
+    },
+    {
+      stepId: 'step-3-deleted-page',
+      stepNumber: 3,
+      title: '线索三 · 被删除的一页',
+      locationId: 'south-extraction-point',
+      requiresEvidence: [EVIDENCE_CAMPUS_MAP, EVIDENCE_SIYUAN_KEY],
+      stepBody:
+        '你带着地图和钥匙往南门跑。侧门的金属牌在身后慢慢暗下去，像被谁合上了一页。' +
+        '穿过南门时，钥匙在你掌心轻轻震了一下，一段被封存的记录随之展开。' +
+        '记录的最后一句被擦得只剩痕迹：不要让它独自醒来。',
+    },
+  ],
+};
+
+export const THIRD_CHAPTER: ChapterContent = {
+  chapterId: THIRD_CHAPTER_ID,
+  title: '第三章 · 被抱住的怪物',
+  subtitle: '思源记录册 · 第三章档案（学生记录摘录）',
+  unlockHint: '完成第二章，并携带安抚护符与完整记录成功撤离后，可回看本章剧情。',
+  prologue:
+    '凌晨的校园安静得不正常。你刚走进芳华园，就听见一段断断续续的声音：「别关灯……我找不到回去的路。」' +
+    '任务面板没有把它标成敌人，只写着一行小字：不稳定信号。' +
+    '你握紧手电，却没有把手电对准它——这一次，它看起来更像是需要有人留下。',
+  epilogue:
+    '护符贴上掌心的一刻，你听见最后一句话：「我不是在追你，我只是怕被忘记。」' +
+    '册页翻到空白的一页，慢慢显出一行新字：思源记录机制原本用于保存记忆，却因长期无人理解与整理，' +
+    '把未被记录的情绪当成了噪声清除。' +
+    '角落里还有一段被人主动删去的记录，静静等着下一次夜里被找回。',
+  settlementSummary: '第三章已解锁。思源记录册新增：被抱住的怪物。新档案：被主动删除的记录。',
+  steps: [
+    {
+      stepId: 'step-1-hear-the-request',
+      stepNumber: 1,
+      title: '线索一 · 先听见请求',
+      locationId: 'garden-sos',
+      requiresEvidence: [],
+      stepBody:
+        '你在芳华园收到一段断续的求助：「别关灯……我找不到回去的路。」' +
+        '任务面板没有把它标成敌人，而是标为不稳定信号。' +
+        '它没有扑过来，只是缩在路灯照不到的地方，像一段被人忘在原地的记忆。',
+    },
+    {
+      stepId: 'step-2-soothe-not-subdue',
+      stepNumber: 2,
+      title: '线索二 · 安抚不是制服',
+      locationId: 'garden-sos',
+      requiresEvidence: [EVIDENCE_SOOTHE_CHARM],
+      stepBody:
+        '你在有限的时间里靠近它，把手电放低，等它的呼吸慢下来。' +
+        '安抚成功的那一刻，它没有消失，只留下了一枚仍有余温的护符。' +
+        '护符上刻着一句可读的字：「我不是在追你，我只是怕被忘记。」',
+    },
+    {
+      stepId: 'step-3-complete-record',
+      stepNumber: 3,
+      title: '线索三 · 完整记录',
+      locationId: 'south-extraction-point',
+      requiresEvidence: [EVIDENCE_SOOTHE_CHARM, EVIDENCE_COMPLETE_RECORD],
+      stepBody:
+        '护符与前两章的证据在记录册里对应上了。你终于明白：思源机制原本用于保存记忆，' +
+        '却因为长期无人理解与整理，把未被记录的情绪当成噪声清除。' +
+        '你带着护符和完整记录穿过南门，册页第一次没有出现新的红点，而是安静地翻回第一页。',
+    },
+  ],
+};
+
+/** 三章档案：按章节 id 回看；第一章保持默认，兼容既有入口。 */
+export const CHAPTERS: Readonly<Record<string, ChapterContent>> = {
+  [FIRST_CHAPTER.chapterId]: FIRST_CHAPTER,
+  [SECOND_CHAPTER.chapterId]: SECOND_CHAPTER,
+  [THIRD_CHAPTER.chapterId]: THIRD_CHAPTER,
+};
+
+export function chapterContentById(chapterId: string): ChapterContent {
+  return CHAPTERS[chapterId] ?? FIRST_CHAPTER;
+}
+
 /** 剧情地点的运行时锚点：叙事名 ↔ 地图配置，供展示与测试核对，不参与条件判定。 */
 export interface StoryLocationAnchor {
   /** 展示用地点名（与剧情稿叙事名称一致）。 */
@@ -103,6 +229,9 @@ export const STORY_LOCATION_ANCHORS: Readonly<Record<string, StoryLocationAnchor
   'library-outside-shelf': { placeName: '图书馆外旧书架', kind: 'loot-zone', anchorId: 'library' },
   'minghu-stele': { placeName: '明湖石碑', kind: 'loot-zone', anchorId: 'lake' },
   'south-extraction-point': { placeName: '南门撤离点', kind: 'gate', anchorId: '南门 · 撤离点' },
+  'teaching-cluster': { placeName: '教学楼群', kind: 'loot-zone', anchorId: 'central-lawn' },
+  'siyuan-side-door': { placeName: '思源楼侧门', kind: 'loot-zone', anchorId: 'library' },
+  'garden-sos': { placeName: '芳华园', kind: 'loot-zone', anchorId: 'east-garden' },
 };
 
 /** 图鉴条目描述：所有可入仓物品都有对应说明。 */
@@ -119,6 +248,8 @@ export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
   'gpa-charm': 'GPA 4.0 护符——据说只在通宵自习后才会出现。',
   'library-reward-ticket': '图书馆奖励券，背面印着借阅榜单，翻过去才看得见。',
   'siyuan-key': '思源楼金钥匙，握在手里比看起来沉，像是压着一整栋楼的记忆。',
+  'soothe-charm': '安抚护符，贴着掌心仍有余温，刻着「我不是在追你，我只是怕被忘记」。',
+  'complete-record': '思源记录册的完整一页，记着一段被主动删除的情绪，与前面三章的证据一一对应。',
   'training-bat': '训练棍：入场装备，挥不动人也挥不坏东西。',
   'stun-baton': '电击器：短暂击晕怪物，电量只够使用十五次。',
   bandage: '创可贴：使用后恢复 10 点生命值。',
@@ -131,16 +262,36 @@ export function findStep(chapter: ChapterContent, stepId: string): ChapterStep |
   return chapter.steps.find((step) => step.stepId === stepId);
 }
 
+/** 各章证据拾取时的氛围文案（配合对应步骤标题一起显示）。 */
+const EVIDENCE_BEAT_TEXT: Readonly<Record<string, string>> = {
+  [EVIDENCE_NOTEBOOK]: '夹层里抽出半本被水浸过的手记，扉页写着「思源」。',
+  [EVIDENCE_FEATHER]: '碑身轻震，一枚泛着微光的异常羽毛落进掌心。',
+  [EVIDENCE_CAMPUS_MAP]: '地图角落描粗的路线在夜里发亮，一直指向思源楼侧门。',
+  [EVIDENCE_SIYUAN_KEY]: '门缝里掉出一把沉重的金钥匙，金属牌上写着「记录节点 02 已失效」。',
+  [EVIDENCE_SOOTHE_CHARM]: '不稳定信号平静下来，留下了一枚仍有余温的护符。',
+  [EVIDENCE_COMPLETE_RECORD]: '护符与记录册对应上了，完整记录在册页上慢慢显形。',
+};
+
+/** 证据所属章节与在章节中的步骤下标。 */
+const EVIDENCE_STEP_LOCATION: Readonly<Record<string, { chapterId: string; index: number }>> = {
+  [EVIDENCE_NOTEBOOK]: { chapterId: QUEST_CHAPTER_ID, index: 0 },
+  [EVIDENCE_FEATHER]: { chapterId: QUEST_CHAPTER_ID, index: 1 },
+  [EVIDENCE_CAMPUS_MAP]: { chapterId: SECOND_CHAPTER_ID, index: 0 },
+  [EVIDENCE_SIYUAN_KEY]: { chapterId: SECOND_CHAPTER_ID, index: 1 },
+  [EVIDENCE_SOOTHE_CHARM]: { chapterId: THIRD_CHAPTER_ID, index: 0 },
+  [EVIDENCE_COMPLETE_RECORD]: { chapterId: THIRD_CHAPTER_ID, index: 1 },
+};
+
 /**
  * 拾取任务证据时的剧情提示：把对应步骤的标题与一句氛围文案带回场景提示条，
  * 让剧情在实际游玩中出现，而不是只能事后在档案里翻。文案口径见剧情稿表 7。
  */
 export function evidenceStoryBeat(itemId: string): string | null {
-  if (itemId === EVIDENCE_NOTEBOOK) {
-    return `【${FIRST_CHAPTER.steps[0]?.title ?? ''}】夹层里抽出半本被水浸过的手记，扉页写着「思源」。`;
+  const beat = EVIDENCE_BEAT_TEXT[itemId];
+  const location = EVIDENCE_STEP_LOCATION[itemId];
+  if (beat === undefined || location === undefined) {
+    return null;
   }
-  if (itemId === EVIDENCE_FEATHER) {
-    return `【${FIRST_CHAPTER.steps[1]?.title ?? ''}】碑身轻震，一枚泛着微光的异常羽毛落进掌心。`;
-  }
-  return null;
+  const step = chapterContentById(location.chapterId).steps[location.index];
+  return `【${step?.title ?? ''}】${beat}`;
 }

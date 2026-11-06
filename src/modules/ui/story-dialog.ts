@@ -1,5 +1,5 @@
 import { type ChapterContent, type ChapterStep, FIRST_CHAPTER } from '../quests/chapter-content';
-import { EVIDENCE_FEATHER, EVIDENCE_NOTEBOOK } from '../quests/quest-service';
+import { questChapterById } from '../quests/quest-service';
 import { createTypewriter, toSegments, type StorySegment } from './typewriter';
 
 /**
@@ -46,19 +46,15 @@ export function storySegments(
   }
 }
 
-/** 拾取证据 → 对应剧情步骤（表 4 的两段线索正文；撤离段由 ending 呈现）。 */
-const EVIDENCE_STEP_INDEX: Readonly<Record<string, number>> = {
-  [EVIDENCE_NOTEBOOK]: 0,
-  [EVIDENCE_FEATHER]: 1,
-};
-
-/** 拾取到任务证据时返回应自动弹出的剧情步骤；非任务证据返回 undefined。 */
+/** 拾取证据 → 对应剧情步骤；章节由证据所属章节决定，第二章起复用同一套弹窗。 */
 export function stepForEvidence(
   itemId: string,
   chapter: ChapterContent = FIRST_CHAPTER,
 ): ChapterStep | undefined {
-  const index = EVIDENCE_STEP_INDEX[itemId];
-  return index === undefined ? undefined : chapter.steps[index];
+  const index = questChapterById(chapter.chapterId).evidence.findIndex(
+    (entry) => entry.itemId === itemId,
+  );
+  return index < 0 ? undefined : chapter.steps[index];
 }
 
 export function storyDialogMarkup(): string {
@@ -78,8 +74,8 @@ export function storyDialogMarkup(): string {
 }
 
 export interface StoryDialogHandle {
-  /** 从第一段开始播放剧情；已在播放时重新开头。 */
-  open(view: StoryView): void;
+  /** 从第一段开始播放剧情；已在播放时重新开头。chapter 缺省为第一章。 */
+  open(view: StoryView, chapter?: ChapterContent): void;
 }
 
 export function bindStoryDialog(onOpen: () => void, onClose: () => void): StoryDialogHandle {
@@ -100,13 +96,13 @@ export function bindStoryDialog(onOpen: () => void, onClose: () => void): StoryD
   );
 
   const handle: StoryDialogHandle = {
-    open(view) {
+    open(view, chapter) {
       if (!dialog.open) {
         onOpen();
         dialog.showModal();
         dialog.focus();
       }
-      typewriter.play(storySegments(view));
+      typewriter.play(storySegments(view, chapter));
     },
   };
 

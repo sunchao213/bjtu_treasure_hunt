@@ -1,5 +1,5 @@
 import { EXPLORATION_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
-import { CODEX_ENTRIES } from '../quests/chapter-content';
+import { CHAPTERS, CODEX_ENTRIES } from '../quests/chapter-content';
 import type { Rarity } from '../../shared/types/game';
 import { iconSvg } from './icons';
 
@@ -123,8 +123,9 @@ export function renderCodex(ids: readonly string[], chapters: readonly string[])
   if (!grid) return;
   document.getElementById('codex-count')!.textContent =
     `${entries.filter((e) => e.unlocked).length} / ${entries.length}`;
-  document.getElementById('codex-chapter')!.textContent = chapters.includes('siyuan-code')
-    ? '章节：思源密码已解锁'
+  const unlockedChapters = chapters.filter((chapterId) => CHAPTERS[chapterId] !== undefined).length;
+  document.getElementById('codex-chapter')!.textContent = unlockedChapters
+    ? `章节：思源密码已解锁 ${unlockedChapters} / ${Object.keys(CHAPTERS).length}`
     : '章节：思源密码未解锁 · 需携带本局残缺手记与异常羽毛成功撤离';
   grid.replaceChildren();
   for (const entry of entries) {
@@ -195,7 +196,7 @@ export async function exportCodexImage(
     120,
   );
   ctx.fillText(
-    chapters.includes('siyuan-code') ? '思源密码章节：已解锁' : '思源密码章节：未解锁',
+    `思源密码章节：已解锁 ${chapters.filter((chapterId) => CHAPTERS[chapterId] !== undefined).length} / ${Object.keys(CHAPTERS).length}`,
     48,
     160,
   );

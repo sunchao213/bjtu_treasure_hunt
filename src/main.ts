@@ -20,9 +20,17 @@ import {
   renderChapterLock,
   renderChapterUnlock,
   renderCodexPanel,
+  renderLobbyMissions,
+  renderPrepGoals,
   renderQuestPanel,
 } from './modules/ui/quest-view';
-import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
+import {
+  activeQuestChapter,
+  chapterUnlockGranted,
+  questChapterForEvidence,
+  questProgress,
+} from './modules/quests/quest-service';
+import { chapterContentById } from './modules/quests/chapter-content';
 import { bindStoryDialog, stepForEvidence } from './modules/ui/story-dialog';
 import { bindConfirmDialog } from './modules/ui/confirm-dialog';
 import { createTypewriter } from './modules/ui/typewriter';
@@ -540,6 +548,8 @@ async function bootstrap(): Promise<void> {
   const scene = new WorldScene({
     controller: activeController,
     inventory: activeInventory,
+    /** 当前章节实时读取存档：第一关通关后，下一局自动切到第二章。 */
+    questChapter: () => activeQuestChapter(save.view().unlockedChapterIds).id,
     events,
     notify,
     touch,
@@ -820,17 +830,20 @@ async function bootstrap(): Promise<void> {
   // 每局只弹一次的剧情键：`${raidId}:${itemId}` 为线索，`${raidId}:ending` 为结尾。
   const storyShownPerRaid = new Set<string>();
   events.on('ItemPicked', ({ raidId, item }) => {
-    const step = stepForEvidence(item.itemId);
+    const chapterId = questChapterForEvidence(item.itemId);
+    const step = stepForEvidence(item.itemId, chapterContentById(chapterId));
     if (!step) return;
     const key = `${raidId}:${item.itemId}`;
     if (storyShownPerRaid.has(key)) return;
     storyShownPerRaid.add(key);
-    story.open({ kind: 'step', step });
+    story.open({ kind: 'step', step }, chapterContentById(chapterId));
   });
-  // 剧情档案的「回看」按钮随存档状态重渲染，用事件委托绑定。
+  // 剧情档案的「回看」按钮随存档状态重渲染，用事件委托绑定；每章一个回看入口。
   element('story-archive').addEventListener('click', (event) => {
-    if ((event.target as HTMLElement).id === 'open-story') {
-      story.open({ kind: 'full-chapter' });
+    const button = event.target as HTMLElement;
+    const chapterId = button.dataset.chapterStory;
+    if (chapterId !== undefined) {
+      story.open({ kind: 'full-chapter' }, chapterContentById(chapterId));
     }
   });
 
@@ -981,13 +994,14 @@ async function bootstrap(): Promise<void> {
           ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
           : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
     const carried = activeInventory.getCarriedItems();
-    renderQuestPanel(questProgress(carried, view.raidId));
+    const archive = save.view();
+    const activeChapter = activeQuestChapter(archive.unlockedChapterIds);
+    renderQuestPanel(questProgress(carried, view.raidId, activeChapter.id));
     const signature = JSON.stringify(carried);
     if (signature !== lastInventory) {
       renderInventory(carried);
       lastInventory = signature;
     }
-    const archive = save.view();
     const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
     const functionalWarehouse = archive.warehouse.filter(
       (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
@@ -996,7 +1010,7 @@ async function bootstrap(): Promise<void> {
     element('warehouse-count-label').innerHTML =
       `${functionalWarehouse.length} 件功能道具 · <b id="currency-count">${archive.currency} 交子</b>`;
     element('archive-detail').textContent = archive.unlockedChapterIds.length
-      ? `探索发现已收入图鉴；已解锁思源密码章节。`
+      ? `探索发现已收入图鉴；已解锁 ${archive.unlockedChapterIds.length} 章思源密码记录。`
       : archive.codexIds.length
         ? `探索发现已点亮 ${archive.codexIds.length} 种图鉴；功能物品保存在仓库。`
         : '探索物品成功撤离后会收入图鉴，功能物品会保存在仓库。';
@@ -1005,21 +1019,24 @@ async function bootstrap(): Promise<void> {
       renderLoadoutOptions(archive.warehouse);
       lastWarehouse = warehouseSignature;
     }
-    const unlocked = view.result !== null && chapterUnlockGranted(view.result);
-    renderChapterUnlock(element('quest-unlock'), unlocked);
+    const unlocked = view.result !== null && chapterUnlockGranted(view.result, activeChapter.id);
+    renderChapterUnlock(element('quest-unlock'), unlocked, activeChapter.id);
     // R07：成功撤离但证据不齐时，说明本章为什么还没解锁。
-    renderChapterLock(element('quest-lock'), view.result);
+    renderChapterLock(element('quest-lock'), view.result, activeChapter.id);
     // 结尾剧情（剧情稿 6.4）：成功撤离解锁章节后自动弹出一次。
     if (unlocked) {
       const key = `${view.raidId}:ending`;
       if (!storyShownPerRaid.has(key)) {
         storyShownPerRaid.add(key);
-        story.open({ kind: 'ending' });
+        story.open({ kind: 'ending' }, chapterContentById(activeChapter.id));
       }
     }
     const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
     if (codexSignature !== lastCodex) {
       renderCodexPanel(element('codex-list'), element('story-archive'), archive);
+      // 大厅任务简报与行前目标跟随章节推进：通关一章后在这里追加下一章。
+      renderLobbyMissions(element('lobby-missions'), archive.unlockedChapterIds);
+      renderPrepGoals(element('prep-goals'), activeChapter.id);
       if (codex.open) renderCodex(archive.codexIds, archive.unlockedChapterIds);
       lastCodex = codexSignature;
     }

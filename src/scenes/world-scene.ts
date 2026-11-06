@@ -8,7 +8,7 @@ import {
   monsterAnimationFor,
   monsterScaleFor,
 } from '../config/monster-sprites';
-import { generateLootSpawns, type LootSpawn } from '../modules/world/loot-spawns';
+import { generateLootSpawns, questSpawnPlan, type LootSpawn } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
@@ -40,7 +40,8 @@ import type { SoundManager } from '../modules/ui/sound-manager';
 import {
   isQuestComplete,
   prerequisiteHint,
-  QUEST_COMPLETE_HINT,
+  questChapterById,
+  QUEST_CHAPTER_ID,
 } from '../modules/quests/quest-service';
 import { evidenceStoryBeat } from '../modules/quests/chapter-content';
 
@@ -52,6 +53,8 @@ export interface KeyPrompt {
 interface SceneServices {
   controller: RaidControllerPort;
   inventory: InventoryPort;
+  /** 当前进行中的章节 id，由大厅按存档实时给出（章节推进后下一局自动换章）。 */
+  questChapter?: () => string;
   events: EventBus;
   notify: (message: string) => void;
   touch: TouchControls;
@@ -152,6 +155,11 @@ export class WorldScene extends Phaser.Scene {
 
   constructor(private readonly services: SceneServices) {
     super('world');
+  }
+
+  /** 当前章节 id；未接线时退回第一章，保证单测与旧调用方行为不变。 */
+  private questChapterId(): string {
+    return this.services.questChapter?.() ?? QUEST_CHAPTER_ID;
   }
 
   preload(): void {
@@ -1050,7 +1058,8 @@ export class WorldScene extends Phaser.Scene {
         this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
     );
     if (chest) {
-      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId);
+      const chapter = questChapterById(this.questChapterId());
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapter.id);
       if (prerequisite !== null) {
         this.search.cancel();
         this.interaction = prerequisite;
@@ -1090,14 +1099,18 @@ export class WorldScene extends Phaser.Scene {
             raidId: view.raidId,
             locationId: chest.id,
           });
-          if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)) {
+          if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId, chapter.id)) {
             this.services.controller.setQuestComplete(true);
           }
         }
         if (result.ok) {
           const definition = ITEM_DEFINITIONS[chest.itemId];
-          const beat = isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)
-            ? QUEST_COMPLETE_HINT
+          const beat = isQuestComplete(
+            this.services.inventory.getCarriedItems(),
+            view.raidId,
+            chapter.id,
+          )
+            ? chapter.completeHint
             : evidenceStoryBeat(chest.itemId);
           const pickup =
             beat ??
@@ -1194,7 +1207,9 @@ export class WorldScene extends Phaser.Scene {
     }
     this.chestObjects.clear();
     this.chestSprites.clear();
-    this.searchPoints = raidId ? generateLootSpawns() : [];
+    this.searchPoints = raidId
+      ? generateLootSpawns(Math.random, questSpawnPlan(this.questChapterId()))
+      : [];
     for (const point of this.searchPoints) {
       const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
       const chest = this.add

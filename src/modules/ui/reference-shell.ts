@@ -34,12 +34,8 @@ export function prepViewMarkup(): string {
             <p class="prep-kicker">思源密码 · 行前准备</p>
             <h2 id="lobby-prepare-title">晚归的路上，多看了一眼那盏灯</h2>
             <p class="prep-brief">你只是忘了带校园卡，回宿舍比平时晚了一点。图书馆外旧书架旁多出一盏从没见过的灯，页脚写着「思源」。今晚把线索带出去，别走地图上没有的路。</p>
-            <div class="lobby-mission-strip"><span class="mission-number">01</span><span><b>第一章 · 明湖边的异常羽毛</b><small>带回两件证据，并从南门安全撤离</small></span><span class="mission-status">未开始</span></div>
-            <ol class="prep-goals" aria-label="本局目标">
-              <li><b>残缺手记</b><span>图书馆外 · 旧书架</span></li>
-              <li><b>异常羽毛</b><span>明湖 · 石碑</span></li>
-              <li><b>携带价值 ≥ 100</b><span>南门 · 撤离点</span></li>
-            </ol>
+            <div id="lobby-missions" class="lobby-missions" aria-live="polite"></div>
+            <ol id="prep-goals" class="prep-goals" aria-label="本局目标"></ol>
           </header>
           <div class="prep-main">
             <section class="prep-block prep-kit" aria-labelledby="prep-kit-title">
@@ -181,10 +177,7 @@ export function mountShell(root: HTMLElement): void {
             <p class="muted" id="light-reserves">备用电池 2 · 照明棒 2</p>
           </section>
           <section class="side-card quest-card" id="quest-panel"><div class="section-kicker">思源密码 · 任务进度 <span id="quest-count">0 / 2</span></div>
-            <ul id="quest-steps" class="quest-steps">
-              <li data-evidence="torn-notebook">残缺手记 · 图书馆外</li>
-              <li data-evidence="anomalous-feather">异常羽毛 · 明湖石碑</li>
-            </ul>
+            <ul id="quest-steps" class="quest-steps"></ul>
             <p id="quest-status" class="muted">线索：图书馆外残缺手记</p>
           </section>
           <details class="side-card room-card" id="room-panel"><summary class="section-kicker">联机房间 <span id="room-connection">未连接</span></summary>

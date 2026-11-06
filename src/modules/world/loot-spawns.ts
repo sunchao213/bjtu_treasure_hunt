@@ -1,4 +1,5 @@
 import { WORLD } from '../../config/world-config';
+import { questChapterById, QUEST_CHAPTER_ID } from '../quests/quest-service';
 import type { Point } from '../../shared/types/game';
 
 export interface LootSpawn extends Point {
@@ -24,8 +25,26 @@ export function clearLootPosition(p: Point, radius = 35): boolean {
   );
 }
 
+/** 任务证据刷新计划：每个章节的两件证据各占一个区域的固定搜索点。 */
+export interface QuestSpawnPlan {
+  itemId: string;
+  zoneId: string;
+  index: number;
+}
+
+export function questSpawnPlan(chapterId: string = QUEST_CHAPTER_ID): QuestSpawnPlan[] {
+  return questChapterById(chapterId).evidence.map((entry) => ({
+    itemId: entry.itemId,
+    zoneId: entry.spawnZoneId,
+    index: entry.spawnIndex,
+  }));
+}
+
 /** Finite candidate sampling: even a constant RNG cannot hang the raid. */
-export function generateLootSpawns(random: () => number = Math.random): LootSpawn[] {
+export function generateLootSpawns(
+  random: () => number = Math.random,
+  plan: readonly QuestSpawnPlan[] = questSpawnPlan(),
+): LootSpawn[] {
   const result: LootSpawn[] = [];
   const roll = () => Math.max(0, Math.min(0.999999, random()));
   for (const zone of WORLD.lootZones) {
@@ -70,12 +89,12 @@ export function generateLootSpawns(random: () => number = Math.random): LootSpaw
           ? jitter
           : point;
       const pool = ['window-seat', 'morning-coffee', 'school-badge'];
-      const itemId =
-        zone.id === 'library' && i === 0
-          ? 'torn-notebook'
-          : zone.id === 'lake'
-            ? 'anomalous-feather'
-            : pool[Math.floor(roll() * pool.length)]!;
+      const quest = plan.find((entry) => entry.zoneId === zone.id && entry.index === i);
+      const itemId = quest
+        ? quest.itemId
+        : zone.id === 'lake'
+          ? 'anomalous-feather'
+          : pool[Math.floor(roll() * pool.length)]!;
       result.push({ ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
     }
   }

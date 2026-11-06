@@ -1,7 +1,7 @@
 import { isExplorationItem, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
-import { chapterUnlockGranted, QUEST_CHAPTER_ID } from '../quests/quest-service';
+import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
 import { retainSettlementItems } from './settlement-retention';
 
 // Keep the storage key stable so existing browsers can migrate in place.
@@ -370,8 +370,13 @@ export class PersistentSave implements SavePort {
       );
       next.warehouse = retained.warehouse;
       next.currency = retained.currency;
-      if (chapterUnlockGranted(result) && !next.unlockedChapterIds.includes(QUEST_CHAPTER_ID)) {
-        next.unlockedChapterIds.push(QUEST_CHAPTER_ID);
+      // 只解锁「当前进行中的章节」：第一章通关后，下一次结算会去判定第二章，依次递进。
+      const chapter = activeQuestChapter(next.unlockedChapterIds);
+      if (
+        chapterUnlockGranted(result, chapter.id) &&
+        !next.unlockedChapterIds.includes(chapter.id)
+      ) {
+        next.unlockedChapterIds.push(chapter.id);
       }
     }
     next.activeRaid = null;

@@ -1135,6 +1135,24 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   color: #c8a66a;
   font-size: 10px;
 }
+/* 章节简报列表：第一章常驻，通关后在其下方追加下一章。 */
+.lobby-missions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.lobby-missions .lobby-mission-strip {
+  margin-top: 0;
+}
+.mission-status.active {
+  border-color: #bc9253;
+  background: #2a2418;
+  color: #e3c184;
+}
+.mission-status.done {
+  border-color: #4c6b4a;
+  color: #9dc69a;
+}
 .prep-goals span {
   font-size: 11px;
   color: #8a9a8d;
@@ -2329,7 +2347,8 @@ footer {
 .story-box {
   position: relative;
   width: min(980px, calc(100% - 32px));
-  margin-bottom: clamp(16px, 6cqh, 56px);
+  /* 底部留白按画框高度算：给对话框抬到安全区，避免贴边被画框裁掉。 */
+  margin-bottom: clamp(28px, 10cqh, 80px);
   padding: 16px 22px 12px;
   border: 1px solid #6c6a55;
   border-radius: 10px;
@@ -2729,6 +2748,13 @@ html:not([data-touch='true']) #stage dialog[open] {
 /* 弹窗高度按画框算（720 − 边距），不跟着窗口高度变。 */
 html:not([data-touch='true']) #stage .rules-dialog {
   max-height: 696px;
+}
+/* 剧情对话是铺满画框的透明遮罩层：尺寸必须等同 1280×720，
+   否则会按浏览器窗口高度贴底，缩放后跑到画框外、卡片被裁掉。 */
+html:not([data-touch='true']) #stage .story-dialog[open] {
+  width: 1280px;
+  height: 720px;
+  max-height: 720px;
 }
 html:not([data-touch='true']) #stage .campus-map-dialog {
   width: 900px;

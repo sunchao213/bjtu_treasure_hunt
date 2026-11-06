@@ -24,6 +24,8 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible'],
     ['library-reward-ticket', '图书馆奖励券', 'epic', 'collectible'],
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],
+    ['soothe-charm', '安抚护符', 'epic', 'quest'],
+    ['complete-record', '完整记录', 'legendary', 'quest'],
     ['training-bat', '训练棍', 'common', 'weapon'],
     ['stun-baton', '电击器', 'uncommon', 'weapon'],
     ['bandage', '创可贴', 'common', 'healing', 1, 10],
@@ -57,6 +59,8 @@ export const ITEM_CATALOG_IDS = [
   'gpa-charm',
   'library-reward-ticket',
   'siyuan-key',
+  'soothe-charm',
+  'complete-record',
 ] as const;
 
 /** All known item IDs, including shop-only supplies, for save/config validation. */
