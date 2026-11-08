@@ -7,6 +7,7 @@ import {
   clearLootPosition,
   generateLootSpawns,
   roundRandom,
+  questSpawnPlan,
 } from '../../src/modules/world/loot-spawns';
 
 function seeded(seed: number): () => number {
@@ -49,15 +50,84 @@ describe('portrait campus image map', () => {
     expect(WORLD.gates.filter((g) => g.role === 'extraction')).toHaveLength(1);
   });
 
-  it('randomizes each raid with enough value, both clues and clear spaced positions', () => {
+  it('固定思源楼宝箱净空可达；每局只有该箱生成手记', () => {
+    expect(WORLD.questChest).toMatchObject({ x: 240, y: 620, zoneId: 'siyuan' });
+    expect(clearLootPosition(WORLD.questChest)).toBe(true);
+    const step = 25;
+    const queue = [{ ...WORLD.spawn }];
+    const key = (x: number, y: number) => `${x},${y}`;
+    const visited = new Set([key(WORLD.spawn.x, WORLD.spawn.y)]);
+    for (let head = 0; head < queue.length; head++) {
+      const p = queue[head]!;
+      for (const [dx, dy] of [
+        [step, 0],
+        [-step, 0],
+        [0, step],
+        [0, -step],
+      ]) {
+        const x = p.x + dx!;
+        const y = p.y + dy!;
+        if (
+          clearLootPosition({ x, y }, WORLD.playerRadius) &&
+          !visited.has(key(x, y)) &&
+          lineOfSight(p, { x, y }, WORLD.obstacles)
+        ) {
+          visited.add(key(x, y));
+          queue.push({ x, y });
+        }
+      }
+    }
+    const snapped = {
+      x: WORLD.spawn.x + Math.round((WORLD.questChest.x - WORLD.spawn.x) / step) * step,
+      y: WORLD.spawn.y + Math.round((WORLD.questChest.y - WORLD.spawn.y) / step) * step,
+    };
+    expect(visited.has(key(snapped.x, snapped.y))).toBe(true);
+
+    for (let seed = 0; seed < 100; seed++) {
+      const points = generateLootSpawns(seeded(seed));
+      expect(points.filter((point) => point.itemId === 'torn-notebook')).toEqual([
+        expect.objectContaining({
+          id: WORLD.questChest.id,
+          x: WORLD.questChest.x,
+          y: WORLD.questChest.y,
+          zoneId: WORLD.questChest.zoneId,
+          itemId: 'torn-notebook',
+        }),
+      ]);
+      for (const other of points.filter((point) => point.id !== WORLD.questChest.id))
+        expect(distance(WORLD.questChest, other)).toBeGreaterThanOrEqual(90);
+    }
+  });
+
+  it('明湖石碑的显示锚点与调查地点保持一致', () => {
+    expect(WORLD.stone).toEqual({ x: 990, y: 230 });
+    expect(clearLootPosition(WORLD.stone, WORLD.playerRadius)).toBe(true);
+  });
+
+  it('第二章地图与金钥匙固定在参考图位置，随机箱不再生成它们', () => {
+    const plan = questSpawnPlan('siyuan-key');
+    const points = generateLootSpawns(seeded(42), plan);
+    expect(WORLD.chapterTwoPoints.campusMap).toMatchObject({ x: 800, y: 940 });
+    expect(WORLD.chapterTwoPoints.siyuanKey).toMatchObject({ x: 467, y: 370 });
+    expect(points.filter((point) => point.itemId === 'campus-map')).toEqual([
+      expect.objectContaining({ id: 'campus-map-point', x: 800, y: 940 }),
+    ]);
+    expect(points.filter((point) => point.itemId === 'siyuan-key')).toEqual([
+      expect.objectContaining({ id: 'siyuan-key-point', x: 467, y: 370 }),
+    ]);
+    expect(
+      points.filter((point) => point.itemId === 'campus-map' || point.itemId === 'siyuan-key'),
+    ).toHaveLength(2);
+  });
+
+  it('randomizes each raid with enough value and clear spaced positions', () => {
     for (let seed = 0; seed < 100; seed++) {
       const points = generateLootSpawns(seeded(seed));
       expect(points).toHaveLength(
-        WORLD.lootZones.reduce((count, zone) => count + (zone.id === 'lake' ? 1 : 3), 0),
+        1 + WORLD.lootZones.reduce((count, zone) => count + (zone.id === 'lake' ? 1 : 3), 0),
       );
-      expect(new Set(points.map((p) => p.zoneId)).size).toBe(WORLD.lootZones.length);
+      expect(new Set(points.map((p) => p.zoneId)).size).toBe(WORLD.lootZones.length + 1);
       expect(points.filter((p) => p.itemId === 'torn-notebook')).toHaveLength(1);
-      expect(points.filter((p) => p.itemId === 'anomalous-feather')).toHaveLength(1);
       expect(
         points.reduce((sum, p) => sum + RAID_RULES.values[ITEM_DEFINITIONS[p.itemId]!.rarity], 0),
       ).toBeGreaterThan(200);
@@ -68,10 +138,8 @@ describe('portrait campus image map', () => {
       }
     }
     expect(generateLootSpawns(seeded(1))).not.toEqual(generateLootSpawns(seeded(2)));
-    const spawnCount = WORLD.lootZones.reduce(
-      (count, zone) => count + (zone.id === 'lake' ? 1 : 3),
-      0,
-    );
+    const spawnCount =
+      1 + WORLD.lootZones.reduce((count, zone) => count + (zone.id === 'lake' ? 1 : 3), 0);
     expect(generateLootSpawns(() => 0)).toHaveLength(spawnCount);
     expect(generateLootSpawns(() => 1)).toHaveLength(spawnCount);
   });
@@ -105,6 +173,7 @@ describe('portrait campus image map', () => {
       ...WORLD.lamps,
       ...WORLD.enemyRoutes.flatMap((e) => e.route),
       ...Array.from({ length: 10 }, (_, i) => generateLootSpawns(seeded(i))).flat(),
+      WORLD.questChest,
     ];
     for (const p of targets) {
       expect(clearLootPosition(p, WORLD.playerRadius), JSON.stringify(p)).toBe(true);

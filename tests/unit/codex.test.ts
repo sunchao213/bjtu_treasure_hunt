@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getCodexEntries } from '../../src/modules/ui/codex';
-import { ITEM_CATALOG_IDS } from '../../src/config/game-config';
+import { EXPLORATION_CATALOG_IDS, ITEM_CATALOG_IDS } from '../../src/config/game-config';
 import { CODEX_ENTRIES } from '../../src/modules/quests/chapter-content';
 
 describe('persistent collection gallery', () => {
@@ -22,7 +22,7 @@ describe('persistent collection gallery', () => {
       value: 60,
       icon: 'feather',
     });
-    expect(known.description).toContain('本局残缺手记');
+    expect(known.description).toContain('普通收藏物');
   });
 
   it('ignores unknown save IDs and counts duplicate unlock IDs only once', () => {
@@ -33,7 +33,7 @@ describe('persistent collection gallery', () => {
       'morning-coffee',
     ]);
     expect(entries.filter((e) => e.unlocked)).toHaveLength(2);
-    expect(entries.map((e) => e.id)).toEqual(ITEM_CATALOG_IDS);
+    expect(entries.map((e) => e.id)).toEqual(EXPLORATION_CATALOG_IDS);
     expect(entries.find((e) => e.id === 'portable-medkit')?.description).toContain(
       '恢复 30 点生命',
     );
@@ -49,6 +49,15 @@ describe('persistent collection gallery', () => {
     const unlocked = getCodexEntries(['morning-coffee', 'training-bat', 'stun-baton'])
       .filter((entry) => entry.unlocked)
       .map((entry) => entry.id);
-    expect(unlocked).toEqual(['morning-coffee', 'training-bat', 'stun-baton']);
+    expect(unlocked).toEqual(['morning-coffee']);
+  });
+
+  it('does not add shop-only supplies to the exploration gallery', () => {
+    const ids = getCodexEntries(['bandage', 'yellow-bike', 'thick-down-jacket']).map(
+      (entry) => entry.id,
+    );
+    expect(ids).not.toContain('bandage');
+    expect(ids).not.toContain('yellow-bike');
+    expect(ids).not.toContain('thick-down-jacket');
   });
 });

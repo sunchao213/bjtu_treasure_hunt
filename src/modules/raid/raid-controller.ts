@@ -12,6 +12,7 @@ import type {
   SavePort,
 } from '../../shared/types/game';
 import { calculateExtractionValue } from '../inventory/extraction-value';
+import { isQuestComplete, QUEST_CHAPTER_ID } from '../quests/quest-service';
 
 /** A owns all phase changes. This controller contains no Phaser or DOM dependencies. */
 export class RaidController implements RaidControllerPort {
@@ -27,7 +28,7 @@ export class RaidController implements RaidControllerPort {
   private isBusy = false;
   private saveError = false;
   private result: RaidResult | null = null;
-  private questComplete = false;
+  private steleInvestigated = false;
   private pausedAtMs: number | null = null;
   private readonly unsubscribe: () => void;
   private readonly rules: RaidRules;
@@ -41,6 +42,7 @@ export class RaidController implements RaidControllerPort {
     definitions: Readonly<Record<string, ItemDefinition>>,
     private readonly clock: () => number = Date.now,
     private readonly newId: () => string = () => crypto.randomUUID(),
+    private readonly questChapterId: () => string = () => QUEST_CHAPTER_ID,
   ) {
     this.rules = structuredClone(rules);
     this.definitions = structuredClone(definitions);
@@ -86,6 +88,7 @@ export class RaidController implements RaidControllerPort {
         primary ? { primary } : {},
       );
       this.raidId = raidId;
+      this.steleInvestigated = false;
       this.health = this.rules.maxHealth;
       this.speedMultiplier = 1;
       this.invulnerableUntil = 0;
@@ -122,6 +125,7 @@ export class RaidController implements RaidControllerPort {
             ),
       isBusy: this.isBusy,
       saveError: this.saveError,
+      steleInvestigated: this.steleInvestigated,
       result: structuredClone(this.result),
     };
   }
@@ -220,10 +224,24 @@ export class RaidController implements RaidControllerPort {
     return true;
   }
 
-  setQuestComplete(complete: boolean): void {
-    if (this.playable()) {
-      this.questComplete = complete;
+  investigateStele(): boolean {
+    if (
+      !this.playable() ||
+      this.steleInvestigated ||
+      !this.raidId ||
+      !this.inventory
+        .getCarriedItems()
+        .some(
+          (item) =>
+            item.itemId === 'torn-notebook' &&
+            item.origin.kind === 'raid-loot' &&
+            item.origin.obtainedInRaidId === this.raidId,
+        )
+    ) {
+      return false;
     }
+    this.steleInvestigated = true;
+    return true;
   }
 
   tick(): void {
@@ -284,7 +302,7 @@ export class RaidController implements RaidControllerPort {
     this.phase = 'preparing';
     this.raidId = null;
     this.result = null;
-    this.questComplete = false;
+    this.steleInvestigated = false;
     this.pausedAtMs = null;
     this.inZone = false;
     this.extractionStartedAtMs = null;
@@ -334,17 +352,7 @@ export class RaidController implements RaidControllerPort {
       value: this.value(),
       questComplete:
         !reason &&
-        this.questComplete &&
-        ['torn-notebook', 'anomalous-feather'].every((id) =>
-          this.inventory
-            .getCarriedItems()
-            .some(
-              (item) =>
-                item.itemId === id &&
-                item.origin.kind === 'raid-loot' &&
-                item.origin.obtainedInRaidId === this.raidId,
-            ),
-        ),
+        isQuestComplete(carriedItems, this.raidId, this.questChapterId(), this.steleInvestigated),
     };
     this.phase = 'settling';
     this.extractionStartedAtMs = null;

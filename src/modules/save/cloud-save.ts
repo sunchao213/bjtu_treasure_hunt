@@ -93,6 +93,9 @@ export class CloudSave implements SavePort {
   finalizeRaid(result: RaidResult): Promise<void> {
     return this.update((next) => next.finalizeRaid(result));
   }
+  unlockChapter(chapterId: string): Promise<void> {
+    return this.update((next) => next.unlockChapter(chapterId));
+  }
 
   private update<T>(operation: (next: PersistentSave) => T | Promise<T>): Promise<T> {
     const commit = this.pending.then(async () => {

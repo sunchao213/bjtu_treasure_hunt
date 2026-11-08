@@ -10,7 +10,6 @@ import {
   STORY_LOCATION_ANCHORS,
 } from '../../src/modules/quests/chapter-content';
 import {
-  EVIDENCE_FEATHER,
   EVIDENCE_NOTEBOOK,
   NOTEBOOK_PREREQUISITE_HINT,
   QUEST_CHAPTER_ID,
@@ -29,11 +28,11 @@ describe('第一章剧情内容', () => {
     ]);
   });
 
-  it('步骤 ID 唯一且可检索，地点与搜索点对齐', () => {
+  it('步骤 ID 唯一且可检索，地点与地图锚点对齐', () => {
     const ids = FIRST_CHAPTER.steps.map((step) => step.stepId);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(findStep(FIRST_CHAPTER, 'step-1-library-shelf')?.locationId).toBe(
-      'library-outside-shelf',
+    expect(findStep(FIRST_CHAPTER, 'step-1-siyuan-chest')?.locationId).toBe(
+      'siyuan-notebook-chest',
     );
     expect(findStep(FIRST_CHAPTER, 'step-2-minghu-stele')?.locationId).toBe('minghu-stele');
     expect(findStep(FIRST_CHAPTER, 'step-3-south-extraction')?.locationId).toBe(
@@ -42,14 +41,14 @@ describe('第一章剧情内容', () => {
     expect(findStep(FIRST_CHAPTER, 'step-missing')).toBeUndefined();
   });
 
-  it('每一步的前置证据与任务链一致：手记 → 石碑 → 两件证据', () => {
-    expect(findStep(FIRST_CHAPTER, 'step-1-library-shelf')?.requiresEvidence).toEqual([]);
+  it('每一步的前置条件与任务链一致：手记 → 石碑 → 撤离', () => {
+    expect(findStep(FIRST_CHAPTER, 'step-1-siyuan-chest')?.requiresEvidence).toEqual([]);
     expect(findStep(FIRST_CHAPTER, 'step-2-minghu-stele')?.requiresEvidence).toEqual([
       EVIDENCE_NOTEBOOK,
     ]);
     expect(findStep(FIRST_CHAPTER, 'step-3-south-extraction')?.requiresEvidence).toEqual([
       EVIDENCE_NOTEBOOK,
-      EVIDENCE_FEATHER,
+      'minghu-stele',
     ]);
   });
 
@@ -62,9 +61,9 @@ describe('第一章剧情内容', () => {
     expect(FIRST_CHAPTER.unlockHint).toContain('成功撤离');
   });
 
-  it('场景剧情提示只对任务证据生效，并带上步骤标题', () => {
+  it('场景剧情提示只在取得手记时触发线索一', () => {
     expect(evidenceStoryBeat(EVIDENCE_NOTEBOOK)).toContain('线索一');
-    expect(evidenceStoryBeat(EVIDENCE_FEATHER)).toContain('线索二');
+    expect(evidenceStoryBeat('anomalous-feather')).toBeNull();
     expect(evidenceStoryBeat('scratch-paper')).toBeNull();
   });
 });
@@ -97,7 +96,7 @@ describe('剧情稿 v1.1 对齐：学生视角与完整章节', () => {
     expect(FIRST_CHAPTER.prologue).toContain('校园卡');
     expect(FIRST_CHAPTER.prologue).toContain('别走地图上没有的路');
     expect(FIRST_CHAPTER.epilogue).toContain('新的记忆缺口');
-    expect(FIRST_CHAPTER.settlementSummary).toContain('明湖边的异常羽毛');
+    expect(FIRST_CHAPTER.settlementSummary).toContain('明湖石碑');
     // V1.0 冻结范围不含联机与经济，结算文案不得出现互助组、组队、排行榜等承诺。
     expect(FIRST_CHAPTER.settlementSummary).not.toMatch(/互助组|组队|联机|排行榜/);
   });
@@ -114,6 +113,11 @@ describe('剧情稿 v1.1 对齐：学生视角与完整章节', () => {
           WORLD.lootZones.some((zone) => zone.id === anchor.anchorId),
           `地图不存在搜索区 ${anchor.anchorId}`,
         ).toBe(true);
+      } else if (anchor.kind === 'quest-chest') {
+        expect(WORLD.questChest.id).toBe(anchor.anchorId);
+      } else if (anchor.kind === 'point') {
+        expect(anchor.anchorId).toBe('minghu-stele');
+        expect(WORLD.stone).toBeTruthy();
       } else {
         expect(
           WORLD.gates.some((gate) => gate.name === anchor.anchorId && gate.role === 'extraction'),
@@ -124,7 +128,7 @@ describe('剧情稿 v1.1 对齐：学生视角与完整章节', () => {
   });
 
   it('局内文案与剧情稿表 7 逐字一致', () => {
-    expect(NOTEBOOK_PREREQUISITE_HINT).toBe('湖畔线索：缺少本局残缺手记。');
-    expect(QUEST_COMPLETE_HINT).toBe('线索齐备：带回南门撤离可解锁第一章。');
+    expect(NOTEBOOK_PREREQUISITE_HINT).toBe('明湖石碑：先在思源楼前取得本局残缺手记。');
+    expect(QUEST_COMPLETE_HINT).toBe('任务完成：携带本局残缺手记成功撤离可解锁第一章。');
   });
 });

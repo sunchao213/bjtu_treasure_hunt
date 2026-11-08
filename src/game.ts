@@ -9,6 +9,7 @@ import { FORMAL_SAVE_KEY } from './modules/save/persistent-save';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
 import { bindGameRules } from './modules/ui/game-rules';
+import { bindConfirmDialog } from './modules/ui/confirm-dialog';
 import { canStartRaid, shouldShowPrepView } from './modules/ui/prep-view';
 import {
   renderChapterLock,
@@ -39,6 +40,7 @@ import { EventBus } from './shared/events/game-events';
 import type { InventoryClientPort, ItemInstance, RaidControllerPort } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
 import { SoundManager } from './modules/ui/sound-manager';
+import { assetUrl } from './app/asset-url';
 
 import { NetworkSession } from './modules/network/network-session';
 import { bindRoomLobby } from './modules/ui/room-lobby';
@@ -63,6 +65,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     history.scrollRestoration = 'manual';
   }
   mountShell(app);
+  const confirmDialog = bindConfirmDialog();
   // 一级大厅导航只切换页面内容，不改变对局状态；各模块可独立接入后端数据。
   const lobbyTabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-lobby-tab]'));
   const lobbyPanels = Array.from(document.querySelectorAll<HTMLElement>('[data-lobby-panel]'));
@@ -153,8 +156,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         ? '序章 · 晚归'
         : '序章 · 调查';
     const imageSrc = clue
-      ? '/images/prologue-paper-examined.svg'
-      : '/images/prologue-discovery.svg';
+      ? assetUrl('images/prologue-paper-examined.svg')
+      : assetUrl('images/prologue-discovery.svg');
     if (prologueImage.getAttribute('src') !== imageSrc) prologueImage.src = imageSrc;
     if (narrating) playPrologueNarration();
     else prologueTypewriter.stop();
@@ -254,9 +257,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
   element<HTMLInputElement>('network-name').value = user.displayName;
   element<HTMLInputElement>('network-name').readOnly = true;
   element('network-name').title = '联机昵称使用当前登录账号的昵称';
-  let allowLogout = () => true;
+  let allowLogout: () => boolean | Promise<boolean> = () => true;
   element('account-logout').onclick = async () => {
-    if (!allowLogout()) return;
+    if (!(await allowLogout())) return;
     const button = element<HTMLButtonElement>('account-logout');
     button.disabled = true;
     try {
@@ -327,7 +330,14 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           return;
         }
         try {
-          if (confirm('建议先导出原始存档。确定清空本框架的损坏存档吗？')) {
+          if (
+            await confirmDialog.ask({
+              title: '清空损坏存档？',
+              message: '建议先导出原始存档。清空后无法恢复。',
+              confirmText: '清空存档',
+              tone: 'danger',
+            })
+          ) {
             storage.removeItem(FORMAL_SAVE_KEY);
             location.reload();
           }
@@ -359,9 +369,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         return;
       }
       if (
-        !confirm(
-          '将此浏览器在添加账号前的存档复制到当前账号，并覆盖当前账号进度。建议先导出备份。旧存档会保留，确定迁移吗？',
-        )
+        !(await confirmDialog.ask({
+          title: '迁移旧存档？',
+          message:
+            '将此浏览器在添加账号前的存档复制到当前账号，并覆盖当前账号进度。建议先导出备份。旧存档会保留。',
+          confirmText: '迁移存档',
+        }))
       )
         return;
       try {
@@ -374,10 +387,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         notify(error instanceof Error ? error.message : '旧存档迁移失败，原始旧存档已保留。');
       }
     };
-    allowLogout = () => {
+    allowLogout = async () => {
       const phase = controller.getView().phase;
       if (phase === 'preparing' || phase === 'success' || phase === 'failed') return true;
-      return confirm('退出登录会中断本次探索，本局携带物将按中断失败处理。确定退出吗？');
+      return confirmDialog.ask({
+        title: '退出当前探索？',
+        message: '退出登录会中断本次探索，本局携带物将按中断失败处理。',
+        confirmText: '退出登录',
+        tone: 'danger',
+      });
     };
 
     let lastInventory = '';
@@ -1009,8 +1027,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         drop.className = 'mini';
         drop.textContent = '丢弃';
         drop.setAttribute('aria-label', `丢弃${definition.name}`);
-        drop.onclick = () => {
-          if (definition.kind !== 'quest' || confirm('这是任务物品，确认丢弃？')) {
+        drop.onclick = async () => {
+          if (
+            definition.kind !== 'quest' ||
+            (await confirmDialog.ask({
+              title: '丢弃任务物品？',
+              message: '丢弃后本局可能无法完成当前章节任务。',
+              confirmText: '丢弃',
+              tone: 'danger',
+            }))
+          ) {
             scene.drop(item.instanceId);
           }
         };
@@ -1077,8 +1103,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       }
       render();
     };
-    element('abandon').onclick = () => {
-      if (!confirm('确定放弃本次探索吗？本局携带物（包括从仓库带入的物品）将全部损失。')) {
+    element('abandon').onclick = async () => {
+      if (
+        !(await confirmDialog.ask({
+          title: '放弃本次探索？',
+          message: '本局携带物（包括从仓库带入的物品）将全部损失。',
+          confirmText: '放弃探索',
+          tone: 'danger',
+        }))
+      ) {
         return;
       }
       activeController.abandon();
@@ -1116,7 +1149,14 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         notify('请先结束本局并返回准备页。');
         return;
       }
-      if (confirm('确定清空当前账号的云端仓库、图鉴和探索进度？该操作不能撤销，建议先导出备份。')) {
+      if (
+        await confirmDialog.ask({
+          title: '清空云端存档？',
+          message: '仓库、图鉴和探索进度将被清空，操作不能撤销。建议先导出备份。',
+          confirmText: '清空存档',
+          tone: 'danger',
+        })
+      ) {
         try {
           await save.reset();
           render();

@@ -1,5 +1,5 @@
-import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
-import { CODEX_ENTRIES } from '../quests/chapter-content';
+import { EXPLORATION_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { CHAPTERS, CODEX_ENTRIES } from '../quests/chapter-content';
 import type { Rarity } from '../../shared/types/game';
 import { iconSvg } from './icons';
 
@@ -26,7 +26,7 @@ const details: Record<string, { icon: string; description: string }> = {
   'campus-map': { icon: 'map', description: '一张校园地图线索，作为收藏物计入携带价值。' },
   'torn-notebook': {
     icon: 'paper',
-    description: '图书馆周边的主线线索；与本局异常羽毛一起带回可解锁思源密码章节。',
+    description: '思源楼前固定宝箱中的主线线索；调查明湖石碑并携带本局手记成功撤离，可解锁第一章。',
   },
   'window-seat': { icon: 'seat', description: '靠窗座位的凭证，校园收藏物。' },
   'morning-coffee': {
@@ -36,7 +36,7 @@ const details: Record<string, { icon: string; description: string }> = {
   'school-badge': { icon: 'badge', description: '刻有校训的徽章，校园收藏物。' },
   'anomalous-feather': {
     icon: 'feather',
-    description: '明湖石碑周边的主线线索；与本局残缺手记一起成功撤离可解锁章节。',
+    description: '普通收藏物，不参与章节任务条件。',
   },
   'gpa-charm': { icon: 'badge', description: '校园传说中的护符，作为收藏物计分。' },
   'siyuan-key': { icon: 'key', description: '思源楼主题的传说收藏物，具有较高携带价值。' },
@@ -85,7 +85,7 @@ export interface CodexEntry {
 /** Only persisted codex IDs unlock entries; warehouse possession is not required. */
 export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
   const unlocked = new Set(ids);
-  return ITEM_CATALOG_IDS.map((itemId, index) => {
+  return EXPLORATION_CATALOG_IDS.map((itemId, index) => {
     const item = ITEM_DEFINITIONS[itemId]!;
     const known = unlocked.has(item.itemId);
     const detail = details[item.itemId];
@@ -123,9 +123,10 @@ export function renderCodex(ids: readonly string[], chapters: readonly string[])
   if (!grid) return;
   document.getElementById('codex-count')!.textContent =
     `${entries.filter((e) => e.unlocked).length} / ${entries.length}`;
-  document.getElementById('codex-chapter')!.textContent = chapters.includes('siyuan-code')
-    ? '章节：思源密码已解锁'
-    : '章节：思源密码未解锁 · 需携带本局残缺手记与异常羽毛成功撤离';
+  const unlockedChapters = chapters.filter((chapterId) => CHAPTERS[chapterId] !== undefined).length;
+  document.getElementById('codex-chapter')!.textContent = unlockedChapters
+    ? `章节：思源密码已解锁 ${unlockedChapters} / ${Object.keys(CHAPTERS).length}`
+    : '章节：思源密码未解锁 · 需携带本局残缺手记、调查明湖石碑并成功撤离';
   grid.replaceChildren();
   for (const entry of entries) {
     const card = document.createElement('article');
@@ -195,7 +196,7 @@ export async function exportCodexImage(
     120,
   );
   ctx.fillText(
-    chapters.includes('siyuan-code') ? '思源密码章节：已解锁' : '思源密码章节：未解锁',
+    `思源密码章节：已解锁 ${chapters.filter((chapterId) => CHAPTERS[chapterId] !== undefined).length} / ${Object.keys(CHAPTERS).length}`,
     48,
     160,
   );

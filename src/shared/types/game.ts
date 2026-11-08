@@ -12,7 +12,8 @@ export interface ItemDefinition {
 }
 
 export type ItemOrigin =
-  { readonly kind: 'carry-in' } | { readonly kind: 'raid-loot'; readonly obtainedInRaidId: string };
+  | { readonly kind: 'carry-in'; readonly source?: 'exploration' | 'purchase' }
+  | { readonly kind: 'raid-loot'; readonly obtainedInRaidId: string };
 
 export type EquipmentSlot = 'primary' | 'secondary';
 
@@ -71,6 +72,7 @@ export interface RaidView {
   readonly extractionProgress: number;
   readonly isBusy: boolean;
   readonly saveError: boolean;
+  readonly steleInvestigated: boolean;
   readonly result: RaidResult | null;
 }
 
@@ -91,7 +93,7 @@ export interface RaidControllerPort {
   applyDamage(amount: number): void;
   cancelExtraction(): void;
   setExtractionPresence(isInside: boolean): void;
-  setQuestComplete(complete: boolean): void;
+  investigateStele(): boolean;
   tick(): void;
   dispose(): void;
 }
@@ -122,6 +124,7 @@ export interface InventoryPort {
 export interface SavePort {
   beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]>;
   finalizeRaid(result: RaidResult): Promise<void>;
+  unlockChapter(chapterId: string): Promise<void>;
   purchaseItem?(itemId: string): ActionResult<ItemInstance>;
 }
 

@@ -9,7 +9,12 @@ import {
   monsterAnimationFor,
   monsterScaleFor,
 } from '../config/monster-sprites';
-import { generateLootSpawns, roundRandom, type LootSpawn } from '../modules/world/loot-spawns';
+import {
+  generateLootSpawns,
+  questSpawnPlan,
+  roundRandom,
+  type LootSpawn,
+} from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
@@ -41,10 +46,12 @@ import type { SoundManager } from '../modules/ui/sound-manager';
 import type { NetworkSession, PlayerSnapshot } from '../modules/network/network-session';
 import {
   isQuestComplete,
+  hasCurrentRaidNotebook,
   prerequisiteHint,
-  QUEST_COMPLETE_HINT,
+  questChapterById,
+  QUEST_CHAPTER_ID,
 } from '../modules/quests/quest-service';
-import { evidenceStoryBeat } from '../modules/quests/chapter-content';
+import { evidenceStoryBeat, steleStoryBeat } from '../modules/quests/chapter-content';
 
 export interface KeyPrompt {
   readonly key: 'E' | 'Q';
@@ -55,6 +62,8 @@ interface SceneServices {
   displayName?: string;
   controller: RaidControllerPort;
   inventory: InventoryPort;
+  /** 当前进行中的章节 id，由大厅按存档实时给出（章节推进后下一局自动换章）。 */
+  questChapter?: () => string;
   events: EventBus;
   notify: (message: string) => void;
   touch: TouchControls;
@@ -172,12 +181,18 @@ export class WorldScene extends Phaser.Scene {
     super('world');
   }
 
+  /** 当前章节 id；未接线时退回第一章，保证单测与旧调用方行为不变。 */
+  private questChapterId(): string {
+    return this.services.questChapter?.() ?? QUEST_CHAPTER_ID;
+  }
+
   preload(): void {
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
       this.startupFailed = true;
       this.services.onLoadError?.(`校园资源加载失败（${file.key}），请检查网络并重新加载。`);
     });
     this.load.image('campus-base', assetUrl('assets/maps/campus-night/campus-base.png'));
+    this.load.image('minghu-stele', assetUrl('assets/environment/minghu-stele.png'));
     this.load.spritesheet('treasure-chest', assetUrl('assets/props/treasure-chest.png'), {
       frameWidth: 256,
       frameHeight: 256,
@@ -398,7 +413,9 @@ export class WorldScene extends Phaser.Scene {
     }
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.cameras.main.setFollowOffset(0, -36);
+    // 角色容器的原点在脚底，而 160×0.44 的贴图身体中心在脚底上方约 35px。
+    // 正向偏移让镜头对准身体中心；旧的 -36 会把人物整体顶到上半屏。
+    this.cameras.main.setFollowOffset(0, 35);
     const resizeCamera = () => {
       this.cameras.main.setZoom(
         isTouchLayout() ? Math.max(1.12, Math.min(1.5, (this.scale.width / 960) * 1.38)) : 1.7,
@@ -1203,6 +1220,7 @@ export class WorldScene extends Phaser.Scene {
     const equippedIds = new Set(
       Object.values(this.services.inventory.getEquipment()).map((item) => item.instanceId),
     );
+    const chapter = questChapterById(this.questChapterId());
     const bagFull =
       carried.filter((item) => !equippedIds.has(item.instanceId)).length >= RAID_RULES.bagCapacity;
     const hug = this.nearbyHug();
@@ -1250,7 +1268,7 @@ export class WorldScene extends Phaser.Scene {
         this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
     );
     if (chest) {
-      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId);
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapter.id);
       if (prerequisite !== null) {
         this.search.cancel();
         this.interaction = prerequisite;
@@ -1290,14 +1308,17 @@ export class WorldScene extends Phaser.Scene {
             raidId: view.raidId,
             locationId: chest.id,
           });
-          if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)) {
-            this.services.controller.setQuestComplete(true);
-          }
+          // RaidController derives questComplete from the authoritative raid state.
         }
         if (result.ok) {
           const definition = ITEM_DEFINITIONS[chest.itemId];
-          const beat = isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)
-            ? QUEST_COMPLETE_HINT
+          const beat = isQuestComplete(
+            this.services.inventory.getCarriedItems(),
+            view.raidId,
+            chapter.id,
+            view.steleInvestigated,
+          )
+            ? chapter.completeHint
             : evidenceStoryBeat(chest.itemId);
           const pickup =
             beat ??
@@ -1315,6 +1336,30 @@ export class WorldScene extends Phaser.Scene {
         }
       }
       return;
+    }
+    if (chapter.id === QUEST_CHAPTER_ID) {
+      const steleDistance = distance(WORLD.stone, this.position);
+      if (steleDistance < 78) {
+        this.search.cancel();
+        if (!hasCurrentRaidNotebook(carried, view.raidId)) {
+          this.interaction = '明湖石碑 · 先取得本局残缺手记';
+          return;
+        }
+        if (view.steleInvestigated) {
+          this.interaction = '明湖石碑 · 已调查';
+          return;
+        }
+        this.interaction = '按 E 调查明湖石碑';
+        this.keyPrompt = { key: 'E', label: '调查' };
+        if (held && !this.previousInteract && view.phase === 'active' && view.raidId) {
+          if (this.services.controller.investigateStele()) {
+            this.services.events.emit('SteleInvestigated', { raidId: view.raidId });
+            this.banner = { text: steleStoryBeat(), untilMs: this.time.now + 6000 };
+            this.services.notify('明湖石碑调查完成。');
+          }
+        }
+        return;
+      }
     }
     if (view.inExtractionZone) {
       this.search.cancel();
@@ -1400,7 +1445,10 @@ export class WorldScene extends Phaser.Scene {
     this.chestObjects.clear();
     this.chestSprites.clear();
     this.searchPoints = raidId
-      ? generateLootSpawns(roundId ? roundRandom(roundId) : Math.random)
+      ? generateLootSpawns(
+          roundId ? roundRandom(roundId) : Math.random,
+          questSpawnPlan(this.questChapterId()),
+        )
       : [];
     for (const point of this.searchPoints) {
       const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
@@ -1830,5 +1878,12 @@ export class WorldScene extends Phaser.Scene {
 
   private drawCampus(): void {
     this.add.image(0, 0, 'campus-base').setOrigin(0).setDepth(-1);
+    if (this.textures.exists('minghu-stele')) {
+      this.add
+        .image(WORLD.stone.x, WORLD.stone.y, 'minghu-stele')
+        .setOrigin(0.5, 1)
+        .setScale(0.82)
+        .setDepth(this.entityDepth(WORLD.stone.y) + 2);
+    }
   }
 }
