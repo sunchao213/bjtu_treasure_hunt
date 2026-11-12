@@ -146,7 +146,7 @@ export class WorldScene extends Phaser.Scene {
   >();
   private readonly remotePlayers = new Map<
     string,
-    { target: Point; object: Phaser.GameObjects.Container }
+    { target: Point; aim: number; object: Phaser.GameObjects.Container }
   >();
   private readonly nameplates = new Map<
     Phaser.GameObjects.Container,
@@ -258,27 +258,23 @@ export class WorldScene extends Phaser.Scene {
       const existing = this.remotePlayers.get(snapshot.playerId);
       if (existing) {
         existing.target = { ...snapshot.position };
-        existing.object
-          .getByName<Phaser.GameObjects.Container>('remote-body')
-          ?.setRotation(snapshot.aim);
+        existing.aim = snapshot.aim;
+        this.nameplates.get(existing.object)?.text.setText(snapshot.displayName.slice(0, 18));
         continue;
       }
+      const sprite = this.createPlayerSprite();
+      sprite.anims.play(`player-idle-${this.directionFromAngle(snapshot.aim)}`);
       const marker = this.add
         .container(snapshot.position.x, snapshot.position.y, [
-          this.add
-            .container(0, 0, [
-              this.add.ellipse(0, 13, 30, 12, 0x061f23, 0.3),
-              this.add.rectangle(0, 0, 22, 28, 0x78c4ee).setStrokeStyle(2, 0xe6f5ff),
-              this.add.circle(0, -16, 10, 0xd7efff),
-            ])
-            .setName('remote-body')
-            .setRotation(snapshot.aim),
+          this.add.ellipse(0, 10, 25, 9, 0x061f23, 0.35),
+          sprite,
         ])
         .setName(`remote-player-${snapshot.playerId}`)
         .setDepth(this.entityDepth(snapshot.position.y));
-      this.createNameplate(snapshot.displayName, marker, -34);
+      this.createNameplate(snapshot.displayName, marker, -sprite.displayHeight - 6);
       this.remotePlayers.set(snapshot.playerId, {
         target: { ...snapshot.position },
+        aim: snapshot.aim,
         object: marker,
       });
     }
@@ -371,11 +367,7 @@ export class WorldScene extends Phaser.Scene {
     this.extraction.setDepth(20);
     this.aura = this.add.circle(0, 0, 23, 0xa9e9d0, 0.12);
     const shadow = this.add.ellipse(0, 10, 25, 9, 0x061f23, 0.35);
-    this.playerSprite = this.add
-      .sprite(0, 0, 'player-idle', 0)
-      .setName('sprite')
-      .setOrigin(0.5, 1)
-      .setScale(0.44);
+    this.playerSprite = this.createPlayerSprite();
     this.player = this.add
       .container(this.position.x, this.position.y, [shadow, this.aura, this.playerSprite])
       .setDepth(this.entityDepth(this.position.y));
@@ -479,12 +471,7 @@ export class WorldScene extends Phaser.Scene {
       this.resetRaid(view.raidId);
     }
 
-    for (const remote of this.remotePlayers.values()) {
-      const blend = 1 - Math.exp(-Math.max(0, deltaMs) / 55);
-      remote.object.x += (remote.target.x - remote.object.x) * blend;
-      remote.object.y += (remote.target.y - remote.object.y) * blend;
-      remote.object.setDepth(this.entityDepth(remote.object.y));
-    }
+    this.updateRoomPlayers(deltaMs);
     if (this.services.isOnline?.()) {
       const snapshot = this.onlineSnapshot;
       const focused = document.activeElement;
@@ -844,6 +831,31 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  private createPlayerSprite(): Phaser.GameObjects.Sprite {
+    return this.add
+      .sprite(0, 0, 'player-idle', 0)
+      .setName('sprite')
+      .setOrigin(0.5, 1)
+      .setScale(0.44);
+  }
+
+  private updateRoomPlayers(deltaMs: number): void {
+    const blend = 1 - Math.exp(-Math.max(0, deltaMs) / 55);
+    for (const remote of this.remotePlayers.values()) {
+      const dx = remote.target.x - remote.object.x;
+      const dy = remote.target.y - remote.object.y;
+      const moving = Math.hypot(dx, dy) > 0.5;
+      remote.object.x += dx * blend;
+      remote.object.y += dy * blend;
+      remote.object.setDepth(this.entityDepth(remote.object.y));
+      const sprite = remote.object.getByName<Phaser.GameObjects.Sprite>('sprite');
+      const key = `player-${moving ? 'walk' : 'idle'}-${this.directionFromAngle(remote.aim)}`;
+      if (sprite && sprite.anims.currentAnim?.key !== key) {
+        sprite.anims.play(key, true);
+      }
+    }
+  }
+
   private playPlayerAnimation(
     action: Exclude<PlayerAction, 'none'> | 'idle' | 'walk',
     direction: PlayerDirection,
@@ -915,6 +927,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private syncNameplates(): void {
+    const placed: { left: number; right: number; top: number; bottom: number }[] = [];
+    const gap = 2 / this.cameras.main.zoom;
     for (const [owner, { text, offsetY }] of this.nameplates) {
       if (!owner.scene) {
         text.destroy();
@@ -927,6 +941,27 @@ export class WorldScene extends Phaser.Scene {
         .setScale(1 / this.cameras.main.zoom)
         .setVisible(owner.visible)
         .setAlpha(owner.alpha);
+      if (!owner.visible || owner.alpha <= 0) continue;
+      const bounds = {
+        left: text.x - text.displayWidth / 2,
+        right: text.x + text.displayWidth / 2,
+        top: text.y - text.displayHeight,
+        bottom: text.y,
+      };
+      for (let attempt = 0; attempt < placed.length; attempt++) {
+        const overlap = placed.find(
+          (other) =>
+            bounds.left < other.right + gap &&
+            bounds.right + gap > other.left &&
+            bounds.top < other.bottom + gap &&
+            bounds.bottom + gap > other.top,
+        );
+        if (!overlap) break;
+        bounds.bottom = overlap.top - gap;
+        bounds.top = bounds.bottom - text.displayHeight;
+      }
+      text.setY(bounds.bottom);
+      placed.push(bounds);
     }
   }
 

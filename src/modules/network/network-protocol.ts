@@ -29,6 +29,8 @@ export type ClientMessage =
   | { readonly type: 'join-room'; readonly roomId: string }
   | { readonly type: 'create-room' }
   | { readonly type: 'set-ready'; readonly ready: boolean }
+  | { readonly type: 'room-settings'; readonly maxPlayers: number; readonly admissionOpen: boolean }
+  | { readonly type: 'transfer-host'; readonly playerId: string }
   | { readonly type: 'start-game' }
   | { readonly type: 'finish-game'; readonly roundId: string }
   | { readonly type: 'leave-room' }
@@ -55,6 +57,7 @@ export type ServerMessage =
       readonly tick: number;
       readonly hostId: string;
       readonly maxPlayers: number;
+      readonly admissionOpen?: boolean;
       readonly started: boolean;
       readonly roundId: string | null;
       readonly players: readonly PlayerSnapshot[];
@@ -81,6 +84,14 @@ export function isClientMessage(value: unknown): value is ClientMessage {
   if (value.type === 'join-room') return isRoomCode(value.roomId);
   if (value.type === 'create-room' || value.type === 'start-game') return true;
   if (value.type === 'set-ready') return typeof value.ready === 'boolean';
+  if (value.type === 'room-settings')
+    return (
+      Number.isInteger(value.maxPlayers) &&
+      Number(value.maxPlayers) >= 2 &&
+      Number(value.maxPlayers) <= ROOM_CAPACITY &&
+      typeof value.admissionOpen === 'boolean'
+    );
+  if (value.type === 'transfer-host') return nonEmpty(value.playerId);
   if (value.type === 'finish-game') return nonEmpty(value.roundId);
   if (value.type === 'leave-room') return true;
   if (value.type === 'ping') return Number.isFinite(value.sentAt);
@@ -117,11 +128,14 @@ export function isServerMessage(value: unknown): value is ServerMessage {
     isRoomCode(value.roomId) &&
     Number.isSafeInteger(value.tick) &&
     nonEmpty(value.hostId) &&
-    value.maxPlayers === ROOM_CAPACITY &&
+    Number.isInteger(value.maxPlayers) &&
+    Number(value.maxPlayers) >= 2 &&
+    Number(value.maxPlayers) <= ROOM_CAPACITY &&
+    (value.admissionOpen === undefined || typeof value.admissionOpen === 'boolean') &&
     typeof value.started === 'boolean' &&
     (value.started ? nonEmpty(value.roundId) : value.roundId === null) &&
     Array.isArray(value.players) &&
-    value.players.length <= ROOM_CAPACITY &&
+    value.players.length <= Number(value.maxPlayers) &&
     value.players.every(
       (player) =>
         isRecord(player) &&

@@ -169,11 +169,20 @@ app.Map("/ws", async context =>
                 case "set-ready":
                 case "start-game":
                 case "finish-game":
+                case "room-settings":
+                case "transfer-host":
                     RoomAction action;
                     if (type == "set-ready" && (!root.TryGetProperty("ready", out var readyValue)
                         || readyValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False)))
                     {
                         await SendError(client, "INVALID_MESSAGE", "准备状态无效。", json);
+                        break;
+                    }
+                    if (type == "room-settings" && (!root.TryGetProperty("maxPlayers", out var capacityValue)
+                        || capacityValue.ValueKind != JsonValueKind.Number || !capacityValue.TryGetInt32(out _) || !root.TryGetProperty("admissionOpen", out var admissionValue)
+                        || admissionValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False)))
+                    {
+                        await SendError(client, "INVALID_MESSAGE", "房间规则无效。", json);
                         break;
                     }
                     action = type switch
@@ -182,6 +191,8 @@ app.Map("/ws", async context =>
                         "join-room" => rooms.Join(client, ReadString(root, "roomId", "")),
                         "set-ready" => rooms.Ready(client, root.GetProperty("ready").GetBoolean()),
                         "start-game" => rooms.Start(client),
+                        "room-settings" => rooms.Settings(client, root.GetProperty("maxPlayers").GetInt32(), root.GetProperty("admissionOpen").GetBoolean()),
+                        "transfer-host" => rooms.TransferHost(client, ReadString(root, "playerId", "")),
                         _ => rooms.Finish(client, ReadString(root, "roundId", "")),
                     };
                     if (action.Code is not null)
@@ -308,7 +319,8 @@ static async Task BroadcastRoom(string roomId, Room room, RoomDirectory rooms, J
             roomId,
             tick = room.Tick,
             hostId = room.HostId,
-            maxPlayers = RoomDirectory.Capacity,
+            maxPlayers = room.MaxPlayers,
+            admissionOpen = room.AdmissionOpen,
             started = room.Started,
             roundId = room.RoundId,
             players = clients.Select(client => new
@@ -378,6 +390,8 @@ sealed class Room(object gate)
     public Dictionary<string, Client> Clients { get; } = new(StringComparer.Ordinal);
     public long Tick { get; set; }
     public string HostId { get; set; } = "";
+    public int MaxPlayers { get; set; } = RoomDirectory.Capacity;
+    public bool AdmissionOpen { get; set; } = true;
     public bool Started { get; set; }
     public string? RoundId { get; set; }
 }

@@ -1,8 +1,10 @@
 import { NetworkSession } from '../network/network-session';
 import { ROOM_CAPACITY, type RoomState } from '../network/network-protocol';
+import type { ConfirmHandle } from './confirm-dialog';
 
 interface LobbyOptions {
   readonly network: NetworkSession;
+  readonly confirm: ConfirmHandle;
   readonly canPrepare: () => boolean;
   readonly canEnter: () => boolean;
   readonly onChange: () => void;
@@ -19,10 +21,11 @@ export function bindRoomLobby(options: LobbyOptions) {
   let state: RoomState | null = null;
   let pending = false;
   let lastRoster = '';
+  let lastTeam = '';
   let lastStartedRound = '';
   let lastFinishedRound = '';
   let message = '正在连接联机服务…';
-  let pendingAction: 'create' | 'join' | 'ready' | 'start' | null = null;
+  let pendingAction: 'create' | 'join' | 'ready' | 'start' | 'settings' | 'transfer' | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 
   const clearPending = () => {
@@ -35,8 +38,50 @@ export function bindRoomLobby(options: LobbyOptions) {
     const connected = network.getStatus() === 'connected';
     const self = state?.players.find((player) => player.playerId === network.getPlayerId());
     const host = !!state && state.hostId === network.getPlayerId();
+    const capacity = state?.maxPlayers ?? ROOM_CAPACITY;
+    const latency = network.getLatencyMs();
+    const quality = !connected
+      ? network.getStatus() === 'reconnecting'
+        ? '连接中断 · 正在重连'
+        : '未连接'
+      : latency === null
+        ? '已连接 · 测量延迟中'
+        : `${latency} ms · ${latency < 100 ? '流畅' : latency < 250 ? '一般' : '延迟较高'}`;
+    for (const id of ['network-quality', 'team-connection']) {
+      get(id).textContent = quality;
+      get(id).dataset.quality = !connected
+        ? 'offline'
+        : latency !== null && latency >= 250
+          ? 'slow'
+          : 'good';
+    }
+    get('team-status').hidden = !state;
+    const team = JSON.stringify([
+      state?.started,
+      state?.hostId,
+      state?.players.map(({ playerId, displayName, connected, finished, ready }) => [
+        playerId,
+        displayName,
+        connected,
+        finished,
+        ready,
+      ]),
+    ]);
+    if (team !== lastTeam) {
+      lastTeam = team;
+      get('team-players').replaceChildren(
+        ...(state?.players ?? []).map((player) => {
+          const li = document.createElement('li');
+          li.textContent = `${player.displayName}${player.playerId === network.getPlayerId() ? '（你）' : ''} · ${!player.connected ? '离线' : state?.started ? (player.finished ? '已结束' : '探索中') : player.playerId === state?.hostId ? '房主' : player.ready ? '已准备' : '未准备'}`;
+          return li;
+        }),
+      );
+    }
     const allReady =
-      !!state && state.players.every((player) => player.playerId === state?.hostId || player.ready);
+      !!state &&
+      state.players.every(
+        (player) => player.connected && (player.playerId === state?.hostId || player.ready),
+      );
     const canPrepare = options.canPrepare();
     get('room-entry').hidden = !!state;
     get('room-lobby').hidden = !state;
@@ -61,7 +106,23 @@ export function bindRoomLobby(options: LobbyOptions) {
       : pendingAction === 'start'
         ? '正在开始…'
         : '开始游戏 ↗';
-    get('room-count').textContent = `${state?.players.length ?? 0} / ${ROOM_CAPACITY} 人`;
+    get('room-count').textContent = `${state?.players.length ?? 0} / ${capacity} 人`;
+    get('room-readiness').textContent = state?.started
+      ? `${state.players.filter((player) => player.finished).length} / ${state.players.length} 人已结束`
+      : `${state?.players.filter((player) => player.ready || player.playerId === state?.hostId).length ?? 0} / ${state?.players.length ?? 0} 人就绪`;
+    get<HTMLFieldSetElement>('room-settings').disabled =
+      !host || !connected || pending || !!state?.started;
+    get<HTMLSelectElement>('network-capacity').value = String(capacity);
+    for (const option of get<HTMLSelectElement>('network-capacity').options) {
+      option.disabled = Number(option.value) < (state?.players.length ?? 0);
+    }
+    get<HTMLSelectElement>('network-admission').value =
+      state?.admissionOpen === false ? 'closed' : 'open';
+    get('room-settings-hint').textContent = state?.started
+      ? '本局规则已锁定，所有成员结束后可修改。'
+      : host
+        ? '仅房主可修改；规则变更后，队友需要重新准备。'
+        : '房间规则由房主设置，修改后请重新确认装备并准备。';
     get('room-state-title').textContent = state?.roomId ?? '';
     get('room-prepare-title').textContent = state?.started ? '本局进行中' : '选择装备，等待出发';
     get('room-ready-hint').textContent = state?.started
@@ -76,18 +137,22 @@ export function bindRoomLobby(options: LobbyOptions) {
             ? '已准备，等待房主开始游戏。'
             : '确认装备后点击准备，等待房主开始游戏。';
     const roster = JSON.stringify([
+      capacity,
       state?.hostId,
       state?.started,
-      state?.players.map(({ playerId, displayName, ready, finished }) => [
+      pending,
+      connected,
+      state?.players.map(({ playerId, displayName, ready, finished, connected }) => [
         playerId,
         displayName,
         ready,
         finished,
+        connected,
       ]),
     ]);
     if (roster !== lastRoster) {
       lastRoster = roster;
-      const slots = Array.from({ length: ROOM_CAPACITY }, (_, index) => {
+      const slots = Array.from({ length: capacity }, (_, index) => {
         const player = state?.players[index];
         const li = document.createElement('li');
         const name = document.createElement('span');
@@ -98,19 +163,41 @@ export function bindRoomLobby(options: LobbyOptions) {
           : `空位 ${index + 1}`;
         badge.textContent = !player
           ? '等待加入'
-          : state?.started
-            ? player.finished
-              ? '已结束'
-              : '游戏中'
-            : player.playerId === state?.hostId
-              ? '房主'
-              : player.ready
-                ? '已准备'
-                : '未准备';
+          : !player.connected
+            ? '离线'
+            : state?.started
+              ? player.finished
+                ? '已结束'
+                : '游戏中'
+              : player.playerId === state?.hostId
+                ? '房主'
+                : player.ready
+                  ? '已准备'
+                  : '未准备';
         if (player?.playerId === state?.hostId && state?.started)
           badge.textContent = `房主 · ${badge.textContent}`;
         li.dataset.ready = String(!!player?.ready || player?.playerId === state?.hostId);
         li.append(name, badge);
+        if (host && player && player.playerId !== state?.hostId && !state?.started) {
+          const transfer = document.createElement('button');
+          transfer.type = 'button';
+          transfer.className = 'room-transfer rules-button';
+          transfer.textContent = '转交房主';
+          transfer.setAttribute('aria-label', `将房主转交给 ${player.displayName}`);
+          transfer.disabled = pending || !connected || !player.connected;
+          transfer.onclick = async () => {
+            if (
+              !(await options.confirm.ask({
+                title: `转交给 ${player.displayName}？`,
+                message: '转交后，你将成为普通队员，所有队友需要重新准备。',
+                confirmText: '转交房主',
+              }))
+            )
+              return;
+            request('transfer', () => network.transferHost(player.playerId), '正在转交房主…');
+          };
+          li.append(transfer);
+        }
         return li;
       });
       get('network-players').replaceChildren(...slots);
@@ -130,6 +217,18 @@ export function bindRoomLobby(options: LobbyOptions) {
     options.onChange();
   };
   button('network-connect').onclick = () => network.connect();
+  const changeSettings = () =>
+    request(
+      'settings',
+      () =>
+        network.setRoomSettings(
+          Number(get<HTMLSelectElement>('network-capacity').value),
+          get<HTMLSelectElement>('network-admission').value === 'open',
+        ),
+      '正在同步房间规则，队友将需要重新准备…',
+    );
+  get<HTMLSelectElement>('network-capacity').onchange = changeSettings;
+  get<HTMLSelectElement>('network-admission').onchange = changeSettings;
   button('network-create').onclick = () => {
     if (!options.canEnter()) return;
     request('create', () => network.createRoom(), '正在创建房间…');
@@ -191,13 +290,19 @@ export function bindRoomLobby(options: LobbyOptions) {
     }[status];
     if (status !== 'connected') options.onPlayers([]);
     options.onChange();
+    if (status === 'connected') network.ping();
   });
   const offMessage = network.onMessage((incoming) => {
     if (incoming.type === 'room-state') {
       const previous = state;
       state = incoming;
       clearPending();
-      message = `房间 ${state.roomId} · ${state.players.length} / ${ROOM_CAPACITY} 人${state.started ? ' · 游戏中' : ''}`;
+      message = `房间 ${state.roomId} · ${state.players.length} / ${state.maxPlayers} 人${state.started ? ' · 游戏中' : state.admissionOpen === false ? ' · 已关闭加入' : ''}`;
+      if (
+        previous &&
+        (previous.maxPlayers !== state.maxPlayers || previous.admissionOpen !== state.admissionOpen)
+      )
+        message += ' · 房间规则已更新，请重新准备';
       if (previous && previous.hostId !== state.hostId && state.hostId === network.getPlayerId())
         message += ' · 你已成为新房主';
       options.onPlayers(state.players);
@@ -211,7 +316,8 @@ export function bindRoomLobby(options: LobbyOptions) {
           options.onChange();
         });
       }
-    } else if (incoming.type === 'player-left') options.onPlayerLeft(incoming.playerId);
+    } else if (incoming.type === 'pong') render();
+    else if (incoming.type === 'player-left') options.onPlayerLeft(incoming.playerId);
     else if (incoming.type === 'error') {
       clearPending();
       message = incoming.message;
@@ -219,6 +325,9 @@ export function bindRoomLobby(options: LobbyOptions) {
       options.onChange();
     }
   });
+  const pingTimer = setInterval(() => {
+    if (network.getStatus() === 'connected') network.ping();
+  }, 3000);
   return {
     render,
     leave,
@@ -238,6 +347,7 @@ export function bindRoomLobby(options: LobbyOptions) {
         lastFinishedRound = state.roundId;
     },
     dispose: () => {
+      clearInterval(pingTimer);
       clearPending();
       offStatus();
       offMessage();

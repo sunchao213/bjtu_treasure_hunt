@@ -39,7 +39,8 @@ sealed class RoomDirectory
             if (client.RoomId == id) return new(id, room);
             if (client.RoomId is not null) return new("ALREADY_IN_ROOM", "请先离开当前房间。");
             if (room.Started) return new("ROOM_STARTED", "该房间正在游戏中，请等待本局结束。");
-            if (room.Clients.Count >= Capacity) return new("ROOM_FULL", "房间已满（10/10），请加入其他房间。");
+            if (!room.AdmissionOpen) return new("ROOM_LOCKED", "房主已关闭加入，请联系房主开放房间。");
+            if (room.Clients.Count >= room.MaxPlayers) return new("ROOM_FULL", $"房间已满（{room.MaxPlayers}/{room.MaxPlayers}），请加入其他房间。");
             Add(client, id, room);
             return new(id, room);
         }
@@ -53,6 +54,41 @@ sealed class RoomDirectory
             if (room.Started) return new("ROOM_STARTED", "游戏已经开始，无法更改准备状态。");
             if (room.HostId == client.Id) return new("HOST_ONLY_START", "你是房主，请等待队友准备后开始游戏。");
             client.Ready = ready;
+            return new(client.RoomId, room);
+        }
+    }
+
+    public RoomAction Settings(Client client, int maxPlayers, bool admissionOpen)
+    {
+        lock (Gate)
+        {
+            if (client.RoomId is null || !rooms.TryGetValue(client.RoomId, out var room)) return NotInRoom();
+            if (room.HostId != client.Id) return new("HOST_ONLY", "只有房主可以修改房间规则。");
+            if (room.Started) return new("ROOM_STARTED", "本局进行中，结束后才能修改规则。");
+            if (maxPlayers < 2 || maxPlayers > Capacity || maxPlayers < room.Clients.Count)
+                return new("INVALID_CAPACITY", "人数上限须为 2 至 10 人，且不能少于当前成员数。");
+            if (room.MaxPlayers != maxPlayers || room.AdmissionOpen != admissionOpen)
+            {
+                room.MaxPlayers = maxPlayers;
+                room.AdmissionOpen = admissionOpen;
+                foreach (var peer in room.Clients.Values) peer.Ready = false;
+            }
+            return new(client.RoomId, room);
+        }
+    }
+
+    public RoomAction TransferHost(Client client, string playerId)
+    {
+        lock (Gate)
+        {
+            if (client.RoomId is null || !rooms.TryGetValue(client.RoomId, out var room)) return NotInRoom();
+            if (room.HostId != client.Id) return new("HOST_ONLY", "只有房主可以转交房主。");
+            if (room.Started) return new("ROOM_STARTED", "本局进行中，结束后才能转交房主。");
+            if (playerId == client.Id || !room.Clients.TryGetValue(playerId, out var nextHost)
+                || nextHost.Socket.State != System.Net.WebSockets.WebSocketState.Open)
+                return new("INVALID_MEMBER", "请选择一位在线队友。");
+            room.HostId = playerId;
+            foreach (var peer in room.Clients.Values) peer.Ready = false;
             return new(client.RoomId, room);
         }
     }

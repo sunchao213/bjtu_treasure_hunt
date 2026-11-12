@@ -57,6 +57,8 @@ export class NetworkSession {
   private readonly socketFactory: NetworkSocketFactory;
   private readonly reconnectDelayMs: number;
   private displayName: string;
+  private latencyMs: number | null = null;
+  private pingSentAt: number | null = null;
 
   constructor(private readonly options: NetworkSessionOptions) {
     this.now = options.now ?? Date.now;
@@ -115,6 +117,10 @@ export class NetworkSession {
     return this.status;
   }
 
+  getLatencyMs(): number | null {
+    return this.latencyMs;
+  }
+
   getPlayerId(): string | null {
     return this.playerId;
   }
@@ -144,6 +150,7 @@ export class NetworkSession {
     const socket = this.socketFactory(this.options.url);
     this.socket = socket;
     socket.onopen = () => {
+      if (socket !== this.socket) return;
       this.setStatus('connected');
       this.send({
         type: 'hello',
@@ -157,8 +164,13 @@ export class NetworkSession {
       }
     };
     socket.onmessage = ({ data }) => {
+      if (socket !== this.socket) return;
       try {
         const message = decodeServerMessage(data);
+        if (message.type === 'pong' && message.sentAt === this.pingSentAt) {
+          this.latencyMs = Math.max(0, Math.round(this.now() - message.sentAt));
+          this.pingSentAt = null;
+        }
         if (message.type === 'welcome') this.playerId = message.playerId;
         if (message.type === 'room-state') {
           if (this.roomId && message.roomId !== this.roomId) return;
@@ -183,8 +195,12 @@ export class NetworkSession {
         // Invalid server data is ignored and cannot mutate the local game state.
       }
     };
-    socket.onerror = () => this.scheduleReconnect();
-    socket.onclose = () => this.scheduleReconnect();
+    socket.onerror = () => {
+      if (socket === this.socket) this.scheduleReconnect();
+    };
+    socket.onclose = () => {
+      if (socket === this.socket) this.scheduleReconnect();
+    };
   }
 
   join(roomId: string): boolean {
@@ -210,6 +226,14 @@ export class NetworkSession {
 
   startGame(): boolean {
     return this.inRoom && this.send({ type: 'start-game' });
+  }
+
+  setRoomSettings(maxPlayers: number, admissionOpen: boolean): boolean {
+    return this.inRoom && this.send({ type: 'room-settings', maxPlayers, admissionOpen });
+  }
+
+  transferHost(playerId: string): boolean {
+    return this.inRoom && this.send({ type: 'transfer-host', playerId });
   }
 
   finishGame(roundId: string): boolean {
@@ -257,7 +281,15 @@ export class NetworkSession {
   }
 
   ping(): boolean {
-    return this.send({ type: 'ping', sentAt: this.now() });
+    const sentAt = this.now();
+    if (this.pingSentAt !== null) {
+      if (sentAt - this.pingSentAt < 10_000) return true;
+      this.scheduleReconnect();
+      return false;
+    }
+    if (!this.send({ type: 'ping', sentAt })) return false;
+    this.pingSentAt = sentAt;
+    return true;
   }
 
   close(): void {
@@ -277,7 +309,10 @@ export class NetworkSession {
 
   private scheduleReconnect(): void {
     if (this.status === 'offline' || this.reconnectTimer !== null) return;
+    const socket = this.socket;
+    this.socket = null;
     this.setStatus('reconnecting');
+    socket?.close();
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.socket = null;
@@ -293,6 +328,8 @@ export class NetworkSession {
   private setStatus(status: NetworkStatus): void {
     this.status = status;
     if (status !== 'connected') {
+      this.latencyMs = null;
+      this.pingSentAt = null;
       this.inRoom = false;
       this.lastRoomTick = -1;
     }

@@ -44,6 +44,7 @@ import { assetUrl } from './app/asset-url';
 
 import { NetworkSession } from './modules/network/network-session';
 import { bindRoomLobby } from './modules/ui/room-lobby';
+import { bindStage } from './modules/ui/stage';
 import type { AccountUser } from './modules/auth/auth-client';
 import { accountStorage } from './modules/save/account-storage';
 
@@ -422,6 +423,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let sceneError = '';
     const lobby = bindRoomLobby({
       network,
+      confirm: confirmDialog,
       canEnter: () =>
         sceneReady && controller.getView().phase === 'preparing' && !controller.getView().isBusy,
       canPrepare: () =>
@@ -593,12 +595,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       render();
     };
     const disposeLayout = bindMobileLayout(app, () => queueMicrotask(onResize));
+    const disposeStage = bindStage(() => queueMicrotask(onResize));
     // Establish the logical landscape box before Phaser measures its canvas.
     const game = createGame(scene);
     element('mobile-fullscreen').onclick = () => {
       void requestLandscape();
     };
     element('mobile-rules').onclick = () => element('open-rules').click();
+    element('hud-rules').onclick = () => element('open-rules').click();
+    element('hud-codex').onclick = () => element('open-codex').click();
     element('mobile-sound').onclick = () => {
       if (sound.getMusicState() === 'playing') {
         audibleVolume = sound.getSettings().volume;
@@ -1308,6 +1313,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       import.meta.hot.dispose(() => {
         save.close();
         lobby.dispose();
+        disposeStage();
         network.close();
         sound.dispose();
         disposeLayout();

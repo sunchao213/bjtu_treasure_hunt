@@ -1,3 +1,5 @@
+import { RAID_RULES } from '../../config/game-config';
+
 /** A separate room view; the running game stays mounted while it is hidden. */
 export function roomPageMarkup(): string {
   return `<section id="room-page" class="room-page" aria-labelledby="room-title" hidden>
@@ -6,7 +8,7 @@ export function roomPageMarkup(): string {
       <button id="close-room" class="rules-button">返回游戏大厅</button>
     </header>
     <main class="room-content">
-      <div class="room-connection"><p id="network-status" role="status" aria-live="polite">正在连接联机服务…</p><button id="network-connect" class="rules-button">重新连接</button></div>
+      <div class="room-connection"><p id="network-status" role="status" aria-live="polite">正在连接联机服务…</p><span id="network-quality" class="network-quality">等待连接</span><button id="network-connect" class="rules-button">重新连接</button></div>
       <div id="room-entry" class="room-entry">
         <section class="side-card" aria-labelledby="room-create-title">
           <div class="section-kicker">01 / 发起集合</div><h2 id="room-create-title">创建房间</h2>
@@ -28,7 +30,15 @@ export function roomPageMarkup(): string {
       <div id="room-lobby" hidden>
         <div class="room-summary"><div><p class="rules-eyebrow">房间号 · 分享给同伴</p><h2 id="room-state-title" class="room-code"></h2></div><div class="room-summary-actions"><span id="room-count" class="build-label">0 / 10 人</span><button id="network-copy" class="rules-button">复制房间号</button><button id="network-leave" class="rules-button">退出房间</button></div></div>
         <div class="room-lobby-layout">
-          <section class="side-card" aria-label="房间成员"><div class="section-kicker">集合成员 <span>最多 10 人</span></div><ul id="network-players" class="room-players"></ul></section>
+          <section class="side-card" aria-label="房间成员"><div class="section-kicker">集合成员 <span id="room-readiness">等待准备</span></div><ul id="network-players" class="room-players"></ul>
+            <fieldset id="room-settings" class="room-settings"><legend>房间规则</legend>
+              <label for="network-capacity">人数上限<select id="network-capacity">${Array.from({ length: 9 }, (_, i) => `<option value="${i + 2}">${i + 2} 人</option>`).join('')}</select></label>
+              <label for="network-admission">加入权限<select id="network-admission"><option value="open">凭房间号加入</option><option value="closed">关闭加入</option></select></label>
+              <p id="room-settings-hint" class="muted">仅房主可修改；规则变更后，队友需要重新准备。</p>
+            </fieldset>
+            <dl class="room-rules-summary"><div><dt>探索时限</dt><dd>${RAID_RULES.durationMs / 60_000} 分钟</dd></div><div><dt>撤离条件</dt><dd>个人价值达到 ${RAID_RULES.threshold}</dd></div><div><dt>队友识别</dt><dd>相同角色 · 昵称区分</dd></div></dl>
+            <p class="muted room-note">同伴共享位置与地图布局；物资、战斗和撤离进度各自计算。所有成员结束后，可在原房间准备下一局。</p>
+          </section>
           <section class="side-card room-preparation" aria-labelledby="room-prepare-title"><div class="section-kicker">行动准备</div><h2 id="room-prepare-title">选择装备，等待出发</h2><div id="room-preparation-slot"></div></section>
         </div>
         <footer class="room-launchbar"><p id="room-ready-hint" class="muted" role="status"></p><button id="network-ready" class="primary" aria-pressed="false">准备</button><button id="network-start" class="primary" hidden>开始游戏 <span>↗</span></button></footer>

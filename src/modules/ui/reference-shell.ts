@@ -136,6 +136,7 @@ export function mountShell(root: HTMLElement): void {
           <div class="map-top"><span><i class="status-dot"></i><b id="phase-label">准备出发</b></span>
             <span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span class="map-actions"><button id="hud-codex" class="hud-button" aria-haspopup="dialog">图鉴</button><button id="hud-rules" class="hud-button" aria-haspopup="dialog">规则</button></span></span></div>
           <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-room" aria-controls="room-page">房间</button><button id="mobile-codex">图鉴</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
+          <div id="team-status" class="team-status" aria-label="队伍状态" hidden><span id="team-connection" class="network-quality"></span><ul id="team-players"></ul></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
           <div id="key-prompt" class="key-prompt" hidden role="status">
@@ -177,14 +178,6 @@ export function mountShell(root: HTMLElement): void {
             <ul id="quest-steps" class="quest-steps"></ul>
             <p id="quest-status" class="muted">线索：思源楼前残缺手记</p>
           </section>
-          <details class="side-card room-card" id="room-panel"><summary class="section-kicker">联机房间 <span id="room-connection">未连接</span></summary>
-            <p id="room-status" class="muted">开发环境可用双标签页联机演示；配置服务器后自动使用 WebSocket。</p>
-            <label class="field-label" for="room-name">玩家名称</label><input id="room-name" class="room-input" value="探险者" maxlength="12" />
-            <label class="field-label" for="room-code">房间号</label><input id="room-code" class="room-input" placeholder="创建后分享给队友" maxlength="12" />
-            <div class="room-actions"><button id="room-create" class="secondary">创建房间</button><button id="room-join" class="secondary">加入房间</button></div>
-            <div id="room-members" class="room-members" hidden></div>
-            <div class="room-actions" id="room-controls" hidden><button id="room-ready" class="secondary">准备</button><button id="room-start" class="primary">开始房间</button><button id="room-leave" class="text-button">离开</button></div>
-          </details>
           <section class="side-card" id="inventory-panel" hidden><div class="section-kicker">临时背包 <span id="bag-count">0 / 6</span></div>
             <ul id="inventory" class="inventory"></ul>
             <button id="extract" class="primary">在撤离点申请撤离</button>

@@ -235,6 +235,7 @@ async function abandon(page) {
   if (!(await evaluate(page, 'document.querySelector(".danger-area").open')))
     await click(page, '.danger-area > summary');
   await click(page, '#abandon');
+  await click(page, '#confirm-ok');
   await until(page, 'document.querySelector("#app").dataset.phase === "failed"');
   await until(page, '!document.querySelector("#next").hidden');
 }
@@ -357,7 +358,7 @@ try {
   const after = await evaluate(host, marker);
   assert(after.x > before.x + 2, 'keyboard moves player and minimap');
   await screenshot(host, '02-single-game');
-  await click(host, '#open-rules');
+  await click(host, '#hud-rules');
   const pausedTime = await evaluate(host, 'document.querySelector("#timer").textContent');
   await delay(1100);
   assert.equal(
@@ -407,6 +408,35 @@ try {
   await consent(guest);
   await click(guest, '#network-ready');
   await until(host, '!document.querySelector("#network-start").disabled');
+  assert.equal(await evaluate(guest, 'document.querySelector("#room-settings").disabled'), true);
+  await evaluate(
+    host,
+    `(() => { const select = document.querySelector('#network-capacity'); select.value = '2'; select.dispatchEvent(new Event('change')); })()`,
+  );
+  await until(guest, 'document.querySelector("#room-count").textContent === "2 / 2 人"');
+  await until(host, 'document.querySelector("#network-start").disabled');
+  await until(
+    guest,
+    'document.querySelector("#network-ready").getAttribute("aria-pressed") === "false"',
+  );
+  await evaluate(
+    host,
+    `(() => { const select = document.querySelector('#network-admission'); select.value = 'closed'; select.dispatchEvent(new Event('change')); })()`,
+  );
+  await until(guest, 'document.querySelector("#network-admission").value === "closed"');
+  await until(host, '/ms/.test(document.querySelector("#network-quality").textContent)');
+  await click(guest, '#network-ready');
+  await until(host, '!document.querySelector("#network-start").disabled');
+  pass(
+    'Room rules: host-only capacity and admission, synchronized changes, readiness reset and live latency',
+  );
+  assert(
+    await evaluate(
+      host,
+      `(() => { const box = document.querySelector('#network-start').getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()`,
+    ),
+    'room launch button stays inside the desktop frame',
+  );
   await screenshot(host, '04-room-ready');
   await click(host, '#network-start');
   for (const page of [host, guest])
@@ -415,6 +445,13 @@ try {
       'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#room-page").hidden',
     );
   const hostId = host.frames.find((frame) => frame.type === 'welcome').playerId;
+  for (const page of [host, guest]) {
+    assert.equal(await evaluate(page, 'document.querySelector("#team-status").hidden'), false);
+    assert.equal(await evaluate(page, 'document.querySelectorAll("#team-players li").length'), 2);
+    assert.equal(await evaluate(page, 'document.querySelector("#room-settings").disabled'), true);
+    if (await evaluate(page, 'document.querySelector("#tutorial-skip").checkVisibility()'))
+      await click(page, '#tutorial-skip');
+  }
   const roomBefore = guest.frames.findLast((frame) => frame.type === 'room-state' && frame.started);
   const hostX = roomBefore.players.find((player) => player.playerId === hostId).position.x;
   await move(host);
@@ -445,6 +482,11 @@ try {
   await abandon(guest);
   await click(host, '#next');
   await click(guest, '#next');
+  await click(host, '.room-transfer');
+  await click(host, '#confirm-ok');
+  await until(guest, '!document.querySelector("#network-start").hidden');
+  await until(host, '!document.querySelector("#network-ready").hidden');
+  pass('Host transfer updates permissions in both browsers');
   await click(host, '#network-leave');
   await click(host, '#close-room');
   await click(host, '#mode-solo');

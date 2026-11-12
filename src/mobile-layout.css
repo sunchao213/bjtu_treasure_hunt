@@ -62,6 +62,14 @@ html[data-touch='true'] #app .map-panel {
   grid-template-rows: 44px minmax(0, 1fr) 26px;
   height: calc(var(--game-height) - var(--safe-top) - var(--safe-bottom) - 8px);
 }
+html[data-touch='true'] #app .map-panel:has(.team-status:not([hidden])) {
+  grid-template-rows: 44px auto minmax(0, 1fr) 26px;
+}
+html[data-touch='true'] #app .team-status {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 2px 8px;
+}
 html[data-touch='true'] #app .map-top {
   align-items: center;
   min-width: 0;

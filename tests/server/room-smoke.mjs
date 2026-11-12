@@ -172,6 +172,48 @@ try {
     (await request(peers[1], { type: 'join-room', roomId: '000000' })).code,
     'ROOM_NOT_FOUND',
   );
+  const limited = await request(host, {
+    type: 'room-settings',
+    maxPlayers: 2,
+    admissionOpen: true,
+  });
+  assert.equal(limited.maxPlayers, 2);
+  await request(peers[1], { type: 'join-room', roomId });
+  assert.equal((await request(peers[2], { type: 'join-room', roomId })).code, 'ROOM_FULL');
+  assert.equal(
+    (await request(peers[1], { type: 'room-settings', maxPlayers: 10, admissionOpen: true })).code,
+    'HOST_ONLY',
+  );
+  assert.equal(
+    (await request(host, { type: 'room-settings', maxPlayers: 'bad', admissionOpen: true })).code,
+    'INVALID_MESSAGE',
+  );
+  assert.equal(
+    (await request(host, { type: 'room-settings', maxPlayers: 1, admissionOpen: true })).code,
+    'INVALID_CAPACITY',
+  );
+  await request(peers[1], { type: 'set-ready', ready: true });
+  const locked = await request(host, {
+    type: 'room-settings',
+    maxPlayers: 10,
+    admissionOpen: false,
+  });
+  assert(
+    locked.players.every((player) => !player.ready),
+    'settings changes invalidate readiness',
+  );
+  assert.equal((await request(peers[2], { type: 'join-room', roomId })).code, 'ROOM_LOCKED');
+  assert.equal(
+    (await request(peers[1], { type: 'transfer-host', playerId: host.id })).code,
+    'HOST_ONLY',
+  );
+  const transferred = await request(host, { type: 'transfer-host', playerId: peers[1].id });
+  assert.equal(transferred.hostId, peers[1].id);
+  assert(transferred.players.every((player) => !player.ready));
+  await request(peers[1], { type: 'transfer-host', playerId: host.id });
+  await request(host, { type: 'room-settings', maxPlayers: 10, admissionOpen: true });
+  send(peers[1], { type: 'leave-room' });
+  await waitFor(() => lastState(host).players.length === 1, 'settings test guest leaves');
   const attempts = await Promise.all(
     peers.slice(1).map((peer) => request(peer, { type: 'join-room', roomId })),
   );
@@ -217,6 +259,14 @@ try {
     host,
     { type: 'start-game' },
     (m) => m.type === 'room-state' && m.started,
+  );
+  assert.equal(
+    (await request(host, { type: 'room-settings', maxPlayers: 10, admissionOpen: false })).code,
+    'ROOM_STARTED',
+  );
+  assert.equal(
+    (await request(host, { type: 'transfer-host', playerId: members[1].id })).code,
+    'ROOM_STARTED',
   );
   await waitFor(
     () => members.every((peer) => lastState(peer).roundId === started.roundId),

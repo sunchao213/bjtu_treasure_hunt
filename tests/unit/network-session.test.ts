@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { NetworkSession, type NetworkSocket } from '../../src/modules/network/network-session';
 
 const roomState = (tick = 1, started = false) =>
@@ -48,6 +48,47 @@ class FakeSocket implements NetworkSocket {
 }
 
 describe('network session transport', () => {
+  it('measures matching pong replies and reconnects a stalled socket without accepting stale callbacks', () => {
+    vi.useFakeTimers();
+    try {
+      let now = 1000;
+      const first = new FakeSocket();
+      const second = new FakeSocket();
+      const factory = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+      const session = new NetworkSession({
+        url: 'wss://example.test',
+        sessionId: 's',
+        displayName: '玩家',
+        now: () => now,
+        socketFactory: factory,
+      });
+      session.connect();
+      first.open();
+      session.ping();
+      now += 70;
+      first.message(JSON.stringify({ type: 'pong', sentAt: 900, serverTime: now }));
+      expect(session.getLatencyMs()).toBeNull();
+      first.message(JSON.stringify({ type: 'pong', sentAt: 1000, serverTime: now }));
+      expect(session.getLatencyMs()).toBe(70);
+      session.ping();
+      now += 11000;
+      expect(session.ping()).toBe(false);
+      expect(session.getStatus()).toBe('reconnecting');
+      expect(first.readyState).toBe(3);
+      expect(session.getLatencyMs()).toBeNull();
+      vi.advanceTimersByTime(1500);
+      second.open();
+      first.onclose?.();
+      first.message(
+        JSON.stringify({ type: 'welcome', protocol: 1, playerId: 'stale', serverTime: now }),
+      );
+      expect(session.getStatus()).toBe('connected');
+      expect(session.getPlayerId()).toBeNull();
+      session.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('drops invalid coordinates from a hidden canvas without breaking the next frame', () => {
     const socket = new FakeSocket();
     const session = new NetworkSession({

@@ -8,6 +8,32 @@ import {
 } from '../../src/modules/network/network-protocol';
 
 describe('online protocol boundary', () => {
+  it('validates capacity, admission settings and host transfer', () => {
+    expect(isClientMessage({ type: 'room-settings', maxPlayers: 2, admissionOpen: false })).toBe(
+      true,
+    );
+    for (const maxPlayers of [1, 11, 2.5, '2', null]) {
+      expect(isClientMessage({ type: 'room-settings', maxPlayers, admissionOpen: true })).toBe(
+        false,
+      );
+    }
+    expect(isClientMessage({ type: 'transfer-host', playerId: 'p2' })).toBe(true);
+    expect(isClientMessage({ type: 'transfer-host', playerId: '' })).toBe(false);
+    const room = {
+      type: 'room-state',
+      roomId: '123456',
+      tick: 1,
+      hostId: 'p1',
+      maxPlayers: 2,
+      admissionOpen: false,
+      started: false,
+      roundId: null,
+      players: [],
+    };
+    expect(isServerMessage(room)).toBe(true);
+    expect(isServerMessage({ ...room, maxPlayers: 11 })).toBe(false);
+    expect(isServerMessage({ ...room, admissionOpen: 'false' })).toBe(false);
+  });
   it('accepts versioned hello and input messages', () => {
     const hello = {
       type: 'hello' as const,
