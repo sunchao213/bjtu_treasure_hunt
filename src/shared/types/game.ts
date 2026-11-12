@@ -125,7 +125,7 @@ export interface SavePort {
   beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]>;
   finalizeRaid(result: RaidResult): Promise<void>;
   unlockChapter(chapterId: string): Promise<void>;
-  purchaseItem?(itemId: string): ActionResult<ItemInstance>;
+  purchaseItem?(itemId: string): ActionResult<ItemInstance> | Promise<ActionResult<ItemInstance>>;
 }
 
 export interface Point {

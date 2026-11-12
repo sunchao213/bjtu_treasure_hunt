@@ -6,6 +6,7 @@ import { confirmMarkup } from './confirm-dialog';
 import { storyDialogMarkup } from './story-dialog';
 import { tutorialMarkup } from './tutorial';
 import { assetUrl } from '../../app/asset-url';
+import { shopMarkup } from './shop';
 
 /**
  * F01 准备页整页首屏（与助教要求一致）：
@@ -22,6 +23,7 @@ export function prepViewMarkup(): string {
             <p class="lobby-nav-label">行动中心</p>
             <button class="lobby-nav-item is-active" type="button" data-lobby-tab="prepare">出发准备</button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="warehouse">仓库</button>
+            <button class="lobby-nav-item" type="button" data-lobby-tab="shop">道具商店</button>
             <p class="lobby-nav-label">系统</p>
             <button class="lobby-nav-item" type="button" data-lobby-tab="settings">设置</button>
             <div class="lobby-nav-footer"><span class="status-dot"></span>账号云存档<br /><small>准备 · 探索 · 撤离</small></div>
@@ -32,12 +34,8 @@ export function prepViewMarkup(): string {
             <p class="prep-kicker">思源密码 · 行前准备</p>
             <h2 id="lobby-prepare-title">今晚，一起平安归来。</h2>
             <p class="prep-brief">搜集物资，调查校园异闻。携带价值达到 100 后，回到南门安全撤离。</p>
-            <div class="lobby-mission-strip"><span class="mission-number">01</span><span><b>第一章 · 明湖边的异常羽毛</b><small>带回两件证据，并从南门安全撤离</small></span><span id="mission-status" class="mission-status">待调查</span></div>
-            <ol class="prep-goals" aria-label="本局目标">
-              <li><b>残缺手记</b><span>图书馆外 · 旧书架</span></li>
-              <li><b>异常羽毛</b><span>明湖 · 石碑</span></li>
-              <li><b>携带价值 ≥ 100</b><span>南门 · 撤离点</span></li>
-            </ol>
+            <div id="lobby-missions"></div>
+            <ol id="prep-goals" class="prep-goals" aria-label="本局目标"></ol>
           </header>
           <div class="mode-selection" role="group" aria-label="选择游戏模式">
             <button id="mode-solo" class="mode-option" aria-pressed="true"><span>01 / SOLO</span><b>单人探索</b><small>独自出发，自由调查校园</small></button>
@@ -55,16 +53,6 @@ export function prepViewMarkup(): string {
               <label class="field-label" for="loadout-item">仓库带入选择</label>
               <div id="loadout" class="loadout-options" aria-describedby="loadout-slots"><p class="loadout-empty">仓库中暂无可带入的功能物品。</p></div>
               <p id="loadout-slots" class="loadout-slots">已选 0 / 6 格</p>
-              <label class="field-label" for="purchase-item">购买辅助道具</label>
-              <div class="purchase-row">
-                <select id="purchase-item" aria-label="购买辅助道具">
-                  <option value="">选择辅助道具</option>
-                  <option value="bandage">创可贴 · 10 交子 · 恢复 10 点生命 · 占 1 格</option>
-                  <option value="yellow-bike">小黄车 · 50 交子 · 移速 +20% · 占 2 格</option>
-                  <option value="thick-down-jacket">超厚羽绒服 · 100 交子 · 无敌 5 秒 · 占 1 格</option>
-                </select>
-                <button id="purchase-item-button" class="secondary" type="button">购买</button>
-              </div>
             </section>
             <section class="prep-block prep-launch" aria-labelledby="prep-launch-title">
               <h3 id="prep-launch-title">出发前确认</h3>
@@ -85,11 +73,12 @@ export function prepViewMarkup(): string {
                 <section class="warehouse-section"><h3>购买道具</h3><p class="warehouse-subtitle">商店购买的功能道具</p><ul id="purchase-warehouse" class="warehouse-list"></ul><p id="purchase-warehouse-empty" class="warehouse-empty">暂无购买道具</p></section>
               </div>
               <button id="archive-codex" class="secondary">查看图鉴 / 导出图片</button>
-              <div hidden><ul id="codex-list"></ul><div id="story-archive"></div></div>
+              <ul id="codex-list" hidden></ul><div id="story-archive"></div>
               <details><summary>存档管理</summary>
                 <button id="export-save" class="secondary">导出存档备份（JSON）</button><button id="reset-save" class="text-button">重置存档</button></details>
             </section>
           </section>
+          ${shopMarkup()}
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="settings" hidden aria-labelledby="lobby-settings-title">
             <div class="lobby-panel-heading"><div><p class="prep-kicker">体验选项</p><h2 id="lobby-settings-title">设置</h2></div></div>
             <div id="lobby-settings-slot" class="lobby-settings-slot"></div>

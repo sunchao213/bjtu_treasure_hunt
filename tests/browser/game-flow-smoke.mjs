@@ -77,7 +77,16 @@ async function evaluate(page, expression) {
 }
 async function until(page, expression) {
   for (let attempt = 0; attempt < 150; attempt++) {
-    if (await evaluate(page, expression)) return;
+    try {
+      if (await evaluate(page, expression)) return;
+    } catch (error) {
+      if (
+        !/Inspected target navigated|Cannot find context|Execution context was destroyed/.test(
+          String(error),
+        )
+      )
+        throw error;
+    }
     await delay(100);
   }
   throw new Error(
@@ -94,7 +103,7 @@ async function click(page, selector) {
     `(() => {
       const element = document.querySelector(${JSON.stringify(selector)});
       if (!element || !element.checkVisibility() || element.disabled) throw Error('Cannot click ' + ${JSON.stringify(selector)});
-      element.scrollIntoView({block:'center',inline:'nearest'});
+      element.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
       const box = element.getBoundingClientRect();
       return {x: box.x + box.width / 2, y: box.y + box.height / 2};
     })()`,
@@ -117,6 +126,110 @@ async function screenshot(page, name) {
 function pass(message) {
   passed.push(message);
   console.log(`PASS ${message}`);
+}
+
+// Inspect the real production scene through Chrome's heap API. This needs no
+// production debug globals or alternative gameplay implementation.
+async function attachScene(page) {
+  const phaserAsset = (await readdir(join(frontendRoot, 'assets'))).find((file) =>
+    /^phaser-.*\.js$/.test(file),
+  );
+  assert(phaserAsset);
+  const prototype = await command(
+    'Runtime.evaluate',
+    {
+      expression: `import('/assets/${phaserAsset}').then(m => Object.values(m).map(v => { try { return typeof v === 'function' ? v() : v; } catch { return v; } }).find(v => v?.Scene)?.Scene.prototype)`,
+      awaitPromise: true,
+    },
+    page.id,
+  );
+  const objects = await command(
+    'Runtime.queryObjects',
+    { prototypeObjectId: prototype.result.objectId },
+    page.id,
+  );
+  await command(
+    'Runtime.callFunctionOn',
+    {
+      objectId: objects.objects.objectId,
+      functionDeclaration: `function() { globalThis.testScene = this.find(s => s.sys?.settings?.key === 'world' && s.sys.isActive()); }`,
+    },
+    page.id,
+  );
+  await until(page, '!!globalThis.testScene');
+}
+
+async function interact(page, heldMs = 150) {
+  await command(
+    'Input.dispatchKeyEvent',
+    { type: 'keyDown', key: 'e', code: 'KeyE', windowsVirtualKeyCode: 69 },
+    page.id,
+  );
+  await delay(heldMs);
+  await command(
+    'Input.dispatchKeyEvent',
+    { type: 'keyUp', key: 'e', code: 'KeyE', windowsVirtualKeyCode: 69 },
+    page.id,
+  );
+}
+
+async function standAt(page, point, offsetY = 35) {
+  await evaluate(
+    page,
+    `(() => {
+    const target = ${JSON.stringify(point)};
+    testScene.position = { x: target.x, y: target.y + ${offsetY} };
+    testScene.player.setPosition(testScene.position.x, testScene.position.y);
+    testScene.cameras.main.centerOn(testScene.position.x, testScene.position.y);
+    testScene.aim = -Math.PI / 2;
+    testScene.lighting.enabled = true;
+    testScene.services.controller.activateInvulnerability(60000);
+    // Keep this story/shop integration scenario independent of timed combat
+    // spawns and hug requests, which have their own scene regression tests.
+    testScene.combat.enemies = [];
+    testScene.combat.updateSpawns = () => [];
+    for (const object of testScene.enemyObjects.values()) object.destroy();
+    testScene.enemyObjects.clear();
+  })()`,
+  );
+  await delay(200);
+  const aim = await evaluate(
+    page,
+    `(() => {
+    const rect = testScene.game.canvas.getBoundingClientRect();
+    const camera = testScene.cameras.main;
+    return { x: rect.left + (${point.x} - camera.worldView.x) * camera.zoom * rect.width / testScene.scale.width,
+      y: rect.top + (${point.y} - camera.worldView.y) * camera.zoom * rect.height / testScene.scale.height };
+  })()`,
+  );
+  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', ...aim }, page.id);
+  await delay(100);
+}
+
+async function searchEvidence(page, itemId, screenshotName) {
+  const point = await evaluate(
+    page,
+    `testScene.searchPoints.find(p => p.itemId === ${JSON.stringify(itemId)})`,
+  );
+  assert(point, `${itemId} search point exists`);
+  await standAt(page, point);
+  assert(
+    await evaluate(page, `testScene.chestObjects.get(${JSON.stringify(point.id)}).visible`),
+    `flashlight reveals ${itemId}: ${JSON.stringify(await evaluate(page, '({position:testScene.position,aim:testScene.aim,interaction:testScene.interaction})'))}`,
+  );
+  assert(
+    await evaluate(
+      page,
+      `testScene.player.depth > testScene.chestObjects.get(${JSON.stringify(point.id)}).depth`,
+    ),
+    'player in front of box is drawn above it',
+  );
+  await interact(page, 1000);
+  if (screenshotName) await screenshot(page, screenshotName);
+  await interact(page, 2500);
+  await until(page, 'document.querySelector("#story-dialog").open');
+  await click(page, '#story-skip');
+  await delay(150);
 }
 async function newPage(name, { mobile = false, failAsset = false, legacyCache = false } = {}) {
   const { browserContextId } = await command('Target.createBrowserContext', {
@@ -378,6 +491,7 @@ try {
     { width: 900, height: 500, deviceScaleFactor: 1, mobile: false },
     host.id,
   );
+  await delay(300);
   await click(host, '#start');
   await until(host, 'document.querySelector("#app").dataset.phase === "active"');
   await abandon(host);
@@ -388,6 +502,223 @@ try {
     host.id,
   );
   pass('Second solo round and short desktop window remain usable');
+
+  const storyPage = await newPage('story');
+  await consent(storyPage);
+  await click(storyPage, '#start');
+  await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
+  await click(storyPage, '#tutorial-skip');
+  await attachScene(storyPage);
+  assert.deepEqual(
+    await evaluate(
+      storyPage,
+      `(() => {
+    const context = testScene.textures.get('campus-foreground').getSourceImage().getContext('2d');
+    return [[160,1500], [235,1740], [150,1750]].map(([x,y]) => context.getImageData(x,y,1,1).data[3]);
+  })()`,
+    ),
+    [0, 0, 255],
+    'foreground preserves open pavement and gate doorway, and only covers the actual gate pillar',
+  );
+  await standAt(storyPage, { x: 990, y: 230 }, 0);
+  await interact(storyPage);
+  assert.equal(
+    await evaluate(storyPage, 'testScene.services.controller.getView().steleInvestigated'),
+    false,
+    'stele still requires this raid notebook',
+  );
+  await searchEvidence(storyPage, 'torn-notebook', '09-notebook-search');
+  await until(storyPage, 'document.querySelector("#quest-count").textContent === "1 / 2"');
+  await standAt(storyPage, { x: 990, y: 230 }, 0);
+  await interact(storyPage);
+  await until(storyPage, 'document.querySelector("#story-dialog").open');
+  assert(
+    await evaluate(
+      storyPage,
+      'document.querySelector("#story-label").textContent.includes("石碑")',
+    ),
+  );
+  await screenshot(storyPage, '10-stele-story');
+  await click(storyPage, '#story-skip');
+  await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
+  // Ordinary valuables only supply the extraction threshold; all story evidence
+  // above and below is obtained through the actual world interactions.
+  const addValuables = `(() => {
+    const {inventory, controller} = testScene.services;
+    const raidId = controller.getView().raidId;
+    for (let i = 0; i < 2; i++) inventory.addLoot({instanceId: raidId + ':test-value:' + i, itemId: 'gpa-charm', origin: {kind:'raid-loot', obtainedInRaidId:raidId}});
+  })()`;
+  const finishChapter = async (expectedChapter, nextChapter) => {
+    await evaluate(storyPage, addValuables);
+    await standAt(storyPage, { x: 235, y: 1682 }, 0);
+    await interact(storyPage);
+    await until(
+      storyPage,
+      'document.querySelector("#app").dataset.phase === "success" && document.querySelector("#story-dialog").open',
+    );
+    assert.equal(
+      await evaluate(storyPage, 'testScene.services.controller.getView().result.questComplete'),
+      true,
+    );
+    assert.equal(
+      await evaluate(
+        storyPage,
+        `document.querySelector('[data-chapter-story="${expectedChapter}"]') !== null`,
+      ),
+      false,
+      'ending must close before chapter unlock',
+    );
+    await click(storyPage, '#story-skip');
+    await until(storyPage, `!!document.querySelector('[data-chapter-story="${expectedChapter}"]')`);
+    await click(storyPage, '#next');
+    await until(
+      storyPage,
+      `!!document.querySelector('#lobby-missions [data-chapter="${nextChapter}"]')`,
+    );
+  };
+  await finishChapter('siyuan-code', 'siyuan-key');
+  await click(storyPage, '[data-lobby-tab="warehouse"]');
+  await click(storyPage, '[data-chapter-story="siyuan-code"]');
+  await until(storyPage, 'document.querySelector("#story-dialog").open');
+  await click(storyPage, '#story-skip');
+  await click(storyPage, '[data-lobby-tab="prepare"]');
+  await click(storyPage, '#start');
+  await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
+  await searchEvidence(storyPage, 'campus-map');
+  await searchEvidence(storyPage, 'siyuan-key');
+  await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
+  await finishChapter('siyuan-key', 'soothe-monster');
+  await screenshot(storyPage, '11-chapter-three-unlocked');
+  pass(
+    'Authored story flow: notebook search → stele prerequisite and story → extraction → ending-gated cloud unlock → archive replay → chapter two evidence → chapter three',
+  );
+
+  await click(storyPage, '[data-lobby-tab="shop"]');
+  const initialBalance = await evaluate(
+    storyPage,
+    'Number(document.querySelector("#shop-balance").textContent)',
+  );
+  assert(initialBalance >= 170, 'duplicate collectibles funded the shop through settlement');
+  for (const itemId of ['bandage', 'yellow-bike', 'thick-down-jacket']) {
+    await click(storyPage, `[data-shop-buy="${itemId}"]`);
+    await until(storyPage, 'document.querySelector("#shop-status").dataset.state === "success"');
+    await until(
+      storyPage,
+      `document.querySelector('[data-shop-item="${itemId}"] [data-shop-stock]').textContent === '1'`,
+    );
+  }
+  const afterPurchase = initialBalance - 160;
+  assert.equal(
+    await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
+    afterPurchase,
+  );
+  assert.equal(
+    await evaluate(
+      storyPage,
+      'document.querySelector("[data-shop-buy=thick-down-jacket]").disabled',
+    ),
+    true,
+  );
+  await screenshot(storyPage, '12-shop-purchases');
+  await command('Fetch.enable', { patterns: [{ urlPattern: '*/api/save' }] }, storyPage.id);
+  await click(storyPage, '[data-shop-buy="bandage"]');
+  await until(storyPage, 'document.querySelector("#shop-status").dataset.state === "error"');
+  assert.equal(
+    await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
+    afterPurchase,
+    'failed cloud save keeps balance',
+  );
+  assert.equal(
+    await evaluate(
+      storyPage,
+      'document.querySelector("[data-shop-item=bandage] [data-shop-stock]").textContent',
+    ),
+    '1',
+    'failed cloud save grants no item',
+  );
+  await command('Fetch.disable', {}, storyPage.id);
+  await evaluate(
+    storyPage,
+    'document.querySelector("[data-shop-buy=bandage]").click(); document.querySelector("[data-shop-buy=bandage]").click()',
+  );
+  await until(storyPage, 'document.querySelector("#shop-status").dataset.state === "success"');
+  assert.equal(
+    await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
+    afterPurchase - 10,
+    'double click buys exactly one',
+  );
+  await command('Page.reload', {}, storyPage.id);
+  await until(
+    storyPage,
+    'typeof globalThis.testScene === "undefined" && document.querySelector("#game-load-status")?.dataset.state === "ready"',
+  );
+  if (await evaluate(storyPage, 'document.querySelector("#prologue-skip").checkVisibility()'))
+    await click(storyPage, '#prologue-skip');
+  await click(storyPage, '[data-lobby-tab="shop"]');
+  assert.equal(
+    await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
+    afterPurchase - 10,
+    'wallet persists on reload',
+  );
+  assert.equal(
+    await evaluate(
+      storyPage,
+      'document.querySelector("[data-shop-item=bandage] [data-shop-stock]").textContent',
+    ),
+    '2',
+    'purchases persist on reload',
+  );
+  await click(storyPage, '#shop-prepare');
+  await evaluate(
+    storyPage,
+    `document.querySelectorAll('#loadout input').forEach(input => { if (input.closest('label').textContent.match(/创可贴|小黄车|羽绒服/)) { input.checked = true; input.dispatchEvent(new Event('change')); } })`,
+  );
+  assert.equal(
+    await evaluate(storyPage, 'document.querySelector("#loadout-slots").textContent'),
+    '已选 5 / 6 格',
+  );
+  await consent(storyPage);
+  await click(storyPage, '#start');
+  await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
+  await attachScene(storyPage);
+  await click(storyPage, '#inventory [data-item-id="bandage"] button');
+  assert.equal(
+    await evaluate(
+      storyPage,
+      'testScene.services.inventory.getCarriedItems().filter(i => i.itemId === "bandage").length',
+    ),
+    2,
+    'full health does not consume healing',
+  );
+  await evaluate(storyPage, 'testScene.services.controller.applyDamage(20)');
+  await click(storyPage, '#inventory [data-item-id="bandage"] button');
+  assert.equal(
+    await evaluate(storyPage, 'testScene.services.controller.getView().health'),
+    90,
+    'purchased bandage heals',
+  );
+  await click(storyPage, '#inventory [data-item-id="yellow-bike"] button');
+  assert.equal(
+    await evaluate(storyPage, 'testScene.services.controller.getMoveSpeedMultiplier()'),
+    1.2,
+    'purchased bike applies speed',
+  );
+  await click(storyPage, '#inventory [data-item-id="thick-down-jacket"] button');
+  await evaluate(storyPage, 'testScene.services.controller.applyDamage(20)');
+  assert.equal(
+    await evaluate(storyPage, 'testScene.services.controller.getView().health'),
+    90,
+    'purchased jacket blocks damage',
+  );
+  await until(
+    storyPage,
+    '!document.querySelector("#inventory [data-item-id=yellow-bike]") && !document.querySelector("#inventory [data-item-id=thick-down-jacket]")',
+  );
+  await screenshot(storyPage, '13-purchased-items-used');
+  await abandon(storyPage);
+  pass(
+    'Standalone shop: balance, all three purchases, insufficient funds, failed save rollback, duplicate click, cloud reload, carry-in, healing, speed and invulnerability',
+  );
 
   await click(host, '#mode-room');
   await until(host, '!document.querySelector("#network-create").disabled');

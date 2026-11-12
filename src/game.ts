@@ -2,7 +2,13 @@ import './style.css';
 import './mobile-layout.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { createGame } from './app/create-game';
-import { HEALING_AMOUNTS, ITEM_DEFINITIONS, RAID_RULES } from './config/game-config';
+import {
+  HEALING_AMOUNTS,
+  isPurchasedItem,
+  ITEM_DEFINITIONS,
+  RAID_RULES,
+} from './config/game-config';
+import { renderShop, SHOP_EFFECTS } from './modules/ui/shop';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
 import { FORMAL_SAVE_KEY } from './modules/save/persistent-save';
@@ -15,9 +21,18 @@ import {
   renderChapterLock,
   renderChapterUnlock,
   renderCodexPanel,
+  renderLobbyMissions,
+  renderPrepGoals,
   renderQuestPanel,
 } from './modules/ui/quest-view';
-import { chapterUnlockGranted, questProgress } from './modules/quests/quest-service';
+import {
+  activeQuestChapter,
+  chapterUnlockGranted,
+  questChapterForEvidence,
+  questProgress,
+  QUEST_CHAPTER_ID,
+} from './modules/quests/quest-service';
+import { chapterContentById } from './modules/quests/chapter-content';
 import { bindStoryDialog, stepForEvidence } from './modules/ui/story-dialog';
 import { createTypewriter } from './modules/ui/typewriter';
 import {
@@ -361,7 +376,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     }
     const events = new EventBus();
     const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
-    const controller = new RaidController(inventory, save, events, RAID_RULES, ITEM_DEFINITIONS);
+    const controller = new RaidController(
+      inventory,
+      save,
+      events,
+      RAID_RULES,
+      ITEM_DEFINITIONS,
+      Date.now,
+      () => crypto.randomUUID(),
+      () => activeQuestChapter(save.view().unlockedChapterIds).id,
+    );
     const migrate = element<HTMLButtonElement>('account-import-legacy');
     migrate.hidden = localStorage.getItem(FORMAL_SAVE_KEY) === null;
     migrate.onclick = async () => {
@@ -405,6 +429,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let renderedAt = 0;
     let interacted = '';
     let searchProgress = 0;
+    let buyingItem: string | null = null;
     // F02：记录读条开始时的状态，用来判断读条为什么被取消。
     let extractionSnapshot: ExtractionSnapshot | null = null;
     let enteredExtractionZone = false;
@@ -425,9 +450,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       network,
       confirm: confirmDialog,
       canEnter: () =>
-        sceneReady && controller.getView().phase === 'preparing' && !controller.getView().isBusy,
+        sceneReady &&
+        buyingItem === null &&
+        controller.getView().phase === 'preparing' &&
+        !controller.getView().isBusy,
       canPrepare: () =>
         sceneReady &&
+        buyingItem === null &&
         controller.getView().phase === 'preparing' &&
         !controller.getView().isBusy &&
         element<HTMLInputElement>('risk-consent').checked,
@@ -469,6 +498,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       network,
       controller: activeController,
       inventory: activeInventory,
+      questChapter: () => activeQuestChapter(save.view().unlockedChapterIds).id,
       events,
       notify,
       touch,
@@ -498,6 +528,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let mapOpen = false;
     let codexOpen = false;
     let storyOpen = false;
+    let pendingEnding: { raidId: string; chapterId: string } | null = null;
     let roomOpen = false;
     // F04：新手引导。只读局内状态与玩家位置，不写任何玩法数据。
     const tutorial = createTutorial({ store: tutorialStore(storage) });
@@ -703,22 +734,47 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         scene.clearInteractions();
         storyOpen = false;
         render();
+        const ending = pendingEnding;
+        pendingEnding = null;
+        if (ending) {
+          void save
+            .unlockChapter(ending.chapterId)
+            .then(() => render())
+            .catch(() => {
+              storyShownPerRaid.delete(`${ending.raidId}:ending`);
+              notify('章节解锁保存失败，请重新查看结尾剧情后重试。');
+              render();
+            });
+        }
       },
     );
     // 每局只弹一次的剧情键：`${raidId}:${itemId}` 为线索，`${raidId}:ending` 为结尾。
     const storyShownPerRaid = new Set<string>();
     events.on('ItemPicked', ({ raidId, item }) => {
-      const step = stepForEvidence(item.itemId);
+      const chapterId = questChapterForEvidence(item.itemId);
+      const step = stepForEvidence(item.itemId, chapterContentById(chapterId));
       if (!step) return;
       const key = `${raidId}:${item.itemId}`;
       if (storyShownPerRaid.has(key)) return;
       storyShownPerRaid.add(key);
-      story.open({ kind: 'step', step });
+      story.open({ kind: 'step', step }, chapterContentById(chapterId));
+    });
+    events.on('SteleInvestigated', ({ raidId }) => {
+      const chapterId = activeQuestChapter(save.view().unlockedChapterIds).id;
+      if (chapterId !== QUEST_CHAPTER_ID) return;
+      const step = stepForEvidence('minghu-stele', chapterContentById(chapterId));
+      if (!step) return;
+      const key = `${raidId}:minghu-stele`;
+      if (storyShownPerRaid.has(key)) return;
+      storyShownPerRaid.add(key);
+      story.open({ kind: 'step', step }, chapterContentById(chapterId));
     });
     // 剧情档案的「回看」按钮随存档状态重渲染，用事件委托绑定。
     element('story-archive').addEventListener('click', (event) => {
-      if ((event.target as HTMLElement).id === 'open-story') {
-        story.open({ kind: 'full-chapter' });
+      const button = (event.target as HTMLElement).closest<HTMLElement>('[data-chapter-story]');
+      const chapterId = button?.dataset.chapterStory;
+      if (chapterId !== undefined) {
+        story.open({ kind: 'full-chapter' }, chapterContentById(chapterId));
       }
     });
 
@@ -856,7 +912,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('inventory-panel').hidden = !playable;
       element('result-panel').hidden = !['settling', 'success', 'failed'].includes(view.phase);
       element<HTMLButtonElement>('start').disabled = !canStartRaid({
-        busy: view.isBusy || !sceneReady,
+        busy: view.isBusy || !sceneReady || buyingItem !== null,
         consented: lobby.isJoined() || element<HTMLInputElement>('risk-consent').checked,
       });
       element('start').textContent = !sceneReady
@@ -893,34 +949,66 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
             ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
             : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
       const carried = activeInventory.getCarriedItems();
-      renderQuestPanel(questProgress(carried, view.raidId));
+      const archive = save.view();
+      const activeChapter = activeQuestChapter(archive.unlockedChapterIds);
+      renderQuestPanel(
+        questProgress(carried, view.raidId, activeChapter.id, view.steleInvestigated),
+      );
       const signature = JSON.stringify([carried, activeInventory.getEquipment()]);
       if (signature !== lastInventory) {
         renderInventory(carried, activeInventory.getEquipment());
         lastInventory = signature;
       }
-      const archive = save.view();
-      const warehouseSignature = JSON.stringify(archive.warehouse);
-      element('mission-status').textContent = archive.unlockedChapterIds.length
-        ? '已完成'
-        : '待调查';
-      element('warehouse-count').textContent = `${archive.warehouse.length} 件`;
-      element('warehouse-count-label').textContent = `${archive.warehouse.length} 件物品`;
+      const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
+      const supplies = archive.warehouse.filter(
+        (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
+      );
+      element('warehouse-count').textContent = `${supplies.length} 件功能道具`;
+      element('warehouse-count-label').textContent =
+        `${supplies.length} 件功能道具 · ${archive.currency} 交子`;
+      renderShop(
+        element('prep-view'),
+        archive.warehouse,
+        archive.currency,
+        buyingItem,
+        view.phase === 'preparing' && !view.isBusy && !lobby.isLocked(),
+      );
       element('archive-detail').textContent = archive.unlockedChapterIds.length
-        ? `已解锁思源密码章节；图鉴 ${archive.codexIds.length} 种。`
+        ? `已完成 ${archive.unlockedChapterIds.length} 章；当前任务：${activeChapter.title}；图鉴 ${archive.codexIds.length} 种。`
         : archive.codexIds.length
-          ? `已点亮 ${archive.codexIds.length} 种图鉴；带手记和异常羽毛成功撤离可解锁章节。`
+          ? `已点亮 ${archive.codexIds.length} 种图鉴；带回本局手记、调查明湖石碑并成功撤离后，阅读结尾可解锁下一章。`
           : '成功撤离后，物品和图鉴会保存到当前账号的云端仓库。';
       if (lastWarehouse !== warehouseSignature) {
         const loadout = element<HTMLDivElement>('loadout');
+        const selectedIds = new Set(
+          Array.from(
+            loadout.querySelectorAll<HTMLInputElement>('input:checked'),
+            (input) => input.value,
+          ),
+        );
+        for (const [id, purchased] of [
+          ['exploration', false],
+          ['purchase', true],
+        ] as const) {
+          const entries = supplies.filter((item) => isPurchasedItem(item) === purchased);
+          const list = element(`${id}-warehouse`);
+          list.replaceChildren(
+            ...entries.map((item) => {
+              const row = document.createElement('li');
+              row.textContent = `${ITEM_DEFINITIONS[item.itemId]?.name ?? item.itemId} · 占 ${ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1} 格`;
+              return row;
+            }),
+          );
+          element(`${id}-warehouse-empty`).hidden = entries.length > 0;
+        }
         loadout.replaceChildren();
-        if (!archive.warehouse.length) {
+        if (!supplies.length) {
           const empty = document.createElement('p');
           empty.className = 'loadout-empty';
           empty.textContent = '仓库中暂无可带入的功能物品。';
           loadout.append(empty);
         }
-        for (const item of archive.warehouse) {
+        for (const item of supplies) {
           const definition = ITEM_DEFINITIONS[item.itemId];
           const row = document.createElement('label');
           row.className = 'loadout-item';
@@ -928,6 +1016,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           checkbox.type = 'checkbox';
           checkbox.value = item.instanceId;
           checkbox.dataset.bagSlots = String(definition?.bagSlots ?? 1);
+          checkbox.checked = selectedIds.has(item.instanceId);
+          checkbox.disabled = lobby.isLocked();
           checkbox.addEventListener('change', () => {
             const selected = Array.from(
               loadout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked'),
@@ -948,24 +1038,31 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           row.append(checkbox, text);
           loadout.append(row);
         }
-        element('loadout-slots').textContent = `已选 0 / ${RAID_RULES.bagCapacity} 格`;
+        const slots = supplies
+          .filter((item) => selectedIds.has(item.instanceId))
+          .reduce((total, item) => total + (ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1), 0);
+        element('loadout-slots').textContent = `已选 ${slots} / ${RAID_RULES.bagCapacity} 格`;
         lastWarehouse = warehouseSignature;
       }
-      const unlocked = view.result !== null && chapterUnlockGranted(view.result);
-      renderChapterUnlock(element('quest-unlock'), unlocked);
+      const settlement = view.result ?? (view.phase === 'preparing' ? archive.lastResult : null);
+      const endingReady = settlement !== null && chapterUnlockGranted(settlement, activeChapter.id);
+      renderChapterUnlock(element('quest-unlock'), endingReady, activeChapter.id);
       // R07：成功撤离但证据不齐时，说明本章为什么还没解锁。
-      renderChapterLock(element('quest-lock'), view.result);
-      // 结尾剧情（剧情稿 6.4）：成功撤离解锁章节后自动弹出一次。
-      if (unlocked) {
-        const key = `${view.raidId}:ending`;
+      renderChapterLock(element('quest-lock'), settlement, activeChapter.id);
+      // 先播放本章结尾，关闭后按原有存档规则解锁下一章。
+      if (endingReady && settlement && (view.phase === 'success' || view.phase === 'preparing')) {
+        const key = `${settlement.raidId}:ending`;
         if (!storyShownPerRaid.has(key)) {
           storyShownPerRaid.add(key);
-          story.open({ kind: 'ending' });
+          pendingEnding = { raidId: settlement.raidId, chapterId: activeChapter.id };
+          story.open({ kind: 'ending' }, chapterContentById(activeChapter.id));
         }
       }
       const codexSignature = JSON.stringify([archive.codexIds, archive.unlockedChapterIds]);
       if (codexSignature !== lastCodex) {
         renderCodexPanel(element('codex-list'), element('story-archive'), archive);
+        renderLobbyMissions(element('lobby-missions'), archive.unlockedChapterIds);
+        renderPrepGoals(element('prep-goals'), activeChapter.id);
         if (codex.open) renderCodex(archive.codexIds, archive.unlockedChapterIds);
         lastCodex = codexSignature;
       }
@@ -993,6 +1090,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           continue;
         }
         const li = document.createElement('li');
+        li.dataset.itemId = item.itemId;
         const label = document.createElement('span');
         label.textContent = definition.name;
         const sub = document.createElement('small');
@@ -1023,8 +1121,40 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
             if (consumed.ok) {
               notify('恢复物已消耗，当前携带价值已重算。');
             } else if (consumed.error === 'INVALID_STATE') {
-              notify('当前无法使用恢复物，物品没有消耗。');
+              notify(
+                state.health >= RAID_RULES.maxHealth
+                  ? '当前生命已满，恢复物没有消耗。'
+                  : '当前无法使用恢复物，物品没有消耗。',
+              );
             }
+            render();
+          };
+          li.append(use);
+        }
+        if (definition.kind === 'utility' && SHOP_EFFECTS[item.itemId]) {
+          const use = document.createElement('button');
+          use.className = 'mini';
+          use.textContent = '使用';
+          use.title = SHOP_EFFECTS[item.itemId]!;
+          use.onclick = () => {
+            const consumed = activeInventory.consumeUtility(item.instanceId, () => {
+              if (item.itemId === 'yellow-bike') {
+                return (
+                  activeController.getMoveSpeedMultiplier() < 1.2 &&
+                  activeController.setSpeedMultiplier(1.2)
+                );
+              }
+              return (
+                item.itemId === 'thick-down-jacket' &&
+                activeController.activateInvulnerability(5000)
+              );
+            });
+            notify(
+              consumed.ok
+                ? `已使用${definition.name}：${SHOP_EFFECTS[item.itemId]}`
+                : '当前无法使用或效果已生效，道具没有消耗。',
+            );
+            render();
           };
           li.append(use);
         }
@@ -1051,11 +1181,48 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     }
 
     element('risk-consent').onchange = render;
+    element('shop-prepare').onclick = () =>
+      document.querySelector<HTMLButtonElement>('[data-lobby-tab="prepare"]')!.click();
+    element('prep-view').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-shop-buy]');
+      if (!button || button.disabled || buyingItem !== null) return;
+      const itemId = button.dataset.shopBuy!;
+      const view = controller.getView();
+      if (view.phase !== 'preparing' || view.isBusy || lobby.isLocked()) return;
+      buyingItem = itemId;
+      element('shop-status').textContent = '正在确认购买，请稍候…';
+      element('shop-status').dataset.state = 'pending';
+      render();
+      void save
+        .purchaseItem(itemId)
+        .then((result) => {
+          const message = result.ok
+            ? `已购买${ITEM_DEFINITIONS[itemId]?.name ?? itemId}，已存入仓库。请在出发准备中勾选带入。`
+            : result.error === 'INSUFFICIENT_FUNDS'
+              ? '交子不足，本次未购买。'
+              : '当前无法购买，本次未扣款。';
+          element('shop-status').textContent = message;
+          element('shop-status').dataset.state = result.ok ? 'success' : 'error';
+          notify(message);
+        })
+        .catch((error: unknown) => {
+          element('shop-status').textContent =
+            error instanceof Error
+              ? `购买未确认：${error.message}`
+              : '购买未确认，请检查网络后重试。';
+          element('shop-status').dataset.state = 'error';
+        })
+        .finally(() => {
+          buyingItem = null;
+          render();
+        });
+    });
     async function startExploration(): Promise<boolean> {
       if (
         !sceneReady ||
         !element<HTMLInputElement>('risk-consent').checked ||
-        controller.getView().isBusy
+        controller.getView().isBusy ||
+        buyingItem !== null
       )
         return false;
       // Start playback within the click gesture, before fullscreen or save awaits.
@@ -1241,12 +1408,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const teleportTargets: Record<string, () => { x: number; y: number } | null> = {
         'debug-tp-notebook': () =>
           debugScene.searchPoints.find((point) => point.itemId === 'torn-notebook') ?? null,
-        'debug-tp-feather': () =>
-          debugScene.searchPoints.find((point) => point.itemId === 'anomalous-feather') ?? null,
+        'debug-tp-feather': () => ({ ...WORLD.stone }),
         'debug-tp-extract': () => ({ ...WORLD.spawn }),
       };
       const questPointNames: Record<string, string> = {
-        'debug-tp-notebook': '图书馆书架',
+        'debug-tp-notebook': '思源楼前',
         'debug-tp-feather': '明湖石碑',
         'debug-tp-extract': '南门撤离点',
       };
@@ -1268,7 +1434,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           const spot =
             candidates.find((p) => !WORLD.obstacles.some((w) => contains(w, p))) ?? target;
           debugScene.position = { x: spot.x, y: spot.y };
-          debugScene.aim = 0;
+          debugScene.aim = Math.atan2(target.y - spot.y, target.x - spot.x);
           debugScene.lighting.enabled = true;
           debugScene.player?.setPosition(spot.x, spot.y);
           notify(`调试：已传送到${questPointNames[buttonId] ?? buttonId}旁，手电已开启。`);

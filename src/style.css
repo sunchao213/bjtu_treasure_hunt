@@ -1203,6 +1203,70 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   max-width: 100%;
   min-height: 0;
 }
+.shop-wallet {
+  color: #d1ad6a;
+  white-space: nowrap;
+}
+.shop-wallet b {
+  font-size: 24px;
+}
+.shop-status {
+  min-height: 24px;
+  color: #a4b3a6;
+  line-height: 1.6;
+}
+.shop-status[data-state='error'] {
+  color: #eeab91;
+}
+.shop-status[data-state='success'] {
+  color: #97d7b2;
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 16px;
+  margin: 22px 0;
+}
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  border: 1px solid #41483d;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #252c25, #1a211e);
+}
+.shop-category,
+.shop-stock {
+  color: #9ca995;
+  font-size: 12px;
+}
+.shop-card h3 {
+  margin: 18px 0 10px;
+  color: #eee4d0;
+  font-size: 22px;
+}
+.shop-card p {
+  flex: 1;
+  margin: 0 0 24px;
+  color: #bec6b5;
+  line-height: 1.7;
+}
+.shop-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+.shop-card-footer strong {
+  color: #e9c17c;
+  font-size: 23px;
+}
+.shop-card-footer small {
+  font-size: 12px;
+  font-weight: 400;
+}
 .lobby-commandbar {
   display: flex;
   align-items: center;

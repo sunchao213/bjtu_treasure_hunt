@@ -49,6 +49,52 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('cloud progress transactions', () => {
+  it('commits a purchase to the cloud before changing the wallet or warehouse, and rolls back a failed save', async () => {
+    const api = endpoint({ ...empty(), currency: 60 });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    api.write.mockRejectedValueOnce(new CloudSaveError('unavailable', 503));
+    await expect(save.purchaseItem('yellow-bike')).rejects.toThrow('unavailable');
+    expect(save.view().currency).toBe(60);
+    expect(save.view().warehouse).toEqual([]);
+    const result = await save.purchaseItem('yellow-bike');
+    expect(result.ok).toBe(true);
+    expect(save.view().currency).toBe(10);
+    expect(save.view().warehouse).toEqual([
+      expect.objectContaining({
+        itemId: 'yellow-bike',
+        origin: { kind: 'carry-in', source: 'purchase' },
+      }),
+    ]);
+    expect(api.write.mock.calls[1]?.[2]).toEqual(save.view());
+    save.close();
+  });
+
+  it('serializes purchases so two requests cannot spend the same balance', async () => {
+    const api = endpoint({ ...empty(), currency: 50 });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    const results = await Promise.all([
+      save.purchaseItem('yellow-bike'),
+      save.purchaseItem('yellow-bike'),
+    ]);
+    expect(results.map((result) => result.ok)).toEqual([true, false]);
+    expect(results[1]).toEqual({ ok: false, error: 'INSUFFICIENT_FUNDS' });
+    expect(save.view().currency).toBe(0);
+    expect(save.view().warehouse).toHaveLength(1);
+    expect(api.write).toHaveBeenCalledTimes(1);
+    save.close();
+  });
+
+  it('rejects unknown products and purchases during a raid without writing progress', async () => {
+    const api = endpoint({ ...empty(), currency: 200 });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    expect(await save.purchaseItem('not-for-sale')).toEqual({ ok: false, error: 'UNKNOWN_ITEM' });
+    expect(api.write).not.toHaveBeenCalled();
+    await save.beginRaid('shop-locked', []);
+    expect(await save.purchaseItem('bandage')).toEqual({ ok: false, error: 'INVALID_STATE' });
+    expect(save.view().currency).toBe(200);
+    expect(api.write).toHaveBeenCalledTimes(1);
+    save.close();
+  });
   it('loads cloud progress instead of overwriting it with an older browser copy', async () => {
     const remote = { ...empty(), codexIds: ['school-badge'] };
     const cache = storage(JSON.stringify(empty()));

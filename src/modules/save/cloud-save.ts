@@ -1,4 +1,4 @@
-import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
+import type { ActionResult, ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import {
   FORMAL_SAVE_KEY,
   PersistentSave,
@@ -96,12 +96,22 @@ export class CloudSave implements SavePort {
   unlockChapter(chapterId: string): Promise<void> {
     return this.update((next) => next.unlockChapter(chapterId));
   }
+  purchaseItem(itemId: string): Promise<ActionResult<ItemInstance>> {
+    return this.update((next) => {
+      if (next.view().activeRaid) return { ok: false, error: 'INVALID_STATE' };
+      return next.purchaseItem(itemId);
+    }, true);
+  }
 
-  private update<T>(operation: (next: PersistentSave) => T | Promise<T>): Promise<T> {
+  private update<T>(
+    operation: (next: PersistentSave) => T | Promise<T>,
+    skipUnchanged = false,
+  ): Promise<T> {
     const commit = this.pending.then(async () => {
       if (this.closed) throw new Error('云存档连接已关闭，请刷新后重试。');
       const next = memorySave(this.current.exportRaw());
       const result = await operation(next);
+      if (skipUnchanged && next.exportRaw() === this.current.exportRaw()) return result;
       this.options.onStatus?.('正在保存进度…');
       try {
         const reply = await this.api.write(this.token, this.revision, next.view());
