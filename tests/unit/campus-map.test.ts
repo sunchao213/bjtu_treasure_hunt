@@ -109,14 +109,16 @@ describe('portrait campus image map', () => {
     const points = generateLootSpawns(seeded(42), plan);
     expect(WORLD.chapterTwoPoints.campusMap).toMatchObject({ x: 800, y: 940 });
     expect(WORLD.chapterTwoPoints.siyuanKey).toMatchObject({ x: 467, y: 370 });
-    expect(points.filter((point) => point.itemId === 'campus-map')).toEqual([
+    expect(points.filter((point) => point.itemId === 'marked-campus-map')).toEqual([
       expect.objectContaining({ id: 'campus-map-point', x: 800, y: 940 }),
     ]);
     expect(points.filter((point) => point.itemId === 'siyuan-key')).toEqual([
       expect.objectContaining({ id: 'siyuan-key-point', x: 467, y: 370 }),
     ]);
     expect(
-      points.filter((point) => point.itemId === 'campus-map' || point.itemId === 'siyuan-key'),
+      points.filter(
+        (point) => point.itemId === 'marked-campus-map' || point.itemId === 'siyuan-key',
+      ),
     ).toHaveLength(2);
   });
 
@@ -148,11 +150,13 @@ describe('portrait campus image map', () => {
     [0.95, 'roller-skates'],
     [0.99, 'hunter-binoculars'],
     [0.999, 'strange-veined-ginkgo-leaf'],
-  ] as const)('can spawn %s rolls as %s while preserving both quest clues', (roll, itemId) => {
+  ] as const)('can spawn %s rolls as %s while preserving the fixed notebook', (roll, itemId) => {
     const points = generateLootSpawns(() => roll);
     expect(points.some((point) => point.itemId === itemId)).toBe(true);
     expect(points.filter((point) => point.itemId === 'torn-notebook')).toHaveLength(1);
-    expect(points.filter((point) => point.itemId === 'anomalous-feather')).toHaveLength(1);
+    expect(points.find((point) => point.itemId === 'torn-notebook')).toMatchObject(
+      WORLD.questChest,
+    );
   });
 
   it('keeps loot, lamps and patrols connected to the south gate without wall crossings', () => {

@@ -67,10 +67,13 @@ describe('三章进度推进', () => {
     expect(prerequisiteHint('siyuan-key', [], RAID_ID, 'siyuan-key')).toBe(
       '侧门线索：缺少本局被涂改的校园地图。',
     );
-    expect(prerequisiteHint('siyuan-key', [loot('campus-map')], RAID_ID, 'siyuan-key')).toBeNull();
-    expect(chapterEvidence([loot('campus-map')], RAID_ID, 'siyuan-key').collected).toBe(1);
     expect(
-      chapterEvidence([loot('campus-map'), loot('siyuan-key')], RAID_ID, 'siyuan-key').complete,
+      prerequisiteHint('siyuan-key', [loot('marked-campus-map')], RAID_ID, 'siyuan-key'),
+    ).toBeNull();
+    expect(chapterEvidence([loot('marked-campus-map')], RAID_ID, 'siyuan-key').collected).toBe(1);
+    expect(
+      chapterEvidence([loot('marked-campus-map'), loot('siyuan-key')], RAID_ID, 'siyuan-key')
+        .complete,
     ).toBe(true);
   });
 
@@ -84,16 +87,16 @@ describe('三章进度推进', () => {
   });
 
   it('任务卡文案按当前章节切换，拾取证据能定位到所属章节', () => {
-    const progress = questProgress([loot('campus-map')], RAID_ID, 'siyuan-key');
+    const progress = questProgress([loot('marked-campus-map')], RAID_ID, 'siyuan-key');
     expect(progress.statusText).toBe('线索二 · 去思源楼东侧道路，调查思源楼金钥匙');
-    expect(questChapterForEvidence('campus-map')).toBe('siyuan-key');
+    expect(questChapterForEvidence('marked-campus-map')).toBe('siyuan-key');
     expect(questChapterForEvidence('soothe-charm')).toBe('soothe-monster');
     expect(questChapterForEvidence('torn-notebook')).toBe('siyuan-code');
-    expect(evidenceStoryBeat('campus-map')).toContain('线索一 · 被涂改的校园地图');
+    expect(evidenceStoryBeat('marked-campus-map')).toContain('线索一 · 被涂改的校园地图');
   });
 
   it('章节结算判定只认本章证据，不会跨章解锁', () => {
-    const ch2 = result(RAID_ID, [loot('campus-map'), loot('siyuan-key')]);
+    const ch2 = result(RAID_ID, [loot('marked-campus-map'), loot('siyuan-key')]);
     expect(chapterUnlockGranted(ch2, 'siyuan-key')).toBe(true);
     expect(chapterUnlockGranted(ch2, 'soothe-monster')).toBe(false);
     expect(chapterUnlockGranted({ ...ch2, questComplete: false }, 'siyuan-key')).toBe(false);
@@ -128,7 +131,7 @@ describe('三章进度推进', () => {
   it('每章证据刷新到指定区域，三章都有可读剧情档案', () => {
     expect(questSpawnPlan('siyuan-key')).toEqual([
       {
-        itemId: 'campus-map',
+        itemId: 'marked-campus-map',
         zoneId: 'central-lawn',
         index: -1,
         fixedPoint: { id: 'campus-map-point', x: 800, y: 940, zoneId: 'central-lawn' },
@@ -141,9 +144,14 @@ describe('三章进度推进', () => {
       },
     ]);
     const spawns = generateLootSpawns(() => 0.5, questSpawnPlan('siyuan-key'));
-    expect(spawns.find((spawn) => spawn.itemId === 'campus-map')?.zoneId).toBe('central-lawn');
+    expect(spawns.find((spawn) => spawn.itemId === 'marked-campus-map')?.zoneId).toBe(
+      'central-lawn',
+    );
     expect(spawns.find((spawn) => spawn.itemId === 'siyuan-key')?.zoneId).toBe('siyuan-side-door');
-    expect(spawns.find((spawn) => spawn.itemId === 'campus-map')).toMatchObject({ x: 800, y: 940 });
+    expect(spawns.find((spawn) => spawn.itemId === 'marked-campus-map')).toMatchObject({
+      x: 800,
+      y: 940,
+    });
     expect(spawns.find((spawn) => spawn.itemId === 'siyuan-key')).toMatchObject({ x: 467, y: 370 });
     expect(CHAPTERS['siyuan-key']?.steps).toHaveLength(3);
     expect(CHAPTERS['soothe-monster']?.steps).toHaveLength(3);
@@ -164,12 +172,16 @@ describe('存档层按章节递进解锁', () => {
     expect(save.view().unlockedChapterIds).toEqual(['siyuan-code']);
 
     await save.beginRaid('ch2', []);
-    await save.finalizeRaid(result('ch2', [loot('campus-map', 'ch2'), loot('siyuan-key', 'ch2')]));
+    await save.finalizeRaid(
+      result('ch2', [loot('marked-campus-map', 'ch2'), loot('siyuan-key', 'ch2')]),
+    );
     expect(save.view().unlockedChapterIds).toEqual(['siyuan-code']);
     await save.unlockChapter('siyuan-key');
     expect(save.view().unlockedChapterIds).toEqual(['siyuan-code', 'siyuan-key']);
     // 同一局重复结算（重试保存）不会把第二章重复写进列表。
-    await save.finalizeRaid(result('ch2', [loot('campus-map', 'ch2'), loot('siyuan-key', 'ch2')]));
+    await save.finalizeRaid(
+      result('ch2', [loot('marked-campus-map', 'ch2'), loot('siyuan-key', 'ch2')]),
+    );
     expect(save.view().unlockedChapterIds).toEqual(['siyuan-code', 'siyuan-key']);
 
     await save.beginRaid('ch3', []);
@@ -189,7 +201,7 @@ describe('存档层按章节递进解锁', () => {
     const save = new PersistentSave(new MemoryStorage());
     await save.beginRaid('skip', []);
     await save.finalizeRaid(
-      result('skip', [loot('campus-map', 'skip'), loot('siyuan-key', 'skip')]),
+      result('skip', [loot('marked-campus-map', 'skip'), loot('siyuan-key', 'skip')]),
     );
     // 当前章节仍是第一章，因此这次结算只判定第一章，第二章保持锁定。
     expect(save.view().unlockedChapterIds).toEqual([]);

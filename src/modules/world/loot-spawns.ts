@@ -1,6 +1,6 @@
 import { WORLD } from '../../config/world-config';
 import type { Point, Rect } from '../../shared/types/game';
-import { questChapterById, QUEST_CHAPTER_ID } from '../quests/quest-service';
+import { EVIDENCE_CAMPUS_MAP, questChapterById, QUEST_CHAPTER_ID } from '../quests/quest-service';
 
 export interface LootSpawn extends Point {
   id: string;
@@ -83,7 +83,7 @@ export function questSpawnPlan(chapterId: string = QUEST_CHAPTER_ID): QuestSpawn
     }));
   if (chapter.id === 'siyuan-key') {
     plan[0] = {
-      itemId: 'campus-map',
+      itemId: EVIDENCE_CAMPUS_MAP,
       zoneId: WORLD.chapterTwoPoints.campusMap.zoneId,
       index: -1,
       fixedPoint: WORLD.chapterTwoPoints.campusMap,
@@ -132,6 +132,20 @@ export function generateLootSpawns(
     });
   }
   const questItemIds = new Set(plan.map((entry) => entry.itemId));
+  const pool = CHEST_LOOT.map((entry, index) => ({
+    itemId: entry.itemId,
+    weight: entry.upperBound - (CHEST_LOOT[index - 1]?.upperBound ?? 0),
+  })).filter((entry) => !questItemIds.has(entry.itemId));
+  const poolWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
+  const randomItemId = (): string => {
+    if (pool.length === 0) throw new Error('No ordinary chest loot available');
+    let remaining = roll() * poolWeight;
+    for (const entry of pool) {
+      remaining -= entry.weight;
+      if (remaining < 0) return entry.itemId;
+    }
+    return pool[pool.length - 1]!.itemId;
+  };
   for (const zone of WORLD.lootZones) {
     const candidates: Point[] = [];
     for (let x = zone.x + 25; x < zone.x + zone.width - 20; x += 50) {
@@ -179,14 +193,10 @@ export function generateLootSpawns(
         result.every((other) => Math.hypot(jitter.x - other.x, jitter.y - other.y) >= 90)
           ? jitter
           : point;
-      const pool = ['window-seat', 'morning-coffee', 'school-badge'];
       const quest = plan.find(
         (entry) => !entry.fixedPoint && entry.zoneId === zone.id && entry.index === i,
       );
-      const availablePool = pool.filter((candidate) => !questItemIds.has(candidate));
-      const itemId = quest
-        ? quest.itemId
-        : availablePool[Math.floor(roll() * availablePool.length)]!;
+      const itemId = quest ? quest.itemId : randomItemId();
       result.push({ ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
     }
   }

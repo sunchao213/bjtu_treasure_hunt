@@ -26,6 +26,7 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['strange-veined-ginkgo-leaf', '叶脉奇怪的银杏叶', 'legendary', 'collectible'],
     ['hunter-binoculars', '猎手望远镜', 'epic', 'collectible'],
     ['roller-skates', '轮滑鞋', 'uncommon', 'collectible'],
+    ['marked-campus-map', '被涂改的校园地图', 'common', 'quest'],
     ['soothe-charm', '安抚护符', 'epic', 'quest'],
     ['complete-record', '完整记录', 'legendary', 'quest'],
     ['training-bat', '训练棍', 'common', 'weapon'],
@@ -60,6 +61,10 @@ export const ITEM_CATALOG_IDS = [
   'gpa-charm',
   'library-reward-ticket',
   'siyuan-key',
+  'strange-veined-ginkgo-leaf',
+  'hunter-binoculars',
+  'roller-skates',
+  'marked-campus-map',
   'soothe-charm',
   'complete-record',
 ] as const;

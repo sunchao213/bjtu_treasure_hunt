@@ -136,7 +136,7 @@ describe('A extraction lifecycle', () => {
     s.fill();
     s.inventory.addLoot({
       instanceId: 'current-map',
-      itemId: 'campus-map',
+      itemId: 'marked-campus-map',
       origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
     });
     s.inventory.addLoot({

@@ -249,7 +249,7 @@ export const STORY_LOCATION_ANCHORS: Readonly<Record<string, StoryLocationAnchor
 export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
   'scratch-paper': '写满公式又划掉的草稿纸，边角还留着自习室的桌号。',
   'half-eraser': '用到只剩半块的橡皮，擦得最干净的一角写着「别放弃」。',
-  'campus-map': '手绘的校园地图，几处角落被反复描粗——像是有人不想被忘记。',
+  [EVIDENCE_CAMPUS_MAP]: '手绘的校园地图，几处角落被反复描粗——像是有人不想被忘记。',
   'portable-medkit': '随身恢复包，第一节课后就一直躺在书包侧袋里。',
   'torn-notebook': '思源楼前宝箱里发现的半本手记，扉页只剩「思源」二字。',
   'window-seat': '靠窗座凭证：图书馆二楼西侧那排座位，冬天下午最暖的位置。',

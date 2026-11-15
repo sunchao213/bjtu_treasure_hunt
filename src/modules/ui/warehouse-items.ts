@@ -6,7 +6,7 @@ interface WarehouseIcon {
 }
 
 // Legacy silhouette metadata identifies supported items. Runtime artwork uses
-// the shared PNG assets below for warehouse tiles, details and the gallery.
+// shared artwork assets for warehouse tiles, details and the gallery.
 const ICONS: Readonly<Record<string, WarehouseIcon>> = {
   'scratch-paper': {
     path: 'M15 8H42L50 16V56H15Z M42 8V17H50 M22 27H42 M22 35H42 M22 43H36 M19 51L27 43',
@@ -81,6 +81,18 @@ const ICONS: Readonly<Record<string, WarehouseIcon>> = {
     path: 'M10 17H39L47 28V40H25L21 50H13L18 38H10Z M25 50H53 M28 50A4 4 0 1 0 28 58A4 4 0 1 0 28 50Z M45 50A4 4 0 1 0 45 58A4 4 0 1 0 45 50Z',
     color: '#d4d9e6',
   },
+  'marked-campus-map': {
+    path: 'M8 16L24 10L40 16L56 10V48L40 54L24 48L8 54Z M24 10V48 M40 16V54 M29 29L35 35 M35 29L29 35',
+    color: '#d9d4b8',
+  },
+  'soothe-charm': {
+    path: 'M24 8H40V16L48 24V53H16V24L24 16Z M24 8L32 3L40 8 M24 30Q24 24 32 30Q40 24 40 30Q40 36 32 42Q24 36 24 30 M32 53V60',
+    color: '#c2a2ee',
+  },
+  'complete-record': {
+    path: 'M10 12H28L32 16L36 12H54V52H36L32 56L28 52H10Z M32 16V56 M17 23H25 M17 31H25 M39 23H47 M39 31H47 M38 41L42 45L49 37',
+    color: '#f3ce81',
+  },
 };
 
 export interface WarehouseItemDetails {
@@ -107,9 +119,12 @@ const RARITY_NAMES: Readonly<Record<string, string>> = {
 };
 const DESCRIPTIONS: Readonly<Record<string, string>> = {
   'portable-medkit': '使用后恢复 30 点生命；满血时无法使用。',
-  'torn-notebook': '图书馆周边的主线线索；与本局异常羽毛一起带回可解锁章节。',
+  'torn-notebook': '思源楼前固定宝箱中的主线线索；调查明湖石碑后携带本局手记撤离可解锁第一章。',
   'morning-coffee': '使用后恢复 25 点生命；满血时无法使用。',
-  'anomalous-feather': '明湖石碑周边的主线线索；与本局残缺手记一起带回可解锁章节。',
+  'anomalous-feather': '校园探索中的普通收藏物，不参与章节任务条件。',
+  'marked-campus-map': '第二章任务证据；在中央教学楼公告栏调查后取得，再去寻找思源楼金钥匙。',
+  'soothe-charm': '第三章任务证据；在芳华园发现，持有时可继续寻找完整记录。',
+  'complete-record': '第三章任务证据；与本局安抚护符一起带回可解锁第三章。',
   'training-bat': '近身攻击装备，携带时可以攻击敌人。',
   'stun-baton': '可使用 15 次，命中后短暂击晕敌人。',
   bandage: '使用后恢复 10 点生命。',
@@ -128,10 +143,13 @@ export function warehouseItemIconIds(): readonly string[] {
   return Object.keys(ICONS);
 }
 
-/** Public PNG asset used by warehouse tiles and the item detail dialog. */
+const SVG_ITEM_IDS = new Set(['marked-campus-map', 'soothe-charm', 'complete-record']);
+
+/** Public artwork used by warehouse tiles and the item detail dialog. */
 export function warehouseItemIconAssetPath(itemId: string): string | null {
   if (!ICONS[itemId]) return null;
-  return `/assets/items/icons/${encodeURIComponent(itemId)}.png`;
+  const extension = SVG_ITEM_IDS.has(itemId) ? 'svg' : 'png';
+  return `/assets/items/icons/${encodeURIComponent(itemId)}.${extension}`;
 }
 
 export function warehouseItemDetails(itemId: string): WarehouseItemDetails | null {

@@ -7,7 +7,8 @@ import {
   isCatalogItemId,
   isKnownItemId,
 } from '../../src/config/game-config';
-import { generateLootSpawns } from '../../src/modules/world/loot-spawns';
+import { generateLootSpawns, questSpawnPlan } from '../../src/modules/world/loot-spawns';
+import { QUEST_CHAPTERS } from '../../src/modules/quests/quest-service';
 
 describe('product item catalog configuration', () => {
   it('contains every known item exactly once in the gallery', () => {
@@ -35,8 +36,10 @@ describe('product item catalog configuration', () => {
 
   it('rejects unknown definitions and accepts every configured search-point item', () => {
     expect(() => assertKnownItemId('missing-item')).toThrow('Unknown item definition');
-    for (const point of generateLootSpawns(() => 0.5)) {
-      expect(() => assertKnownItemId(point.itemId)).not.toThrow();
+    for (const chapter of QUEST_CHAPTERS) {
+      for (const point of generateLootSpawns(() => 0.5, questSpawnPlan(chapter.id))) {
+        expect(() => assertKnownItemId(point.itemId)).not.toThrow();
+      }
     }
   });
 });

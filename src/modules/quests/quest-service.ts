@@ -16,7 +16,8 @@ export const THIRD_CHAPTER_ID = 'soothe-monster';
 
 export const EVIDENCE_NOTEBOOK = 'torn-notebook';
 export const EVIDENCE_FEATHER = 'anomalous-feather';
-export const EVIDENCE_CAMPUS_MAP = 'campus-map';
+// Keep chapter evidence distinct from the retired campus-map collectible.
+export const EVIDENCE_CAMPUS_MAP = 'marked-campus-map';
 export const EVIDENCE_SIYUAN_KEY = 'siyuan-key';
 export const EVIDENCE_SOOTHE_CHARM = 'soothe-charm';
 export const EVIDENCE_COMPLETE_RECORD = 'complete-record';

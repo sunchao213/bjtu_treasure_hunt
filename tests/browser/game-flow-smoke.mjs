@@ -584,7 +584,7 @@ try {
   await click(storyPage, '[data-lobby-tab="prepare"]');
   await click(storyPage, '#start');
   await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
-  await searchEvidence(storyPage, 'campus-map');
+  await searchEvidence(storyPage, 'marked-campus-map');
   await searchEvidence(storyPage, 'siyuan-key');
   await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
   await finishChapter('siyuan-key', 'soothe-monster');

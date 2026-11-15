@@ -16,17 +16,19 @@ describe('warehouse item tiles', () => {
     for (const itemId of warehouseItemIconIds()) expect(warehouseItemIcon(itemId)).not.toBeNull();
   });
 
-  it('ships exactly one PNG for every supported item', () => {
+  it('ships exactly one artwork asset for every supported item', () => {
     const files = readdirSync(new URL('../../public/assets/items/icons/', import.meta.url))
-      .filter((file) => file.endsWith('.png') && file !== 'item-icons-overview.png')
+      .filter((file) => /\.(png|svg)$/.test(file) && file !== 'item-icons-overview.png')
       .sort();
     expect(files).toEqual(
       warehouseItemIconIds()
-        .map((id) => `${id}.png`)
+        .map((id) => warehouseItemIconAssetPath(id)!.split('/').at(-1))
         .sort(),
     );
     for (const id of warehouseItemIconIds()) {
-      expect(warehouseItemIconAssetPath(id)).toBe(`/assets/items/icons/${id}.png`);
+      expect(warehouseItemIconAssetPath(id)).toMatch(
+        new RegExp(`^/assets/items/icons/${id}\\.(png|svg)$`),
+      );
     }
     expect(warehouseItemIconAssetPath('campus-map')).toBeNull();
   });

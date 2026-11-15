@@ -23,8 +23,12 @@ describe.each([ReferenceSave, PersistentSave])('%s settlement persistence', (Sav
     const [key, raw] = [...data.entries()][0]!;
     const legacy = JSON.parse(raw);
     legacy.currency = 87;
-    legacy.warehouse = [item('map', 'campus-map'), item('kit', 'portable-medkit')];
-    legacy.codexIds = ['campus-map', 'portable-medkit'];
+    legacy.warehouse = [
+      item('map', 'campus-map'),
+      item('kit', 'portable-medkit'),
+      item('evidence-map', 'marked-campus-map'),
+    ];
+    legacy.codexIds = ['campus-map', 'portable-medkit', 'marked-campus-map'];
     legacy.unlockedChapterIds = ['siyuan-code'];
     legacy.settledRaidIds = ['raid'];
     legacy.lastResult = {
@@ -36,11 +40,12 @@ describe.each([ReferenceSave, PersistentSave])('%s settlement persistence', (Sav
     };
     data.set(key, JSON.stringify(legacy));
     const restored = new Save(storage).view();
-    expect(restored.warehouse).toEqual([item('kit', 'portable-medkit')]);
-    expect(restored.codexIds).toEqual(['portable-medkit']);
+    const retained = [item('kit', 'portable-medkit'), item('evidence-map', 'marked-campus-map')];
+    expect(restored.warehouse).toEqual(retained);
+    expect(restored.codexIds).toEqual(['portable-medkit', 'marked-campus-map']);
     expect(restored.currency).toBe(87);
     expect(restored.unlockedChapterIds).toEqual(['siyuan-code']);
-    expect(restored.lastResult?.items).toEqual([item('kit', 'portable-medkit')]);
+    expect(restored.lastResult?.items).toEqual(retained);
     expect(restored.lastResult?.value).toBe(20);
   });
 

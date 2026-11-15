@@ -6,6 +6,7 @@ import {
   RAID_RULES,
 } from '../../config/game-config';
 import { retainSettlementItems } from './settlement-retention';
+import { migrateRetiredItems } from './retired-items';
 import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
 
 export interface StoragePort {
@@ -152,6 +153,7 @@ function validSettlementResult(result: RaidResult): boolean {
 
 function decode(raw: string): SaveData {
   const value: unknown = JSON.parse(raw);
+  migrateRetiredItems(value);
   if (
     !record(value) ||
     value.schemaVersion !== 1 ||

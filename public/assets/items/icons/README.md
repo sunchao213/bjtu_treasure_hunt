@@ -32,6 +32,8 @@
 
 `item-icons-overview.png` 是人工检查用的总览图，不参与运行时加载。
 
+章节证据另有三个 SVG 图标：`marked-campus-map.svg`（被涂改的校园地图）、`soothe-charm.svg`（安抚护符）和 `complete-record.svg`（完整记录），同样通过 `warehouseItemIconAssetPath()` 加载。第二章使用独立的 `marked-campus-map` 物品 ID，与下述退役收藏物 `campus-map` 区分，读取旧存档时不会清理当前章节证据。
+
 校园地图线索没有进入当前宝箱池，也没有功能逻辑，已从道具配置、图鉴、背景文案和图标中移除；已有存档中的同名道具会在读取时清理，其余物品、货币和章节保留。独立的校园导航地图功能不受影响。
 
 随身急救包保留：`HEALING_AMOUNTS['portable-medkit'] = 30`，背包“使用”按钮通过 `consumeHealing()` 调用 `RaidController.heal()`，成功恢复后消耗，满血时保留物品。当前随机宝箱池不产出它，已有仓库物品仍可带入使用。
