@@ -19,13 +19,15 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['window-seat', '靠窗座凭证', 'uncommon', 'collectible'],
     ['morning-coffee', '早八不困咖啡', 'uncommon', 'healing'],
     ['school-badge', '校训徽章', 'uncommon', 'collectible'],
-    ['anomalous-feather', '异常羽毛', 'epic', 'quest'],
+    ['anomalous-feather', '异常羽毛', 'epic', 'collectible'],
     ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible'],
     ['library-reward-ticket', '图书馆占座券', 'epic', 'collectible'],
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],
     ['strange-veined-ginkgo-leaf', '叶脉奇怪的银杏叶', 'legendary', 'collectible'],
     ['hunter-binoculars', '猎手望远镜', 'epic', 'collectible'],
     ['roller-skates', '轮滑鞋', 'uncommon', 'collectible'],
+    ['soothe-charm', '安抚护符', 'epic', 'quest'],
+    ['complete-record', '完整记录', 'legendary', 'quest'],
     ['training-bat', '训练棍', 'common', 'weapon'],
     ['stun-baton', '电击器', 'uncommon', 'weapon'],
     ['bandage', '创可贴', 'common', 'healing', 1, 10],
@@ -58,9 +60,8 @@ export const ITEM_CATALOG_IDS = [
   'gpa-charm',
   'library-reward-ticket',
   'siyuan-key',
-  'strange-veined-ginkgo-leaf',
-  'hunter-binoculars',
-  'roller-skates',
+  'soothe-charm',
+  'complete-record',
 ] as const;
 
 /** All known item IDs, including shop-only supplies, for save/config validation. */

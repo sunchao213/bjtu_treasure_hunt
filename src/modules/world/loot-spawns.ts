@@ -1,5 +1,6 @@
 import { WORLD } from '../../config/world-config';
-import type { Point } from '../../shared/types/game';
+import type { Point, Rect } from '../../shared/types/game';
+import { questChapterById, QUEST_CHAPTER_ID } from '../quests/quest-service';
 
 export interface LootSpawn extends Point {
   id: string;
@@ -17,14 +18,43 @@ const CHEST_LOOT = [
   { itemId: 'strange-veined-ginkgo-leaf', upperBound: 1 },
 ] as const;
 
+/** The room round ID gives every member the same randomized campus layout. */
+export function roundRandom(roundId: string): () => number {
+  let seed = 2166136261;
+  for (let i = 0; i < roundId.length; i++) seed = Math.imul(seed ^ roundId.charCodeAt(i), 16777619);
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let value = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /** Extra clearance leaves room to stand beside a chest and aim at it. */
-export function clearLootPosition(p: Point, radius = 35): boolean {
+const FOREGROUND_OCCLUSION_ZONES: readonly Rect[] = [
+  // Red flag and pole in the west lawn.
+  { x: 202, y: 610, width: 101, height: 280 },
+  // Small sculpture ring, body and pedestal in the west lawn.
+  { x: 218, y: 939, width: 85, height: 79 },
+  { x: 220, y: 1018, width: 83, height: 32 },
+  { x: 232, y: 1040, width: 58, height: 112 },
+  { x: 204, y: 1142, width: 130, height: 50 },
+];
+
+export function clearLootPosition(
+  p: Point,
+  radius = 35,
+  avoidForegroundOcclusion = false,
+): boolean {
+  const obstacles = avoidForegroundOcclusion
+    ? [...WORLD.obstacles, ...FOREGROUND_OCCLUSION_ZONES]
+    : WORLD.obstacles;
   return (
-    p.x >= 30 + radius &&
-    p.x <= WORLD.width - 30 - radius &&
-    p.y >= 35 + radius &&
-    p.y <= WORLD.height - 35 - radius &&
-    !WORLD.obstacles.some(
+    p.x >= WORLD.bounds.x + radius &&
+    p.x <= WORLD.bounds.x + WORLD.bounds.width - radius &&
+    p.y >= WORLD.bounds.y + radius &&
+    p.y <= WORLD.bounds.y + WORLD.bounds.height - radius &&
+    !obstacles.some(
       (w) =>
         p.x + radius > w.x &&
         p.x - radius < w.x + w.width &&
@@ -34,15 +64,85 @@ export function clearLootPosition(p: Point, radius = 35): boolean {
   );
 }
 
+/** 任务证据刷新计划：每个章节的两件证据各占一个区域的固定搜索点。 */
+export interface QuestSpawnPlan {
+  itemId: string;
+  zoneId: string;
+  index: number;
+  fixedPoint?: Point & { id: string };
+}
+
+export function questSpawnPlan(chapterId: string = QUEST_CHAPTER_ID): QuestSpawnPlan[] {
+  const chapter = questChapterById(chapterId);
+  const plan: QuestSpawnPlan[] = chapter.evidence
+    .filter((entry) => entry.spawnZoneId !== '')
+    .map((entry) => ({
+      itemId: entry.itemId,
+      zoneId: entry.spawnZoneId,
+      index: entry.spawnIndex,
+    }));
+  if (chapter.id === 'siyuan-key') {
+    plan[0] = {
+      itemId: 'campus-map',
+      zoneId: WORLD.chapterTwoPoints.campusMap.zoneId,
+      index: -1,
+      fixedPoint: WORLD.chapterTwoPoints.campusMap,
+    };
+    plan[1] = {
+      itemId: 'siyuan-key',
+      zoneId: WORLD.chapterTwoPoints.siyuanKey.zoneId,
+      index: -1,
+      fixedPoint: WORLD.chapterTwoPoints.siyuanKey,
+    };
+  }
+  // 第一章的手记来自思源楼前固定宝箱，不占用随机搜索区。
+  if (chapter.id === QUEST_CHAPTER_ID) {
+    plan.push({ itemId: 'torn-notebook', zoneId: 'siyuan', index: -1 });
+  }
+  return plan;
+}
+
 /** Finite candidate sampling: even a constant RNG cannot hang the raid. */
-export function generateLootSpawns(random: () => number = Math.random): LootSpawn[] {
+export function generateLootSpawns(
+  random: () => number = Math.random,
+  plan: readonly QuestSpawnPlan[] = questSpawnPlan(),
+): LootSpawn[] {
   const result: LootSpawn[] = [];
   const roll = () => Math.max(0, Math.min(0.999999, random()));
+  const fixedQuestPoints = plan.filter((quest) => quest.fixedPoint);
+  for (let i = 0; i < fixedQuestPoints.length; i++) {
+    const quest = fixedQuestPoints[i]!;
+    const point = quest.fixedPoint!;
+    if (
+      !clearLootPosition(point) ||
+      Math.hypot(point.x - WORLD.questChest.x, point.y - WORLD.questChest.y) < 90
+    ) {
+      throw new Error(`Invalid fixed quest position for ${quest.itemId}`);
+    }
+    for (let j = 0; j < i; j++) {
+      const other = fixedQuestPoints[j]!.fixedPoint!;
+      if (Math.hypot(point.x - other.x, point.y - other.y) < 90) {
+        throw new Error(`Overlapping fixed quest positions for ${quest.itemId}`);
+      }
+    }
+    result.push({
+      ...point,
+      itemId: quest.itemId,
+      zoneId: quest.zoneId,
+    });
+  }
+  const questItemIds = new Set(plan.map((entry) => entry.itemId));
   for (const zone of WORLD.lootZones) {
     const candidates: Point[] = [];
     for (let x = zone.x + 25; x < zone.x + zone.width - 20; x += 50) {
       for (let y = zone.y + 25; y < zone.y + zone.height - 20; y += 50) {
-        if (clearLootPosition({ x, y })) candidates.push({ x, y });
+        if (
+          clearLootPosition({ x, y }, 35, true) &&
+          Math.hypot(x - WORLD.questChest.x, y - WORLD.questChest.y) >= 90 &&
+          result.every((other) => Math.hypot(x - other.x, y - other.y) >= 90)
+        ) {
+          candidates.push({ x, y });
+        }
       }
     }
     const quota = zone.id === 'lake' ? 1 : 3;
@@ -75,21 +175,23 @@ export function generateLootSpawns(random: () => number = Math.random): LootSpaw
       const point = selected[i]!;
       const jitter = { x: point.x + (roll() - 0.5) * 20, y: point.y + (roll() - 0.5) * 20 };
       const position =
-        clearLootPosition(jitter) &&
+        clearLootPosition(jitter, 35, true) &&
         result.every((other) => Math.hypot(jitter.x - other.x, jitter.y - other.y) >= 90)
           ? jitter
           : point;
-      const itemId =
-        zone.id === 'library' && i === 0
-          ? 'torn-notebook'
-          : zone.id === 'lake'
-            ? 'anomalous-feather'
-            : (() => {
-                const chance = roll();
-                return CHEST_LOOT.find((entry) => chance < entry.upperBound)!.itemId;
-              })();
+      const pool = ['window-seat', 'morning-coffee', 'school-badge'];
+      const quest = plan.find(
+        (entry) => !entry.fixedPoint && entry.zoneId === zone.id && entry.index === i,
+      );
+      const availablePool = pool.filter((candidate) => !questItemIds.has(candidate));
+      const itemId = quest
+        ? quest.itemId
+        : availablePool[Math.floor(roll() * availablePool.length)]!;
       result.push({ ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
     }
+  }
+  if (plan.some((entry) => entry.itemId === 'torn-notebook')) {
+    result.push({ ...WORLD.questChest, itemId: 'torn-notebook' });
   }
   return result;
 }

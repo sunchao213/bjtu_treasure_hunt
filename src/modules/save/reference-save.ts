@@ -6,7 +6,7 @@ import {
   RAID_RULES,
 } from '../../config/game-config';
 import { retainSettlementItems } from './settlement-retention';
-import { migrateRetiredItems } from './retired-items';
+import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
 
 export interface StoragePort {
   getItem(key: string): string | null;
@@ -152,7 +152,6 @@ function validSettlementResult(result: RaidResult): boolean {
 
 function decode(raw: string): SaveData {
   const value: unknown = JSON.parse(raw);
-  migrateRetiredItems(value);
   if (
     !record(value) ||
     value.schemaVersion !== 1 ||
@@ -260,21 +259,25 @@ export class ReferenceSave implements SavePort {
       );
       next.warehouse = retained.warehouse;
       next.currency = retained.currency;
-      const hasEvidence = ['torn-notebook', 'anomalous-feather'].every((id) =>
-        result.items.some(
-          (item) =>
-            item.itemId === id &&
-            item.origin.kind === 'raid-loot' &&
-            item.origin.obtainedInRaidId === result.raidId,
-        ),
-      );
-      if (result.questComplete && hasEvidence && !next.unlockedChapterIds.includes('siyuan-code')) {
-        next.unlockedChapterIds.push('siyuan-code');
-      }
     }
     next.activeRaid = null;
     next.settledRaidIds.push(result.raidId);
     next.lastResult = structuredClone(result);
+    this.commit(next);
+  }
+
+  async unlockChapter(chapterId: string): Promise<void> {
+    if (this.data.unlockedChapterIds.includes(chapterId)) return;
+    const chapter = activeQuestChapter(this.data.unlockedChapterIds);
+    if (
+      chapter.id !== chapterId ||
+      !this.data.lastResult ||
+      !chapterUnlockGranted(this.data.lastResult, chapterId)
+    ) {
+      throw new Error('Chapter unlock is not eligible');
+    }
+    const next = this.view();
+    next.unlockedChapterIds.push(chapterId);
     this.commit(next);
   }
 

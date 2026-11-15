@@ -66,7 +66,7 @@ describe('A to B reference persistence integration', () => {
         ).ok,
       ).toBe(true);
     }
-    controller.setQuestComplete(true);
+    expect(controller.investigateStele()).toBe(true);
     expect(controller.getView().value).toBe(110);
     controller.setExtractionPresence(true);
     controller.startExtraction();
@@ -79,6 +79,8 @@ describe('A to B reference persistence integration', () => {
     expect(save.view().unlockedChapterIds).toEqual([]);
     storage.fail = false;
     await controller.retrySettlement();
+    expect(new ReferenceSave(storage).view().unlockedChapterIds).toEqual([]);
+    await save.unlockChapter('siyuan-code');
     expect(new ReferenceSave(storage).view().unlockedChapterIds).toEqual(['siyuan-code']);
     expect(new ReferenceSave(storage).view().warehouse).toHaveLength(3);
     await controller.retrySettlement();
@@ -108,7 +110,7 @@ describe('A to B reference persistence integration', () => {
         origin: { kind: 'raid-loot', obtainedInRaidId: 'drop' },
       });
     }
-    controller.setQuestComplete(true);
+    expect(controller.investigateStele()).toBe(true);
     inventory.remove('drop-0');
     controller.setExtractionPresence(true);
     controller.startExtraction();

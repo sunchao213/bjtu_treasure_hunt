@@ -11,6 +11,7 @@ export function renderDarkness(
   aim: number,
   walls: readonly Rect[],
   origin: Point = { x: 0, y: 0 },
+  revealedChests: readonly Point[] = [],
 ): void {
   ctx.clearRect(0, 0, width, height);
   // Keep the campus subdued while preserving the existing light sources.
@@ -58,6 +59,9 @@ export function renderDarkness(
   }
   if (lighting.enabled && lighting.battery > 0) {
     illuminate(player, 310, aim - Math.PI / 5, (Math.PI * 2) / 5, 1);
+    for (const chest of revealedChests) {
+      illuminate({ x: chest.x, y: chest.y - 24 }, 52, 0, Math.PI * 2, 1);
+    }
   }
   ctx.restore();
 }

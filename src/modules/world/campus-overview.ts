@@ -12,6 +12,7 @@ export interface CampusOverviewOptions {
   followPlayer?: boolean;
   /** World-space radius shown around the player in the compact view. */
   viewRadius?: number;
+  teammates?: readonly { readonly position: Point; readonly name: string }[];
 }
 
 export function createExploredMap(): ExploredMap {
@@ -119,6 +120,13 @@ export function drawCampusOverview(
     ctx.beginPath();
     ctx.arc(x(gate.x), y(gate.y), gate.role === 'extraction' ? 5 : 3, 0, Math.PI * 2);
     ctx.fillStyle = gate.role === 'extraction' ? '#8cdeb2' : '#d3c08d';
+    ctx.fill();
+  }
+
+  for (const teammate of options.teammates ?? []) {
+    ctx.beginPath();
+    ctx.arc(x(teammate.position.x), y(teammate.position.y), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#78c4ee';
     ctx.fill();
   }
 

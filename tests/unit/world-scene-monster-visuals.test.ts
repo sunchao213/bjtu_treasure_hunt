@@ -59,6 +59,22 @@ function setup(kind: Enemy['kind'] = 'hug') {
 }
 
 describe('monster animation transitions in the world scene', () => {
+  it('retains valid aim across hidden-canvas pointer coordinates and camera resize', () => {
+    const { scene } = setup();
+    const project = vi.fn(() => ({ x: NaN, y: Infinity }));
+    Object.assign(scene, { cameras: { main: { getWorldPoint: project } } });
+    const aim = Reflect.get(scene, 'aim');
+    const point = Reflect.get(scene, 'aimAtPointer').bind(scene);
+    point({ x: NaN, y: 0 });
+    point({ x: 0, y: Infinity });
+    expect(project).not.toHaveBeenCalled();
+    point({ x: 100, y: 100 });
+    expect(Reflect.get(scene, 'aim')).toBe(aim);
+    project.mockReturnValue({ x: 1000, y: 1000 });
+    point({ x: 100, y: 100 });
+    expect(Number.isFinite(Reflect.get(scene, 'aim'))).toBe(true);
+    expect(Reflect.get(scene, 'aim')).not.toBe(aim);
+  });
   it('finishes the transformation before changing to a mutant movement animation', () => {
     const s = setup();
     s.enemy.mutated = true;

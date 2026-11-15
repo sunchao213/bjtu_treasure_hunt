@@ -17,7 +17,7 @@ const fake = vi.hoisted(() => {
       off: (event: string) => listeners.delete(event),
     },
   };
-  return { game, listeners };
+  return { game, listeners, configurations: [] as { scale: { width: number; height: number } }[] };
 });
 vi.mock('phaser', () => ({
   default: {
@@ -25,7 +25,8 @@ vi.mock('phaser', () => ({
     Scale: { NONE: 0 },
     Core: { Events: { READY: 'ready', DESTROY: 'destroy' } },
     Game: class {
-      constructor() {
+      constructor(configuration: { scale: { width: number; height: number } }) {
+        fake.configurations.push(configuration);
         return fake.game;
       }
     },
@@ -33,12 +34,26 @@ vi.mock('phaser', () => ({
 }));
 afterEach(() => {
   fake.listeners.clear();
+  fake.configurations.length = 0;
   fake.game.scale.canvas = undefined;
   fake.game.scale.resize.mockClear();
   vi.unstubAllGlobals();
 });
 
 describe('canvas sizing across game boot', () => {
+  it('boots a nonzero renderer even while the lobby hides the map', () => {
+    vi.stubGlobal('document', { getElementById: () => ({ clientWidth: 0, clientHeight: 0 }) });
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    createGame({} as WorldScene);
+    expect(fake.configurations[0]!.scale.width).toBeGreaterThan(0);
+    expect(fake.configurations[0]!.scale.height).toBeGreaterThan(0);
+  });
   it('defers early observer delivery until the canvas exists, then applies the latest layout', () => {
     const parent = { clientWidth: 844, clientHeight: 210 };
     let notifyResize = () => {};

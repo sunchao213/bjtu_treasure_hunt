@@ -1,7 +1,7 @@
 import { isExplorationItem, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
-import { chapterUnlockGranted, QUEST_CHAPTER_ID } from '../quests/quest-service';
+import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
 import { retainSettlementItems } from './settlement-retention';
 import { migrateRetiredItems } from './retired-items';
 
@@ -373,13 +373,25 @@ export class PersistentSave implements SavePort {
       );
       next.warehouse = retained.warehouse;
       next.currency = retained.currency;
-      if (chapterUnlockGranted(result) && !next.unlockedChapterIds.includes(QUEST_CHAPTER_ID)) {
-        next.unlockedChapterIds.push(QUEST_CHAPTER_ID);
-      }
     }
     next.activeRaid = null;
     next.settledRaidIds.push(result.raidId);
     next.lastResult = structuredClone(result);
+    this.commit(next);
+  }
+
+  async unlockChapter(chapterId: string): Promise<void> {
+    if (this.data.unlockedChapterIds.includes(chapterId)) return;
+    const chapter = activeQuestChapter(this.data.unlockedChapterIds);
+    if (
+      chapter.id !== chapterId ||
+      !this.data.lastResult ||
+      !chapterUnlockGranted(this.data.lastResult, chapterId)
+    ) {
+      throw new Error('Chapter unlock is not eligible');
+    }
+    const next = this.view();
+    next.unlockedChapterIds.push(chapterId);
     this.commit(next);
   }
 

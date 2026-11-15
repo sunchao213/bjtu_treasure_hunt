@@ -43,9 +43,11 @@ export class SearchInteraction {
     if (this.target === null || this.progress() < 1) {
       return { ok: false, error: 'INVALID_STATE' };
     }
+    // Pickup listeners may open a story dialog and synchronously cancel the search.
+    const completedTarget = this.target;
     const result = insert(item);
     if (result.ok) {
-      this.opened.add(this.target);
+      this.opened.add(completedTarget);
     }
     this.cancel();
     return result;

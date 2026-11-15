@@ -1,6 +1,7 @@
 import type { EventBus } from '../../shared/events/game-events';
 import type {
   ActionResult,
+  EquipmentSlot,
   InventoryClientPort,
   ItemDefinition,
   ItemInstance,
@@ -32,6 +33,22 @@ export class OnlineInventory implements InventoryClientPort {
 
   getCarriedItems(): readonly ItemInstance[] {
     return structuredClone(this.carriedItems);
+  }
+
+  getEquipment(): Readonly<Partial<Record<EquipmentSlot, ItemInstance>>> {
+    // The authoritative snapshot protocol does not expose equipment yet.
+    return {};
+  }
+
+  equip(instanceId: string, slotId: EquipmentSlot): ActionResult {
+    void instanceId;
+    void slotId;
+    return { ok: false, error: 'INVALID_STATE' };
+  }
+
+  unequip(slotId: EquipmentSlot): ActionResult<ItemInstance> {
+    void slotId;
+    return { ok: false, error: 'INVALID_STATE' };
   }
 
   addLoot(item: ItemInstance): ActionResult {

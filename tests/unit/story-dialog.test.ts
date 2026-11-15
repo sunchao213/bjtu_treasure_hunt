@@ -5,7 +5,7 @@ import {
   storyDialogMarkup,
   storySegments,
 } from '../../src/modules/ui/story-dialog';
-import { EVIDENCE_FEATHER, EVIDENCE_NOTEBOOK } from '../../src/modules/quests/quest-service';
+import { EVIDENCE_NOTEBOOK } from '../../src/modules/quests/quest-service';
 
 describe('剧情对话 · storySegments 台词序列', () => {
   it('step 只呈现对应线索正文，标签为线索标题', () => {
@@ -51,9 +51,9 @@ describe('剧情对话 · storySegments 台词序列', () => {
 });
 
 describe('剧情对话 · stepForEvidence 拾取触发映射', () => {
-  it('残缺手记触发线索一，异常羽毛触发线索二', () => {
+  it('残缺手记触发线索一，石碑调查触发线索二', () => {
     expect(stepForEvidence(EVIDENCE_NOTEBOOK)).toBe(FIRST_CHAPTER.steps[0]);
-    expect(stepForEvidence(EVIDENCE_FEATHER)).toBe(FIRST_CHAPTER.steps[1]);
+    expect(stepForEvidence('anomalous-feather')).toBeUndefined();
   });
 
   it('非任务证据与未知 ID 不触发对话', () => {

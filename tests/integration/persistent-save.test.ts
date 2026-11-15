@@ -51,6 +51,8 @@ describe('formal persistence and migration', () => {
     storage.fail = false;
     await save.finalizeRaid(storyResult);
     await save.finalizeRaid(storyResult);
+    expect(save.view().unlockedChapterIds).toEqual([]);
+    await save.unlockChapter('siyuan-code');
     const reloaded = new PersistentSave(storage);
     expect(reloaded.view().unlockedChapterIds).toEqual(['siyuan-code']);
     expect(reloaded.view().warehouse).toHaveLength(2);
@@ -66,21 +68,37 @@ describe('formal persistence and migration', () => {
     expect(reloaded.view().warehouse).toHaveLength(2);
   });
 
-  it('does not unlock a chapter without both current-raid evidence items and quest completion', async () => {
-    for (const complete of [true, false]) {
+  it('unlocks only after successful extraction with a completed task and the current-raid notebook', async () => {
+    const cases = [
+      { outcome: 'success' as const, complete: true, originRaidId: 'story', unlock: true },
+      { outcome: 'success' as const, complete: false, originRaidId: 'story', unlock: false },
+      { outcome: 'success' as const, complete: true, originRaidId: 'none', unlock: false },
+      { outcome: 'failed' as const, complete: true, originRaidId: 'story', unlock: false },
+    ];
+    for (const [index, testCase] of cases.entries()) {
       const save = new PersistentSave(new MemoryStorage());
       await save.beginRaid('story', []);
-      const evidence = ['torn-notebook', 'anomalous-feather'].map((itemId) => ({
-        instanceId: `story:${itemId}`,
-        itemId,
-        origin: { kind: 'raid-loot' as const, obtainedInRaidId: 'story' },
-      }));
+      const evidence: ItemInstance[] = [
+        {
+          instanceId: `story:torn-notebook:${index}`,
+          itemId: 'torn-notebook',
+          origin: { kind: 'raid-loot', obtainedInRaidId: testCase.originRaidId },
+        },
+      ];
       await save.finalizeRaid({
         ...result('story'),
-        questComplete: complete,
-        items: complete ? evidence.slice(0, 1) : evidence,
+        outcome: testCase.outcome,
+        reason: testCase.outcome === 'failed' ? 'death' : null,
+        questComplete: testCase.complete,
+        items: testCase.outcome === 'failed' || testCase.originRaidId === 'none' ? [] : evidence,
       });
       expect(save.view().unlockedChapterIds).toEqual([]);
+      if (testCase.unlock) await save.unlockChapter('siyuan-code');
+      else
+        await expect(save.unlockChapter('siyuan-code')).rejects.toThrow(
+          'Chapter unlock is not eligible',
+        );
+      expect(save.view().unlockedChapterIds).toEqual(testCase.unlock ? ['siyuan-code'] : []);
     }
   });
 

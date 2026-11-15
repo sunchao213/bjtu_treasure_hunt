@@ -1,15 +1,44 @@
 export {
-  carriedEvidence,
+  activeQuestChapter,
   chapterUnlockGranted,
+  carriedEvidence,
+  chapterEvidence,
+  hasCurrentRaidNotebook,
   isQuestComplete,
   prerequisiteHint,
+  questChapterById,
+  questChapterForEvidence,
   questProgress,
+  visibleQuestChapters,
+  EVIDENCE_CAMPUS_MAP,
+  EVIDENCE_COMPLETE_RECORD,
   EVIDENCE_FEATHER,
   EVIDENCE_NOTEBOOK,
+  EVIDENCE_SIYUAN_KEY,
+  EVIDENCE_SOOTHE_CHARM,
   NOTEBOOK_PREREQUISITE_HINT,
+  QUEST_CHAPTERS,
   QUEST_CHAPTER_ID,
   QUEST_COMPLETE_HINT,
+  SECOND_CHAPTER_ID,
+  THIRD_CHAPTER_ID,
 } from './quest-service';
-export type { CarriedEvidence, QuestProgressView } from './quest-service';
-export { CODEX_ENTRIES, evidenceStoryBeat, findStep, FIRST_CHAPTER } from './chapter-content';
+export type {
+  CarriedEvidence,
+  ChapterEvidence,
+  QuestChapterSpec,
+  QuestEvidenceSpec,
+  QuestProgressView,
+} from './quest-service';
+export {
+  CODEX_ENTRIES,
+  CHAPTERS,
+  chapterContentById,
+  evidenceStoryBeat,
+  findStep,
+  FIRST_CHAPTER,
+  SECOND_CHAPTER,
+  STORY_LOCATION_ANCHORS,
+  THIRD_CHAPTER,
+} from './chapter-content';
 export type { ChapterContent, ChapterStep } from './chapter-content';

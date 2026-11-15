@@ -1,5 +1,7 @@
 import { isTouchLayout } from '../modules/ui/mobile-layout';
+import { assetUrl } from '../app/asset-url';
 import Phaser from 'phaser';
+import { CAMPUS_FOREGROUND, foregroundOpacity } from '../modules/world/campus-foreground';
 import { COMBAT_RULES } from '../config/combat-config';
 import {
   MONSTER_ANIMATIONS,
@@ -8,7 +10,12 @@ import {
   monsterAnimationFor,
   monsterScaleFor,
 } from '../config/monster-sprites';
-import { generateLootSpawns, type LootSpawn } from '../modules/world/loot-spawns';
+import {
+  generateLootSpawns,
+  questSpawnPlan,
+  roundRandom,
+  type LootSpawn,
+} from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
@@ -37,12 +44,15 @@ import type { InventoryPort, ItemInstance, Point, RaidControllerPort } from '../
 import type { GameSnapshot, PlayerInput, RemotePlayerSnapshot } from '../shared/net/protocol';
 import type { TouchControls } from '../modules/world/touch-controls';
 import type { SoundManager } from '../modules/ui/sound-manager';
+import type { NetworkSession, PlayerSnapshot } from '../modules/network/network-session';
 import {
   isQuestComplete,
+  hasCurrentRaidNotebook,
   prerequisiteHint,
-  QUEST_COMPLETE_HINT,
+  questChapterById,
+  QUEST_CHAPTER_ID,
 } from '../modules/quests/quest-service';
-import { evidenceStoryBeat } from '../modules/quests/chapter-content';
+import { evidenceStoryBeat, steleStoryBeat } from '../modules/quests/chapter-content';
 
 export interface KeyPrompt {
   readonly key: 'E' | 'Q';
@@ -50,13 +60,19 @@ export interface KeyPrompt {
 }
 
 interface SceneServices {
+  displayName?: string;
   controller: RaidControllerPort;
   inventory: InventoryPort;
+  /** 当前进行中的章节 id，由大厅按存档实时给出（章节推进后下一局自动换章）。 */
+  questChapter?: () => string;
   events: EventBus;
   notify: (message: string) => void;
   touch: TouchControls;
   sound: SoundManager;
-  onFrame: (interaction: string, progress: number, prompt: KeyPrompt | null) => void;
+  network?: NetworkSession | null;
+  onFrame: (interaction: string, progress: number, prompt?: KeyPrompt | null) => void;
+  onReady?: () => void;
+  onLoadError?: (message: string) => void;
   onInput?: (input: PlayerInput) => void;
   isOnline?: () => boolean;
 }
@@ -64,7 +80,6 @@ interface SceneServices {
 const ENTITY_DEPTH_BASE = 100;
 const NIGHT_MASK_DEPTH = 4000;
 const EFFECTS_DEPTH = 4100;
-const PLAYER_FRAME = { width: 128, height: 160 };
 const PLAYER_ATTACK_FRAME = { width: 314, height: 167 };
 
 type CampusBuilding = (typeof WORLD.buildings)[number];
@@ -114,6 +129,10 @@ export class WorldScene extends Phaser.Scene {
   private keys: Record<string, Phaser.Input.Keyboard.Key> = {};
   private readonly chestObjects = new Map<string, Phaser.GameObjects.Container>();
   private readonly chestSprites = new Map<string, Phaser.GameObjects.Sprite>();
+  private readonly foregroundObjects: {
+    object: Phaser.GameObjects.Image;
+    layer: (typeof CAMPUS_FOREGROUND)[number];
+  }[] = [];
   private readonly enemyObjects = new Map<string, Phaser.GameObjects.Container>();
   private readonly enemyVisualStates = new Map<string, EnemyState>();
   private readonly enemyAnimationKeys = new Map<string, string>();
@@ -127,6 +146,15 @@ export class WorldScene extends Phaser.Scene {
     string,
     { item: ItemInstance; position: Point; sprite: Phaser.GameObjects.Container }
   >();
+  private readonly remotePlayers = new Map<
+    string,
+    { target: Point; aim: number; object: Phaser.GameObjects.Container }
+  >();
+  private readonly nameplates = new Map<
+    Phaser.GameObjects.Container,
+    { text: Phaser.GameObjects.Text; offsetY: number }
+  >();
+  private networkInputElapsed = 0;
   private lastRaidId: string | null = null;
   private previousInteract = false;
   private previousAttack = false;
@@ -149,34 +177,46 @@ export class WorldScene extends Phaser.Scene {
   private releaseDamage?: () => void;
   /** 交互条上的临时反馈：拾取结果、剧情提示等，在有效期内优先于常规提示显示。 */
   private banner: { text: string; untilMs: number } | null = null;
+  private startupFailed = false;
 
   constructor(private readonly services: SceneServices) {
     super('world');
   }
 
+  /** 当前章节 id；未接线时退回第一章，保证单测与旧调用方行为不变。 */
+  private questChapterId(): string {
+    return this.services.questChapter?.() ?? QUEST_CHAPTER_ID;
+  }
+
   preload(): void {
-    this.load.image('campus-base', 'assets/maps/campus-night/campus-base.jpg');
-    this.load.spritesheet('treasure-chest', 'assets/props/treasure-chest.png', {
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+      this.startupFailed = true;
+      this.services.onLoadError?.(`校园资源加载失败（${file.key}），请检查网络并重新加载。`);
+    });
+    this.load.image('campus-base', assetUrl('assets/maps/campus-night/campus-base.png'));
+    this.load.image('minghu-stele', assetUrl('assets/environment/minghu-stele.png'));
+    this.load.spritesheet('treasure-chest', assetUrl('assets/props/treasure-chest.png'), {
       frameWidth: 256,
       frameHeight: 256,
     });
-    for (const state of ['idle', 'walk', 'hurt', 'death']) {
-      this.load.spritesheet(`player-${state}`, `assets/characters/player/player-${state}.png`, {
-        frameWidth: PLAYER_FRAME.width,
-        frameHeight: PLAYER_FRAME.height,
-      });
+    for (const state of ['idle', 'walk', 'attack', 'hurt', 'death']) {
+      this.load.spritesheet(
+        `player-${state}`,
+        assetUrl(`assets/characters/player/player-${state}.png`),
+        { frameWidth: 128, frameHeight: 160 },
+      );
     }
-    this.load.spritesheet('player-attack', 'assets/characters/player/player-attack.png', {
+    this.load.spritesheet('player-attack', assetUrl('assets/characters/player/player-attack.png'), {
       frameWidth: PLAYER_ATTACK_FRAME.width,
       frameHeight: PLAYER_ATTACK_FRAME.height,
     });
     this.load.spritesheet(
       'tiny-town-sheet',
-      'assets/environment/kenney-tiny-town/Tilemap/tilemap_packed.png',
+      assetUrl('assets/environment/kenney-tiny-town/Tilemap/tilemap_packed.png'),
       { frameWidth: 16, frameHeight: 16 },
     );
     for (const key of MONSTER_SPRITE_SHEETS) {
-      this.load.spritesheet(key, `assets/characters/processed/${key}.png`, {
+      this.load.spritesheet(key, assetUrl(`assets/characters/processed/${key}.png`), {
         frameWidth: MONSTER_FRAME_SIZE,
         frameHeight: MONSTER_FRAME_SIZE,
       });
@@ -204,6 +244,58 @@ export class WorldScene extends Phaser.Scene {
     for (const enemy of this.combat.enemies) {
       enemy.hugProgress = 0;
     }
+  }
+
+  syncRemotePlayers(players: readonly PlayerSnapshot[]): void {
+    const localId = this.services.network?.getPlayerId();
+    const received = new Set<string>();
+    for (const snapshot of players) {
+      if (snapshot.playerId === localId) {
+        if (this.services.network?.getRoomState()?.started)
+          this.position = { ...snapshot.position };
+        continue;
+      }
+      if (!snapshot.connected) continue;
+      received.add(snapshot.playerId);
+      const existing = this.remotePlayers.get(snapshot.playerId);
+      if (existing) {
+        existing.target = { ...snapshot.position };
+        existing.aim = snapshot.aim;
+        this.nameplates.get(existing.object)?.text.setText(snapshot.displayName.slice(0, 18));
+        continue;
+      }
+      const sprite = this.createPlayerSprite();
+      sprite.anims.play(`player-idle-${this.directionFromAngle(snapshot.aim)}`);
+      const marker = this.add
+        .container(snapshot.position.x, snapshot.position.y, [
+          this.add.ellipse(0, 10, 25, 9, 0x061f23, 0.35),
+          sprite,
+        ])
+        .setName(`remote-player-${snapshot.playerId}`)
+        .setDepth(this.entityDepth(snapshot.position.y));
+      this.createNameplate(snapshot.displayName, marker, -sprite.displayHeight - 6);
+      this.remotePlayers.set(snapshot.playerId, {
+        target: { ...snapshot.position },
+        aim: snapshot.aim,
+        object: marker,
+      });
+    }
+    for (const [playerId, remote] of this.remotePlayers) {
+      if (received.has(playerId)) continue;
+      remote.object.destroy();
+      this.remotePlayers.delete(playerId);
+    }
+  }
+
+  removeRemotePlayer(playerId: string): void {
+    const remote = this.remotePlayers.get(playerId);
+    remote?.object.destroy();
+    this.remotePlayers.delete(playerId);
+  }
+
+  clearRemotePlayers(): void {
+    for (const remote of this.remotePlayers.values()) remote.object.destroy();
+    this.remotePlayers.clear();
   }
 
   setRemotePlayers(players: readonly RemotePlayerSnapshot[]): void {
@@ -235,6 +327,23 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
+    if (this.startupFailed) return;
+    try {
+      this.createWorld();
+      this.services.onReady?.();
+    } catch (error) {
+      this.startupFailed = true;
+      console.error('Campus initialization failed', error);
+      this.services.onLoadError?.('校园初始化失败，请重新加载；当前装备和仓库尚未带入。');
+    }
+  }
+
+  private createWorld(): void {
+    for (const key of MONSTER_SPRITE_SHEETS) {
+      if (!this.textures.exists(key) || !this.textures.get(key).has('0')) {
+        throw new Error(`Missing animation frames: ${key}`);
+      }
+    }
     this.createPlayerAnimations();
     this.createChestAnimations();
     this.createEnemyAnimations();
@@ -246,9 +355,7 @@ export class WorldScene extends Phaser.Scene {
     this.darkness = this.textures.createCanvas('night-mask', 1, 1) ?? undefined;
     this.darknessImage = this.add.image(0, 0, 'night-mask').setOrigin(0).setDepth(NIGHT_MASK_DEPTH);
     this.flashlight = this.add.graphics().setDepth(EFFECTS_DEPTH);
-    for (const lamp of LAMPS) {
-      this.add.rectangle(lamp.x, lamp.y, 10, 18, 0xffd27b).setDepth(this.entityDepth(lamp.y));
-    }
+    // The campus artwork already contains street lamps; LAMPS supplies their light and charging.
     this.extraction = this.add
       .rectangle(
         WORLD.extraction.x + WORLD.extraction.width / 2,
@@ -262,15 +369,18 @@ export class WorldScene extends Phaser.Scene {
     this.extraction.setDepth(20);
     this.aura = this.add.circle(0, 0, 23, 0xa9e9d0, 0.12);
     const shadow = this.add.ellipse(0, 10, 25, 9, 0x061f23, 0.35);
-    this.playerSprite = this.add
-      .sprite(0, 0, 'player-idle', 0)
-      .setName('sprite')
-      .setOrigin(0.5, 1)
-      .setScale(0.44);
+    this.playerSprite = this.createPlayerSprite();
     this.player = this.add
       .container(this.position.x, this.position.y, [shadow, this.aura, this.playerSprite])
       .setDepth(this.entityDepth(this.position.y));
     this.playPlayerAnimation('idle', this.playerFacing);
+    if (this.services.displayName) {
+      this.createNameplate(
+        this.services.displayName,
+        this.player,
+        -this.playerSprite.displayHeight - 6,
+      );
+    }
     for (const enemy of this.combat.enemies) {
       this.addEnemyObject(enemy);
     }
@@ -297,18 +407,21 @@ export class WorldScene extends Phaser.Scene {
     }
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.cameras.main.setFollowOffset(0, -36);
+    // 角色容器的原点在脚底，而 160×0.44 的贴图身体中心在脚底上方约 35px。
+    // 正向偏移让镜头对准身体中心；旧的 -36 会把人物整体顶到上半屏。
+    this.cameras.main.setFollowOffset(0, 35);
     const resizeCamera = () => {
       this.cameras.main.setZoom(
         isTouchLayout() ? Math.max(1.12, Math.min(1.5, (this.scale.width / 960) * 1.38)) : 1.7,
       );
+      this.syncNameplates();
     };
     resizeCamera();
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeCamera);
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncNameplates, this);
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (isTouchLayout()) return;
-      const target = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-      this.aim = angleBetween(this.position, target);
+      this.aimAtPointer(pointer);
     });
     this.releaseDamage = this.services.events.on('DamageTaken', ({ amount, health }) => {
       this.services.sound.play('behit');
@@ -338,10 +451,13 @@ export class WorldScene extends Phaser.Scene {
       document.removeEventListener('visibilitychange', onHidden);
       keyboard?.removeAllKeys(true);
       this.scale.off(Phaser.Scale.Events.RESIZE, resizeCamera);
+      this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncNameplates, this);
+      this.nameplates.clear();
     });
   }
 
   update(_time: number, deltaMs: number): void {
+    if (this.startupFailed) return;
     this.playerActionMs = Math.max(0, this.playerActionMs - Math.max(0, deltaMs));
     if (this.playerAction !== 'death' && this.playerActionMs <= 0) {
       this.playerAction = 'none';
@@ -356,6 +472,8 @@ export class WorldScene extends Phaser.Scene {
     if (view.raidId !== this.lastRaidId) {
       this.resetRaid(view.raidId);
     }
+
+    this.updateRoomPlayers(deltaMs);
     if (this.services.isOnline?.()) {
       const snapshot = this.onlineSnapshot;
       const focused = document.activeElement;
@@ -384,8 +502,7 @@ export class WorldScene extends Phaser.Scene {
       } else if (touchLayout && (movement.x || movement.y)) {
         this.aim = Math.atan2(movement.y, movement.x);
       } else if (pointer && !touchLayout) {
-        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-        this.aim = angleBetween(this.position, worldPoint);
+        this.aimAtPointer(pointer);
       }
       this.playerFacing = this.directionFromAngle(this.aim);
       this.updatePlayerAnimation(this.moving);
@@ -447,21 +564,41 @@ export class WorldScene extends Phaser.Scene {
           Number(down('W') || down('UP')) +
           this.services.touch.movement.y,
       };
+      this.networkInputElapsed += deltaMs;
+      if (this.networkInputElapsed >= 50) {
+        this.networkInputElapsed %= 50;
+        this.services.network?.sendInput(movement, this.aim, [
+          ...(down('E') ? (['interact'] as const) : []),
+          ...(down('SPACE') ? (['attack'] as const) : []),
+          ...(down('Q') ? (['hug'] as const) : []),
+        ]);
+      }
       this.moving = Math.hypot(movement.x, movement.y) > 0.1;
       this.services.sound.setLoop('footsteps', this.moving);
       if (this.moving) {
         this.search.cancel();
       }
-      this.position = movePlayer(
-        this.position,
-        movement,
-        deltaMs,
-        WORLD.playerSpeed * this.services.controller.getMoveSpeedMultiplier(),
-        WORLD.playerRadius,
-        { x: 30, y: 35, width: WORLD.width - 60, height: WORLD.height - 70 },
-        WORLD.obstacles,
-      );
-      this.player?.setPosition(this.position.x, this.position.y);
+      this.position =
+        this.services.network?.isInRoom() && this.services.network.getRoomState()?.started
+          ? this.position
+          : movePlayer(
+              this.position,
+              movement,
+              deltaMs,
+              WORLD.playerSpeed * this.services.controller.getMoveSpeedMultiplier(),
+              WORLD.playerRadius,
+              WORLD.bounds,
+              WORLD.obstacles,
+            );
+      if (this.player) {
+        const blend = this.services.network?.isInRoom()
+          ? 1 - Math.exp(-Math.max(0, deltaMs) / 55)
+          : 1;
+        this.player.setPosition(
+          this.player.x + (this.position.x - this.player.x) * blend,
+          this.player.y + (this.position.y - this.player.y) * blend,
+        );
+      }
       this.player?.setDepth(this.entityDepth(this.position.y));
       revealExploredArea(this.exploredMap, this.position);
       const pointer = this.input.activePointer;
@@ -476,8 +613,7 @@ export class WorldScene extends Phaser.Scene {
       } else if (touchLayout && (movement.x || movement.y)) {
         this.aim = Math.atan2(movement.y, movement.x);
       } else if (pointer && !touchLayout) {
-        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-        this.aim = angleBetween(this.position, worldPoint);
+        this.aimAtPointer(pointer);
       }
       this.playerFacing = this.directionFromAngle(this.aim);
       this.updatePlayerAnimation(this.moving);
@@ -509,9 +645,11 @@ export class WorldScene extends Phaser.Scene {
       if (down('SPACE')) {
         this.search.cancel();
         const carriedItems = this.services.inventory.getCarriedItems();
-        const weaponItem = carriedItems.find(
-          (item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon',
-        );
+        const equippedWeapon = this.services.inventory.getEquipment().primary;
+        const weaponItem =
+          equippedWeapon && ITEM_DEFINITIONS[equippedWeapon.itemId]?.kind === 'weapon'
+            ? equippedWeapon
+            : carriedItems.find((item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon');
         if (!weaponItem) {
           if (!this.previousAttack) {
             this.services.notify('未携带武器，无法攻击。');
@@ -658,6 +796,15 @@ export class WorldScene extends Phaser.Scene {
     this.services.touch.finishFrame();
   }
 
+  private mapTeammates() {
+    const network = this.services.network;
+    return network?.isInRoom()
+      ? (network.getRoomState()?.players ?? [])
+          .filter((player) => player.connected && player.playerId !== network.getPlayerId())
+          .map((player) => ({ position: player.position, name: player.displayName }))
+      : [];
+  }
+
   private createPlayerAnimations(): void {
     const definitions = [
       { action: 'idle', frames: 5, frameRate: 4, repeat: -1 },
@@ -682,6 +829,31 @@ export class WorldScene extends Phaser.Scene {
           frameRate: definition.frameRate,
           repeat: definition.repeat,
         });
+      }
+    }
+  }
+
+  private createPlayerSprite(): Phaser.GameObjects.Sprite {
+    return this.add
+      .sprite(0, 0, 'player-idle', 0)
+      .setName('sprite')
+      .setOrigin(0.5, 1)
+      .setScale(0.44);
+  }
+
+  private updateRoomPlayers(deltaMs: number): void {
+    const blend = 1 - Math.exp(-Math.max(0, deltaMs) / 55);
+    for (const remote of this.remotePlayers.values()) {
+      const dx = remote.target.x - remote.object.x;
+      const dy = remote.target.y - remote.object.y;
+      const moving = Math.hypot(dx, dy) > 0.5;
+      remote.object.x += dx * blend;
+      remote.object.y += dy * blend;
+      remote.object.setDepth(this.entityDepth(remote.object.y));
+      const sprite = remote.object.getByName<Phaser.GameObjects.Sprite>('sprite');
+      const key = `player-${moving ? 'walk' : 'idle'}-${this.directionFromAngle(remote.aim)}`;
+      if (sprite && sprite.anims.currentAnim?.key !== key) {
+        sprite.anims.play(key, true);
       }
     }
   }
@@ -716,6 +888,16 @@ export class WorldScene extends Phaser.Scene {
     this.updatePlayerAnimation(this.moving);
   }
 
+  private aimAtPointer(pointer: Phaser.Input.Pointer): void {
+    // A pointer transformed while the canvas is hidden can contain NaN/Infinity.
+    // Keep the last valid direction until a visible canvas supplies valid coordinates.
+    if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return;
+    const target = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    if (Number.isFinite(target.x) && Number.isFinite(target.y)) {
+      this.aim = angleBetween(this.position, target);
+    }
+  }
+
   private directionFromAngle(angle: number): PlayerDirection {
     const horizontal = Math.cos(angle);
     const vertical = Math.sin(angle);
@@ -723,6 +905,66 @@ export class WorldScene extends Phaser.Scene {
       return horizontal < 0 ? 'left' : 'right';
     }
     return vertical < 0 ? 'up' : 'down';
+  }
+
+  private createNameplate(
+    displayName: string,
+    owner: Phaser.GameObjects.Container,
+    offsetY: number,
+  ): void {
+    const text = this.add
+      .text(owner.x, owner.y + offsetY, displayName.slice(0, 18), {
+        fontFamily: 'Microsoft YaHei, sans-serif',
+        fontSize: '12px',
+        color: '#f5f0d3',
+        backgroundColor: '#16312dcc',
+        padding: { x: 4, y: 2 },
+      })
+      .setName('nameplate')
+      .setDepth(EFFECTS_DEPTH + 1)
+      .setOrigin(0.5, 1)
+      .setResolution(Math.max(2, window.devicePixelRatio || 1))
+      .setScale(1 / this.cameras.main.zoom);
+    this.nameplates.set(owner, { text, offsetY });
+  }
+
+  private syncNameplates(): void {
+    const placed: { left: number; right: number; top: number; bottom: number }[] = [];
+    const gap = 2 / this.cameras.main.zoom;
+    for (const [owner, { text, offsetY }] of this.nameplates) {
+      if (!owner.scene) {
+        text.destroy();
+        this.nameplates.delete(owner);
+        continue;
+      }
+      // Labels follow feet positions but render above the night mask at a fixed screen size.
+      text
+        .setPosition(owner.x, owner.y + offsetY)
+        .setScale(1 / this.cameras.main.zoom)
+        .setVisible(owner.visible)
+        .setAlpha(owner.alpha);
+      if (!owner.visible || owner.alpha <= 0) continue;
+      const bounds = {
+        left: text.x - text.displayWidth / 2,
+        right: text.x + text.displayWidth / 2,
+        top: text.y - text.displayHeight,
+        bottom: text.y,
+      };
+      for (let attempt = 0; attempt < placed.length; attempt++) {
+        const overlap = placed.find(
+          (other) =>
+            bounds.left < other.right + gap &&
+            bounds.right + gap > other.left &&
+            bounds.top < other.bottom + gap &&
+            bounds.bottom + gap > other.top,
+        );
+        if (!overlap) break;
+        bounds.bottom = overlap.top - gap;
+        bounds.top = bounds.bottom - text.displayHeight;
+      }
+      text.setY(bounds.bottom);
+      placed.push(bounds);
+    }
   }
 
   private createRemotePlayerObject(player: RemotePlayerSnapshot): Phaser.GameObjects.Container {
@@ -772,6 +1014,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private drawNight(): void {
+    const players = [
+      this.position,
+      ...Array.from(this.remotePlayers.values(), (remote) => remote.object),
+      ...this.remotePlayerObjects.values(),
+    ];
+    for (const { object, layer } of this.foregroundObjects)
+      object.setAlpha(foregroundOpacity(layer, players));
     if (!this.darkness || !this.flashlight) {
       return;
     }
@@ -792,6 +1041,9 @@ export class WorldScene extends Phaser.Scene {
         this.aim,
         WORLD.obstacles,
         origin,
+        this.searchPoints.filter((point) =>
+          this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
+        ),
       );
       this.darkness.refresh();
       const overview = document.querySelector<HTMLCanvasElement>('#campus-overview');
@@ -800,20 +1052,27 @@ export class WorldScene extends Phaser.Scene {
         drawCampusOverview(overview, this.position, mapImage, this.exploredMap, {
           followPlayer: true,
           viewRadius: 320,
+          teammates: this.mapTeammates(),
         });
       }
       const mapDialog = document.querySelector<HTMLDialogElement>('#campus-map-dialog');
       const expanded = document.querySelector<HTMLCanvasElement>('#campus-map-expanded');
       if (mapDialog?.open && expanded) {
-        drawCampusOverview(expanded, this.position, mapImage, this.exploredMap);
+        drawCampusOverview(expanded, this.position, mapImage, this.exploredMap, {
+          teammates: this.mapTeammates(),
+        });
       }
       this.lastNightDraw = this.time.now;
     }
     this.flashlight.clear();
     if (this.combat.swingMs > 0) {
-      const carriedWeapon = this.services.inventory
-        .getCarriedItems()
-        .find((item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon');
+      const equippedWeapon = this.services.inventory.getEquipment().primary;
+      const carriedWeapon =
+        equippedWeapon && ITEM_DEFINITIONS[equippedWeapon.itemId]?.kind === 'weapon'
+          ? equippedWeapon
+          : this.services.inventory
+              .getCarriedItems()
+              .find((item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon');
       const swingWeapon =
         carriedWeapon?.itemId === 'stun-baton'
           ? COMBAT_RULES.player.attack.weapons.stunBaton
@@ -1002,7 +1261,12 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const carried = this.services.inventory.getCarriedItems();
-    const bagFull = carried.length >= RAID_RULES.bagCapacity;
+    const equippedIds = new Set(
+      Object.values(this.services.inventory.getEquipment()).map((item) => item.instanceId),
+    );
+    const chapter = questChapterById(this.questChapterId());
+    const bagFull =
+      carried.filter((item) => !equippedIds.has(item.instanceId)).length >= RAID_RULES.bagCapacity;
     const hug = this.nearbyHug();
     if (hug) {
       this.search.cancel();
@@ -1048,7 +1312,7 @@ export class WorldScene extends Phaser.Scene {
         this.lighting.flashlightReveals(point, this.position, this.aim, WORLD.obstacles),
     );
     if (chest) {
-      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId);
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapter.id);
       if (prerequisite !== null) {
         this.search.cancel();
         this.interaction = prerequisite;
@@ -1088,14 +1352,17 @@ export class WorldScene extends Phaser.Scene {
             raidId: view.raidId,
             locationId: chest.id,
           });
-          if (isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)) {
-            this.services.controller.setQuestComplete(true);
-          }
+          // RaidController derives questComplete from the authoritative raid state.
         }
         if (result.ok) {
           const definition = ITEM_DEFINITIONS[chest.itemId];
-          const beat = isQuestComplete(this.services.inventory.getCarriedItems(), view.raidId)
-            ? QUEST_COMPLETE_HINT
+          const beat = isQuestComplete(
+            this.services.inventory.getCarriedItems(),
+            view.raidId,
+            chapter.id,
+            view.steleInvestigated,
+          )
+            ? chapter.completeHint
             : evidenceStoryBeat(chest.itemId);
           const pickup =
             beat ??
@@ -1113,6 +1380,30 @@ export class WorldScene extends Phaser.Scene {
         }
       }
       return;
+    }
+    if (chapter.id === QUEST_CHAPTER_ID) {
+      const steleDistance = distance(WORLD.stone, this.position);
+      if (steleDistance < 78) {
+        this.search.cancel();
+        if (!hasCurrentRaidNotebook(carried, view.raidId)) {
+          this.interaction = '明湖石碑 · 先取得本局残缺手记';
+          return;
+        }
+        if (view.steleInvestigated) {
+          this.interaction = '明湖石碑 · 已调查';
+          return;
+        }
+        this.interaction = '按 E 调查明湖石碑';
+        this.keyPrompt = { key: 'E', label: '调查' };
+        if (held && !this.previousInteract && view.phase === 'active' && view.raidId) {
+          if (this.services.controller.investigateStele()) {
+            this.services.events.emit('SteleInvestigated', { raidId: view.raidId });
+            this.banner = { text: steleStoryBeat(), untilMs: this.time.now + 6000 };
+            this.services.notify('明湖石碑调查完成。');
+          }
+        }
+        return;
+      }
     }
     if (view.inExtractionZone) {
       this.search.cancel();
@@ -1160,7 +1451,12 @@ export class WorldScene extends Phaser.Scene {
     this.attackFeedbackMs = 0;
     this.hitStopMs = 0;
     this.banner = null;
-    this.position = { ...WORLD.spawn };
+    const network = this.services.network;
+    const roundId = network?.isInRoom() ? network.getRoomState()?.roundId : null;
+    this.position = {
+      ...(roundId ? (network?.getLocalPlayer()?.position ?? WORLD.spawn) : WORLD.spawn),
+    };
+    this.networkInputElapsed = 0;
     clearExploredMap(this.exploredMap);
     revealExploredArea(this.exploredMap, this.position);
     this.search.reset();
@@ -1192,7 +1488,12 @@ export class WorldScene extends Phaser.Scene {
     }
     this.chestObjects.clear();
     this.chestSprites.clear();
-    this.searchPoints = raidId ? generateLootSpawns() : [];
+    this.searchPoints = raidId
+      ? generateLootSpawns(
+          roundId ? roundRandom(roundId) : Math.random,
+          questSpawnPlan(this.questChapterId()),
+        )
+      : [];
     for (const point of this.searchPoints) {
       const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
       const chest = this.add
@@ -1206,7 +1507,7 @@ export class WorldScene extends Phaser.Scene {
         this.add
           .container(point.x, point.y, [halo, chest])
           .setName(`chest-${point.id}`)
-          .setDepth(this.entityDepth(point.y) - 1)
+          .setDepth(this.entityDepth(point.y))
           .setVisible(false),
       );
     }
@@ -1256,6 +1557,7 @@ export class WorldScene extends Phaser.Scene {
         0,
         0,
         isMutated ? 'squirrel-mutant-idle' : enemy.kind === 'hug' ? 'squirrel-idle' : 'duck-idle',
+        0,
       )
       .setName('sprite')
       .setOrigin(0.5, 1);
@@ -1355,111 +1657,30 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createCampusForeground(): void {
-    this.textures.remove('campus-foreground');
-    this.textures.remove('pillar-landmark-foreground');
-    this.textures.remove('flagpole-landmark-foreground');
-    const texture = this.textures.createCanvas('campus-foreground', WORLD.width, WORLD.height);
-    if (!texture) return;
-
-    const context = texture.getContext();
+    this.foregroundObjects.length = 0;
     const mapImage = this.textures.get('campus-base').getSourceImage() as CanvasImageSource;
-    context.drawImage(mapImage, 0, 0, WORLD.width, WORLD.height);
-    const pixels = context.getImageData(0, 0, WORLD.width, WORLD.height);
-    for (let y = 0; y < WORLD.height; y++) {
-      for (let x = 0; x < WORLD.width; x++) {
-        const index = (y * WORLD.width + x) * 4;
-        // Only the green-marked parts sit in front of the player. The upper
-        // outer arch remains part of the background so a player above it can
-        // appear on top, as marked by the white outline.
-        const signBand = x >= 158 && x <= 322 && y >= 1335 && y <= 1420;
-        const outerInnerArch = (x - 255) ** 2 / 120 ** 2 + (y - 1465) ** 2 / 132 ** 2 <= 1;
-        const doorwayCutout = (x - 255) ** 2 / 82 ** 2 + (y - 1475) ** 2 / 101 ** 2 <= 1;
-        const innerArchRim = outerInnerArch && !doorwayCutout && y >= 1400 && y <= 1530;
-        const leftPillar = x >= 142 && x <= 181 && y >= 1440 && y <= 1760;
-        const rightPillar = x >= 330 && x <= 369 && y >= 1440 && y <= 1760;
-        const isSouthGateForeground = signBand || innerArchRim || leftPillar || rightPillar;
-        if (!isSouthGateForeground) pixels.data[index + 3] = 0;
+    for (const layer of CAMPUS_FOREGROUND) {
+      this.textures.remove(layer.key);
+      const texture = this.textures.createCanvas(layer.key, WORLD.width, WORLD.height);
+      if (!texture) continue;
+      const context = texture.getContext();
+      context.save();
+      context.beginPath();
+      for (const outline of layer.outlines) {
+        context.moveTo(outline[0]!.x, outline[0]!.y);
+        for (const point of outline.slice(1)) context.lineTo(point.x, point.y);
+        context.closePath();
       }
+      context.clip();
+      context.drawImage(mapImage, 0, 0, WORLD.width, WORLD.height);
+      context.restore();
+      texture.refresh();
+      const object = this.add
+        .image(0, 0, layer.key)
+        .setOrigin(0)
+        .setDepth(this.entityDepth(layer.feetY));
+      this.foregroundObjects.push({ object, layer });
     }
-    context.putImageData(pixels, 0, 0);
-    texture.refresh();
-    this.add
-      .image(0, 0, 'campus-foreground')
-      .setOrigin(0)
-      .setDepth(ENTITY_DEPTH_BASE + WORLD.height + 10);
-
-    const pillarTexture = this.textures.createCanvas(
-      'pillar-landmark-foreground',
-      WORLD.width,
-      WORLD.height,
-    );
-    if (!pillarTexture) return;
-    const pillarContext = pillarTexture.getContext();
-    pillarContext.drawImage(mapImage, 0, 0, WORLD.width, WORLD.height);
-    const pillarPixels = pillarContext.getImageData(0, 0, WORLD.width, WORLD.height);
-    for (let y = 0; y < WORLD.height; y++) {
-      for (let x = 0; x < WORLD.width; x++) {
-        const ringDistance = ((x - 260) / 42) ** 2 + ((y - 978) / 39) ** 2;
-        const ringOpening = ((x - 260) / 29) ** 2 + ((y - 978) / 27) ** 2;
-        const isRing = ringDistance <= 1 && ringOpening >= 1;
-        const isTop = x >= 235 && x <= 286 && y >= 954 && y <= 1025;
-        const isCapital = x >= 220 && x <= 302 && y >= 1018 && y <= 1050;
-        const isColumn = x >= 230 && x <= 291 && y >= 1040 && y <= 1152;
-        const isBase = x >= 204 && x <= 334 && y >= 1142 && y <= 1192;
-        const isPillarLandmark = isRing || isTop || isCapital || isColumn || isBase;
-        if (!isPillarLandmark) pillarPixels.data[(y * WORLD.width + x) * 4 + 3] = 0;
-      }
-    }
-    pillarContext.putImageData(pillarPixels, 0, 0);
-    pillarTexture.refresh();
-    this.add
-      .image(0, 0, 'pillar-landmark-foreground')
-      .setOrigin(0)
-      .setDepth(this.entityDepth(1190));
-
-    const flagpoleTexture = this.textures.createCanvas(
-      'flagpole-landmark-foreground',
-      WORLD.width,
-      WORLD.height,
-    );
-    if (!flagpoleTexture) return;
-    const flagpoleContext = flagpoleTexture.getContext();
-    flagpoleContext.drawImage(mapImage, 0, 0, WORLD.width, WORLD.height);
-    const flagpolePixels = flagpoleContext.getImageData(0, 0, WORLD.width, WORLD.height);
-    const flagPolygon = [
-      { x: 202, y: 632 },
-      { x: 262, y: 614 },
-      { x: 263, y: 665 },
-      { x: 213, y: 674 },
-      { x: 204, y: 662 },
-    ];
-    const insideFlag = (x: number, y: number) => {
-      let inside = false;
-      for (let i = 0, j = flagPolygon.length - 1; i < flagPolygon.length; j = i++) {
-        const a = flagPolygon[i]!;
-        const b = flagPolygon[j]!;
-        if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) {
-          inside = !inside;
-        }
-      }
-      return inside;
-    };
-    for (let y = 0; y < WORLD.height; y++) {
-      for (let x = 0; x < WORLD.width; x++) {
-        const isFlagpole =
-          insideFlag(x, y) ||
-          (x >= 260 && x <= 269 && y >= 610 && y <= 833) ||
-          (x >= 253 && x <= 279 && y >= 819 && y <= 842) ||
-          (x >= 223 && x <= 301 && y >= 831 && y <= 879);
-        if (!isFlagpole) flagpolePixels.data[(y * WORLD.width + x) * 4 + 3] = 0;
-      }
-    }
-    flagpoleContext.putImageData(flagpolePixels, 0, 0);
-    flagpoleTexture.refresh();
-    this.add
-      .image(0, 0, 'flagpole-landmark-foreground')
-      .setOrigin(0)
-      .setDepth(this.entityDepth(879));
   }
 
   drawBuilding(building: CampusBuilding): void {
@@ -1620,5 +1841,12 @@ export class WorldScene extends Phaser.Scene {
 
   private drawCampus(): void {
     this.add.image(0, 0, 'campus-base').setOrigin(0).setDepth(-1);
+    if (this.textures.exists('minghu-stele')) {
+      this.add
+        .image(WORLD.stone.x, WORLD.stone.y, 'minghu-stele')
+        .setOrigin(0.5, 1)
+        .setScale(0.82)
+        .setDepth(this.entityDepth(WORLD.stone.y) + 2);
+    }
   }
 }

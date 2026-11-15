@@ -8,6 +8,13 @@ coverage/
 .DS_Store
 Thumbs.db
 artifacts/
-.venv-imagegen/
+.dotnet-home/
+server/bin/
+server/obj/
+server/data/
+server/backups/
+*.db
+*.db-wal
+*.db-shm
 # E2E 工具产物（playwright-cli 快照与临时截图，不要提交）
 .playwright-cli/
