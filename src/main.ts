@@ -36,6 +36,7 @@ import {
   type ExtractionSnapshot,
 } from './modules/ui/extraction-feedback';
 import { renderCodex, exportCodexImage } from './modules/ui/codex';
+import { warehouseItemDetails, warehouseItemIconSvg } from './modules/ui/warehouse-items';
 import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
 import { WorldScene, type KeyPrompt } from './scenes/world-scene';
 import { contains } from './modules/world/movement';
@@ -471,23 +472,47 @@ async function bootstrap(): Promise<void> {
       listId: string,
       emptyId: string,
     ) => {
-      const list = element<HTMLUListElement>(listId);
+      const list = element<HTMLDivElement>(listId);
       list.replaceChildren();
       const entries = groups.get(section)!;
       for (const [itemId, quantity] of entries) {
-        const li = document.createElement('li');
-        const name = document.createElement('span');
-        name.textContent = ITEM_DEFINITIONS[itemId]?.name ?? itemId;
-        const count = document.createElement('b');
-        count.className = 'warehouse-item-count';
-        count.textContent = `数量：${quantity}`;
-        li.append(name, count);
-        list.append(li);
+        const tile = document.createElement('button');
+        tile.type = 'button';
+        tile.className = 'warehouse-tile';
+        tile.setAttribute(
+          'aria-label',
+          `${ITEM_DEFINITIONS[itemId]?.name ?? itemId}，数量 ${quantity}，查看属性`,
+        );
+        tile.title = `${ITEM_DEFINITIONS[itemId]?.name ?? itemId} · 查看属性`;
+        const icon = document.createElement('span');
+        icon.className = 'warehouse-tile-icon';
+        icon.innerHTML = warehouseItemIconSvg(itemId);
+        const badge = document.createElement('b');
+        badge.className = 'warehouse-tile-count';
+        badge.textContent = String(quantity);
+        tile.append(icon, badge);
+        tile.onclick = () => openWarehouseItem(itemId);
+        list.append(tile);
       }
       element(emptyId).hidden = entries.size > 0;
     };
     renderSection('exploration', 'exploration-warehouse', 'exploration-warehouse-empty');
     renderSection('purchase', 'purchase-warehouse', 'purchase-warehouse-empty');
+  };
+
+  const openWarehouseItem = (itemId: string): void => {
+    const details = warehouseItemDetails(itemId);
+    if (!details) return;
+    const dialog = element<HTMLDialogElement>('warehouse-item-dialog');
+    const icon = element('warehouse-item-icon');
+    icon.innerHTML = warehouseItemIconSvg(itemId);
+    element('warehouse-item-title').textContent = details.name;
+    element('warehouse-item-category').textContent = details.category;
+    element('warehouse-item-rarity').textContent = details.rarity;
+    element('warehouse-item-value').textContent = `${details.value} 价值`;
+    element('warehouse-item-slots').textContent = `${details.bagSlots} 格`;
+    element('warehouse-item-description').textContent = details.description;
+    dialog.showModal();
   };
   const touch = new TouchControls(element('touch-controls'));
   const sound = new SoundManager();
@@ -748,6 +773,11 @@ async function bootstrap(): Promise<void> {
     codex.showModal();
     render();
   };
+  const warehouseItemDialog = element<HTMLDialogElement>('warehouse-item-dialog');
+  element('warehouse-item-close').onclick = () => warehouseItemDialog.close();
+  warehouseItemDialog.addEventListener('click', (event) => {
+    if (event.target === warehouseItemDialog) warehouseItemDialog.close();
+  });
   for (const id of ['open-codex', 'archive-codex', 'mobile-codex']) {
     element(id).onclick = openCodex;
   }

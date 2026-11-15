@@ -3,6 +3,7 @@ import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
 import { chapterUnlockGranted, QUEST_CHAPTER_ID } from '../quests/quest-service';
 import { retainSettlementItems } from './settlement-retention';
+import { migrateRetiredItems } from './retired-items';
 
 // Keep the storage key stable so existing browsers can migrate in place.
 export const FORMAL_SAVE_KEY = 'bjtu-treasure-hunt:save:v2';
@@ -175,6 +176,7 @@ function decodeFormal(raw: string): { data: FormalSaveData; sourceSchemaVersion:
   } catch {
     throw new Error('Formal save is not valid JSON; preserve the original before recovery.');
   }
+  migrateRetiredItems(value);
   if (validData(value, FORMAL_SCHEMA_VERSION)) {
     return {
       data: {
@@ -197,6 +199,7 @@ function decodeLegacy(raw: string): SaveData {
   } catch {
     throw new Error('Reference save is not valid JSON; import was not performed.');
   }
+  migrateRetiredItems(value);
   if (
     !record(value) ||
     value.schemaVersion !== 1 ||

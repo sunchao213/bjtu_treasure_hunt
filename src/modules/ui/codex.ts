@@ -2,6 +2,7 @@ import { EXPLORATION_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../con
 import { CODEX_ENTRIES } from '../quests/chapter-content';
 import type { Rarity } from '../../shared/types/game';
 import { iconSvg } from './icons';
+import { warehouseItemIconAssetPath, warehouseItemIconSvg } from './warehouse-items';
 
 const rarityNames: Record<Rarity, string> = {
   common: '普通',
@@ -20,10 +21,12 @@ const details: Record<string, { icon: string; description: string }> = {
     icon: 'medkit',
     description: '使用后恢复 30 点生命并消耗；满血时不能使用，消耗后不再计入携带价值。',
   },
-  'library-reward-ticket': { icon: 'paper', description: '图书馆主题的史诗收藏物。' },
+  'library-reward-ticket': {
+    icon: 'paper',
+    description: '印着借阅榜单的图书馆占座券，史诗收藏物。',
+  },
   'scratch-paper': { icon: 'paper', description: '写满演算痕迹的草稿纸，校园里的普通收藏物。' },
   'half-eraser': { icon: 'eraser', description: '只剩半块的橡皮，普通收藏物。' },
-  'campus-map': { icon: 'map', description: '一张校园地图线索，作为收藏物计入携带价值。' },
   'torn-notebook': {
     icon: 'paper',
     description: '图书馆周边的主线线索；与本局异常羽毛一起带回可解锁思源密码章节。',
@@ -40,6 +43,18 @@ const details: Record<string, { icon: string; description: string }> = {
   },
   'gpa-charm': { icon: 'badge', description: '校园传说中的护符，作为收藏物计分。' },
   'siyuan-key': { icon: 'key', description: '思源楼主题的传说收藏物，具有较高携带价值。' },
+  'strange-veined-ginkgo-leaf': {
+    icon: 'leaf',
+    description: '校园异闻中的传说收藏物，作为收藏物计分。',
+  },
+  'hunter-binoculars': {
+    icon: 'binoculars',
+    description: '校园夜间探索主题的史诗收藏物，作为收藏物计分。',
+  },
+  'roller-skates': {
+    icon: 'skates',
+    description: '校园轮滑活动主题的稀有收藏物，作为收藏物计分。',
+  },
   'training-bat': {
     icon: 'bat',
     description: '携带时用于近身攻击的训练装备；仓库带入不计本局价值。',
@@ -133,8 +148,9 @@ export function renderCodex(ids: readonly string[], chapters: readonly string[])
     card.style.setProperty('--codex-color', entry.color);
     const visual = document.createElement('div');
     visual.className = 'codex-visual';
-    // Paths are local constants, never content from a save file.
-    visual.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="${iconPaths[entry.icon]}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    visual.innerHTML = entry.unlocked
+      ? warehouseItemIconSvg(entry.id)
+      : `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="${iconPaths.locked}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     const number = document.createElement('small');
     number.textContent = `NO. ${entry.number}`;
     visual.append(number);
@@ -177,11 +193,23 @@ export async function exportCodexImage(
 ): Promise<void> {
   await document.fonts.ready;
   const entries = getCodexEntries(ids);
+  const images = await Promise.all(
+    entries.map(async (entry): Promise<HTMLImageElement | null> => {
+      if (!entry.unlocked) return null;
+      const src = warehouseItemIconAssetPath(entry.id);
+      if (!src) return null;
+      const image = new Image();
+      image.src = src;
+      await image.decode();
+      return image;
+    }),
+  );
   const canvas = document.createElement('canvas');
   canvas.width = 1440;
   canvas.height = 240 + Math.ceil(entries.length / 3) * 395 + 65;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('浏览器无法生成图鉴图片。');
+  ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = '#14221e';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#ffe3a0';
@@ -209,15 +237,20 @@ export async function exportCodexImage(
     ctx.strokeStyle = entry.color;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, 430, 373);
-    ctx.save();
-    ctx.translate(x + 24, y + 15);
-    ctx.scale(1.1, 1.1);
-    ctx.strokeStyle = entry.color;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke(new Path2D(iconPaths[entry.icon]));
-    ctx.restore();
+    const image = images[index];
+    if (image) {
+      ctx.drawImage(image, x + 24, y + 8, 88, 88);
+    } else if (!entry.unlocked) {
+      ctx.save();
+      ctx.translate(x + 24, y + 15);
+      ctx.scale(1.1, 1.1);
+      ctx.strokeStyle = entry.color;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke(new Path2D(iconPaths.locked));
+      ctx.restore();
+    }
     ctx.fillStyle = entry.color;
     ctx.font = '18px Microsoft YaHei, sans-serif';
     ctx.fillText(`NO. ${entry.number}`, x + 333, y + 42);

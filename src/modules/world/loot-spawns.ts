@@ -7,6 +7,16 @@ export interface LootSpawn extends Point {
   zoneId: string;
 }
 
+// Ordinary chest probabilities sum to 100%. Quest evidence is assigned separately.
+const CHEST_LOOT = [
+  { itemId: 'window-seat', upperBound: 0.3 },
+  { itemId: 'morning-coffee', upperBound: 0.6 },
+  { itemId: 'school-badge', upperBound: 0.9 },
+  { itemId: 'roller-skates', upperBound: 0.98 },
+  { itemId: 'hunter-binoculars', upperBound: 0.998 },
+  { itemId: 'strange-veined-ginkgo-leaf', upperBound: 1 },
+] as const;
+
 /** Extra clearance leaves room to stand beside a chest and aim at it. */
 export function clearLootPosition(p: Point, radius = 35): boolean {
   return (
@@ -69,13 +79,15 @@ export function generateLootSpawns(random: () => number = Math.random): LootSpaw
         result.every((other) => Math.hypot(jitter.x - other.x, jitter.y - other.y) >= 90)
           ? jitter
           : point;
-      const pool = ['window-seat', 'morning-coffee', 'school-badge'];
       const itemId =
         zone.id === 'library' && i === 0
           ? 'torn-notebook'
           : zone.id === 'lake'
             ? 'anomalous-feather'
-            : pool[Math.floor(roll() * pool.length)]!;
+            : (() => {
+                const chance = roll();
+                return CHEST_LOOT.find((entry) => chance < entry.upperBound)!.itemId;
+              })();
       result.push({ ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
     }
   }

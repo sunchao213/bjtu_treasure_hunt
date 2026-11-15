@@ -12,6 +12,38 @@ const item = (instanceId: string, itemId: string): ItemInstance => ({
 });
 
 describe.each([ReferenceSave, PersistentSave])('%s settlement persistence', (Save) => {
+  it('loads retired map items without losing currency, chapters or functional items', () => {
+    const data = new Map<string, string>();
+    const storage: StoragePort = {
+      getItem: (key) => data.get(key) ?? null,
+      setItem: (key, value) => void data.set(key, value),
+    };
+    const save = new Save(storage);
+    save.reset();
+    const [key, raw] = [...data.entries()][0]!;
+    const legacy = JSON.parse(raw);
+    legacy.currency = 87;
+    legacy.warehouse = [item('map', 'campus-map'), item('kit', 'portable-medkit')];
+    legacy.codexIds = ['campus-map', 'portable-medkit'];
+    legacy.unlockedChapterIds = ['siyuan-code'];
+    legacy.settledRaidIds = ['raid'];
+    legacy.lastResult = {
+      raidId: 'raid',
+      outcome: 'success',
+      reason: null,
+      items: legacy.warehouse,
+      value: 20,
+    };
+    data.set(key, JSON.stringify(legacy));
+    const restored = new Save(storage).view();
+    expect(restored.warehouse).toEqual([item('kit', 'portable-medkit')]);
+    expect(restored.codexIds).toEqual(['portable-medkit']);
+    expect(restored.currency).toBe(87);
+    expect(restored.unlockedChapterIds).toEqual(['siyuan-code']);
+    expect(restored.lastResult?.items).toEqual([item('kit', 'portable-medkit')]);
+    expect(restored.lastResult?.value).toBe(20);
+  });
+
   it('converts duplicates atomically and exactly once across raids, retries and reloads', async () => {
     const data = new Map<string, string>();
     let fail = false;

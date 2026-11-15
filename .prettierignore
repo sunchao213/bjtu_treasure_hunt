@@ -1,4 +1,5 @@
 node_modules/
+.venv-imagegen/
 dist/
 coverage/
 package-lock.json

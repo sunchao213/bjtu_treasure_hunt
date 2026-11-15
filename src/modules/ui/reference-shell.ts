@@ -77,8 +77,8 @@ export function prepViewMarkup(): string {
             <section class="side-card archive"><div class="section-kicker">永久仓库 <span id="warehouse-count">0 件</span></div>
               <p id="archive-detail">成功撤离后，物品和图鉴会保存在此浏览器。</p>
               <div class="warehouse-sections" aria-label="永久仓库物品">
-                <section class="warehouse-section"><h3>探索地图物品</h3><p class="warehouse-subtitle">探索带回的功能物品</p><ul id="exploration-warehouse" class="warehouse-list"></ul><p id="exploration-warehouse-empty" class="warehouse-empty">暂无功能物品</p></section>
-                <section class="warehouse-section"><h3>购买道具</h3><p class="warehouse-subtitle">商店购买的功能道具</p><ul id="purchase-warehouse" class="warehouse-list"></ul><p id="purchase-warehouse-empty" class="warehouse-empty">暂无购买道具</p></section>
+                <section class="warehouse-section"><h3>探索地图物品</h3><p class="warehouse-subtitle">探索带回的功能物品</p><div id="exploration-warehouse" class="warehouse-grid"></div><p id="exploration-warehouse-empty" class="warehouse-empty">暂无功能物品</p></section>
+                <section class="warehouse-section"><h3>购买道具</h3><p class="warehouse-subtitle">商店购买的功能道具</p><div id="purchase-warehouse" class="warehouse-grid"></div><p id="purchase-warehouse-empty" class="warehouse-empty">暂无购买道具</p></section>
               </div>
               <button id="archive-codex" class="secondary">查看图鉴 / 导出图片</button>
               <div hidden><ul id="codex-list"></ul><div id="story-archive"></div></div>
@@ -212,5 +212,20 @@ export function mountShell(root: HTMLElement): void {
         <header><h2 id="campus-map-title">海淀主校区 · 校园图</h2><button id="close-campus-map" aria-label="关闭校园图">${iconSvg('close', { size: 20 })}</button></header>
         <div class="campus-map-scroll" tabindex="0" aria-label="校园图，可滚动查看各区域"><canvas id="campus-map-expanded" width="700" height="998" role="img" aria-label="海淀主校区地图，绿色圆点为撤离点，金色圆点为玩家当前位置"></canvas></div>
         <p id="campus-map-note">金色圆点：当前位置 · 绿色圆点：撤离点 · 查看时暂停 · 手机可滑动查看<br>校园夜景底图用于游戏导航，不能用于现实导航。</p>
-      </dialog>${codexMarkup()}${storyDialogMarkup()}`;
+      </dialog>${warehouseItemDialogMarkup()}${codexMarkup()}${storyDialogMarkup()}`;
+}
+
+function warehouseItemDialogMarkup(): string {
+  return `<dialog id="warehouse-item-dialog" class="warehouse-item-dialog" aria-labelledby="warehouse-item-title">
+    <button id="warehouse-item-close" class="warehouse-item-close" type="button" aria-label="关闭道具详情">×</button>
+    <div id="warehouse-item-icon" class="warehouse-detail-icon"></div>
+    <h2 id="warehouse-item-title"></h2>
+    <dl class="warehouse-item-attributes">
+      <div><dt>类型</dt><dd id="warehouse-item-category"></dd></div>
+      <div><dt>稀有度</dt><dd id="warehouse-item-rarity"></dd></div>
+      <div><dt>价值</dt><dd id="warehouse-item-value"></dd></div>
+      <div><dt>背包占格</dt><dd id="warehouse-item-slots"></dd></div>
+    </dl>
+    <p id="warehouse-item-description" class="warehouse-item-description"></p>
+  </dialog>`;
 }

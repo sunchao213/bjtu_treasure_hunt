@@ -27,6 +27,12 @@ describe('product item catalog configuration', () => {
     expect(isKnownItemId('training-bat')).toBe(true);
   });
 
+  it('retires the unused campus-map collectible and retains the implemented medkit', () => {
+    expect(isKnownItemId('campus-map')).toBe(false);
+    expect(isCatalogItemId('campus-map')).toBe(false);
+    expect(ITEM_DEFINITIONS['portable-medkit']?.kind).toBe('healing');
+  });
+
   it('rejects unknown definitions and accepts every configured search-point item', () => {
     expect(() => assertKnownItemId('missing-item')).toThrow('Unknown item definition');
     for (const point of generateLootSpawns(() => 0.5)) {

@@ -8,5 +8,6 @@ coverage/
 .DS_Store
 Thumbs.db
 artifacts/
+.venv-imagegen/
 # E2E 工具产物（playwright-cli 快照与临时截图，不要提交）
 .playwright-cli/

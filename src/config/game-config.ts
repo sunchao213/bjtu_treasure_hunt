@@ -14,16 +14,18 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
   [
     ['scratch-paper', '草稿纸', 'common', 'collectible'],
     ['half-eraser', '半块橡皮', 'common', 'collectible'],
-    ['campus-map', '校园地图线索', 'common', 'collectible'],
-    ['portable-medkit', '随身恢复包', 'common', 'healing'],
+    ['portable-medkit', '随身急救包', 'common', 'healing'],
     ['torn-notebook', '残缺手记', 'uncommon', 'quest'],
     ['window-seat', '靠窗座凭证', 'uncommon', 'collectible'],
     ['morning-coffee', '早八不困咖啡', 'uncommon', 'healing'],
     ['school-badge', '校训徽章', 'uncommon', 'collectible'],
     ['anomalous-feather', '异常羽毛', 'epic', 'quest'],
     ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible'],
-    ['library-reward-ticket', '图书馆奖励券', 'epic', 'collectible'],
+    ['library-reward-ticket', '图书馆占座券', 'epic', 'collectible'],
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],
+    ['strange-veined-ginkgo-leaf', '叶脉奇怪的银杏叶', 'legendary', 'collectible'],
+    ['hunter-binoculars', '猎手望远镜', 'epic', 'collectible'],
+    ['roller-skates', '轮滑鞋', 'uncommon', 'collectible'],
     ['training-bat', '训练棍', 'common', 'weapon'],
     ['stun-baton', '电击器', 'uncommon', 'weapon'],
     ['bandage', '创可贴', 'common', 'healing', 1, 10],
@@ -47,7 +49,6 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
 export const ITEM_CATALOG_IDS = [
   'scratch-paper',
   'half-eraser',
-  'campus-map',
   'portable-medkit',
   'morning-coffee',
   'torn-notebook',
@@ -57,6 +58,9 @@ export const ITEM_CATALOG_IDS = [
   'gpa-charm',
   'library-reward-ticket',
   'siyuan-key',
+  'strange-veined-ginkgo-leaf',
+  'hunter-binoculars',
+  'roller-skates',
 ] as const;
 
 /** All known item IDs, including shop-only supplies, for save/config validation. */

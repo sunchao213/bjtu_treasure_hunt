@@ -51,6 +51,17 @@ describe('portrait campus image map', () => {
     expect(generateLootSpawns(() => 1)).toHaveLength(spawnCount);
   });
 
+  it.each([
+    [0.95, 'roller-skates'],
+    [0.99, 'hunter-binoculars'],
+    [0.999, 'strange-veined-ginkgo-leaf'],
+  ] as const)('can spawn %s rolls as %s while preserving both quest clues', (roll, itemId) => {
+    const points = generateLootSpawns(() => roll);
+    expect(points.some((point) => point.itemId === itemId)).toBe(true);
+    expect(points.filter((point) => point.itemId === 'torn-notebook')).toHaveLength(1);
+    expect(points.filter((point) => point.itemId === 'anomalous-feather')).toHaveLength(1);
+  });
+
   it('keeps loot, lamps and patrols connected to the south gate without wall crossings', () => {
     const step = 25;
     const queue = [{ ...WORLD.spawn }];

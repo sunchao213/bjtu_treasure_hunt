@@ -4,6 +4,21 @@ import { EXPLORATION_CATALOG_IDS, ITEM_CATALOG_IDS } from '../../src/config/game
 import { CODEX_ENTRIES } from '../../src/modules/quests/chapter-content';
 
 describe('persistent collection gallery', () => {
+  it('adds three collectible slots with their specified quality, value and blank artwork', () => {
+    const ids = ['strange-veined-ginkgo-leaf', 'hunter-binoculars', 'roller-skates'];
+    const entries = getCodexEntries(ids);
+    expect(entries.filter((entry) => ids.includes(entry.id))).toMatchObject([
+      { name: '叶脉奇怪的银杏叶', rarity: '传说', value: 150, icon: 'leaf', unlocked: true },
+      { name: '猎手望远镜', rarity: '史诗', value: 60, icon: 'binoculars', unlocked: true },
+      { name: '轮滑鞋', rarity: '稀有', value: 25, icon: 'skates', unlocked: true },
+    ]);
+    const locked = getCodexEntries([]).filter((entry) => ids.includes(entry.id));
+    expect(locked).toHaveLength(3);
+    for (const entry of locked) {
+      expect(entry).toMatchObject({ name: '未发现物品', value: null, unlocked: false });
+    }
+  });
+
   it('hides identity, value and purpose until an entry is unlocked', () => {
     const locked = getCodexEntries([]).find((e) => e.id === 'anomalous-feather')!;
     expect(locked).toMatchObject({

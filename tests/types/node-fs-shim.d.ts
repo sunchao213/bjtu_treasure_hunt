@@ -8,5 +8,6 @@
  * 若团队后续安装了 @types/node，本文件可以直接删除（重复声明会以重载形式共存，不会报错）。
  */
 declare module 'node:fs' {
+  export function readdirSync(path: string | URL): string[];
   export function readFileSync(path: string | URL, encoding: 'utf8'): string;
 }
