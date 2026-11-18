@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -60,6 +61,7 @@ async function connect(index) {
     }),
   });
   assert.equal(response.status, 200);
+  const account = (await response.json()).user;
   const cookie = response.headers
     .getSetCookie()
     .find((value) => value.startsWith('bjtu_session=') && !value.startsWith('bjtu_session=;'))
@@ -80,7 +82,7 @@ async function connect(index) {
     request.on('error', reject);
     request.end();
   });
-  const peer = { socket, messages: [], id: '', displayName };
+  const peer = { socket, messages: [], id: '', accountId: account.id, displayName };
   peers.push(peer);
   socket.on('error', () => {});
   let buffer = Buffer.alloc(0);
@@ -112,6 +114,59 @@ async function connect(index) {
     (m) => m.type === 'welcome',
   );
   peer.id = welcome.playerId;
+  const cloudPost = (path, data) =>
+    fetch(`${base}/api/save${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Game-Request': '1',
+        Origin: base,
+        Cookie: cookie,
+      },
+      body: JSON.stringify(data),
+    });
+  // Independent fixture accounts: no production save is modified.
+  assert.equal((await request(peer, { type: 'create-room' })).code, 'ONLINE_LOCKED');
+  assert.equal(
+    (await request(peer, { type: 'join-room', roomId: '123456' })).code,
+    'ONLINE_LOCKED',
+  );
+  const opened = await (await cloudPost('/open', { clientId: randomUUID() })).json();
+  const data = {
+    schemaVersion: 3,
+    warehouse: [],
+    currency: 0,
+    codexIds: [],
+    unlockedChapterIds: [],
+    activeRaid: null,
+    settledRaidIds: [],
+    lastResult: null,
+  };
+  let revision = opened.revision;
+  if (index === 0) {
+    for (const chapters of [
+      ['siyuan-code'],
+      ['siyuan-code', 'siyuan-key'],
+      ['siyuan-code', 'siyuan-key', 'unknown'],
+    ]) {
+      const saved = await cloudPost('', {
+        leaseToken: opened.leaseToken,
+        revision,
+        data: { ...data, unlockedChapterIds: chapters },
+      });
+      assert.equal(saved.status, 200);
+      revision = (await saved.json()).revision;
+      assert.equal((await request(peer, { type: 'create-room' })).code, 'ONLINE_LOCKED');
+      assert.equal((await request(peer, { type: 'set-ready', ready: true })).code, 'ONLINE_LOCKED');
+      assert.equal((await request(peer, { type: 'start-game' })).code, 'ONLINE_LOCKED');
+    }
+  }
+  const completed = await cloudPost('', {
+    leaseToken: opened.leaseToken,
+    revision,
+    data: { ...data, unlockedChapterIds: ['siyuan-code', 'siyuan-key', 'soothe-monster'] },
+  });
+  assert.equal(completed.status, 200);
   return peer;
 }
 function send(peer, message) {
@@ -161,6 +216,11 @@ try {
     created.players[0].displayName,
     host.displayName,
     'registered nickname overrides spoofed hello',
+  );
+  assert.equal(
+    (await request(host, { type: 'start-game' })).code,
+    'ROOM_NEEDS_PARTNER',
+    'cooperative rooms cannot start with only one member',
   );
   const roomId = created.roomId;
   for (const bad of ['named-room', '12345', '1234567', '１２３４５６'])
@@ -255,6 +315,30 @@ try {
     { type: 'set-ready', ready: true },
     (m) => m.type === 'room-state' && m.players.find((p) => p.playerId === members[1].id)?.ready,
   );
+  const fixtureDb = new DatabaseSync(join(directory, 'game.db'));
+  const memberSave = JSON.parse(
+    fixtureDb.prepare('SELECT data FROM player_saves WHERE user_id=?').get(members[1].accountId)
+      .data,
+  );
+  fixtureDb
+    .prepare('UPDATE player_saves SET data=? WHERE user_id=?')
+    .run(
+      JSON.stringify({ ...memberSave, unlockedChapterIds: ['siyuan-code', 'siyuan-key'] }),
+      members[1].accountId,
+    );
+  fixtureDb.close();
+  const revokedMember = await request(host, { type: 'start-game' });
+  assert.equal(revokedMember.code, 'ONLINE_LOCKED', 'start rechecks every account in the room');
+  assert(
+    revokedMember.message.includes(members[1].displayName),
+    'denial identifies the ineligible member',
+  );
+  assert.equal(lastState(host).started, false, 'a failed gate does not start the room');
+  const restoreDb = new DatabaseSync(join(directory, 'game.db'));
+  restoreDb
+    .prepare('UPDATE player_saves SET data=? WHERE user_id=?')
+    .run(JSON.stringify(memberSave), members[1].accountId);
+  restoreDb.close();
   const started = await request(
     host,
     { type: 'start-game' },
@@ -345,6 +429,153 @@ try {
     unchanged,
     'old-round and duplicate movement inputs are ignored',
   );
+  assert.equal(started.chests.length, 16);
+  assert.equal(new Set(started.chests.map((chest) => chest.id)).size, 16);
+  for (const chest of started.chests) {
+    assert.equal(chest.claimedBy, null);
+    assert(
+      !geometry.obstacles.some(
+        (wall) =>
+          chest.x + 35 > wall.x &&
+          chest.x - 35 < wall.x + wall.width &&
+          chest.y + 35 > wall.y &&
+          chest.y - 35 < wall.y + wall.height,
+      ),
+      'server chest has collision clearance',
+    );
+    assert(
+      started.chests.every(
+        (other) => other.id === chest.id || Math.hypot(chest.x - other.x, chest.y - other.y) >= 120,
+      ),
+      'server chests remain separated',
+    );
+  }
+  const chest = started.chests
+    .filter((entry) => entry.zoneId === 'flag-lawn')
+    .sort((a, b) => b.y - a.y)[0];
+  const lootRequest = (peer, requestId, stage, chestId = chest.id, roundId = started.roundId) =>
+    request(
+      peer,
+      { type: 'loot-search', roundId, requestId, chestId, stage },
+      (m) => (m.type === 'loot-result' && m.requestId === requestId) || m.type === 'error',
+    );
+  assert.equal((await lootRequest(host, 'remote-pickup', 'hold')).reason, 'OUT_OF_RANGE');
+  assert.equal(
+    (await lootRequest(host, 'invalid-round', 'claim', chest.id, 'old-round')).code,
+    'INVALID_ROUND',
+  );
+  for (const peer of [host, members[1]]) {
+    let sequence = 2;
+    for (const axis of ['x', 'y']) {
+      const target = axis === 'x' ? chest.x : chest.y + 35;
+      for (let step = 0; step < 100; step++) {
+        const position = lastState(peer).players.find((p) => p.playerId === peer.id).position;
+        if (Math.abs(position[axis] - target) < 12) break;
+        await delay(40);
+        await request(peer, {
+          type: 'player-input',
+          roundId: started.roundId,
+          sequence: sequence++,
+          movement: {
+            x: axis === 'x' ? Math.sign(target - position.x) : 0,
+            y: axis === 'y' ? Math.sign(target - position.y) : 0,
+          },
+          aim: -Math.PI / 2,
+          actions: [],
+        });
+      }
+    }
+    const position = lastState(peer).players.find((p) => p.playerId === peer.id).position;
+    assert(
+      Math.hypot(position.x - chest.x, position.y - chest.y) < 60,
+      'test walks through real server movement into chest range',
+    );
+  }
+  send(host, {
+    type: 'loot-search',
+    roundId: started.roundId,
+    requestId: 'cancelled-search',
+    chestId: chest.id,
+    stage: 'hold',
+  });
+  assert.equal((await lootRequest(host, 'cancelled-search', 'claim')).reason, 'SEARCH_INCOMPLETE');
+  send(host, {
+    type: 'loot-search',
+    roundId: started.roundId,
+    requestId: 'cancelled-search',
+    chestId: chest.id,
+    stage: 'cancel',
+  });
+  assert.equal((await lootRequest(host, 'cancelled-search', 'claim')).status, 'rejected');
+  const competitors = [host, members[1]];
+  const searchTogether = async (prefix) => {
+    for (let tick = 0; tick < 22; tick++) {
+      for (const peer of competitors)
+        send(peer, {
+          type: 'loot-search',
+          roundId: started.roundId,
+          requestId: `${prefix}-${peer.id}`,
+          chestId: chest.id,
+          stage: 'hold',
+        });
+      await delay(100);
+    }
+    return Promise.all(
+      competitors.map((peer) => lootRequest(peer, `${prefix}-${peer.id}`, 'claim')),
+    );
+  };
+  const offered = await searchTogether('full-bag');
+  assert.equal(
+    offered.filter((reply) => reply.status === 'offered').length,
+    1,
+    'simultaneous requests reserve the chest for exactly one player',
+  );
+  const declinedWinner = competitors[offered.findIndex((reply) => reply.status === 'offered')];
+  await request(declinedWinner, {
+    type: 'loot-ack',
+    roundId: started.roundId,
+    requestId: `full-bag-${declinedWinner.id}`,
+    accepted: false,
+  });
+  assert.equal(
+    lastState(host).chests.find((entry) => entry.id === chest.id).claimedBy,
+    null,
+    'full bag keeps the chest available',
+  );
+  const awarded = await searchTogether('pickup');
+  assert.equal(awarded.filter((reply) => reply.status === 'offered').length, 1);
+  const winner = competitors[awarded.findIndex((reply) => reply.status === 'offered')];
+  await request(winner, {
+    type: 'loot-ack',
+    roundId: started.roundId,
+    requestId: `pickup-${winner.id}`,
+    accepted: true,
+  });
+  await waitFor(
+    () =>
+      members.every(
+        (peer) =>
+          lastState(peer).chests.find((entry) => entry.id === chest.id).claimedBy === winner.id,
+      ),
+    'all ten members see the claimed chest',
+  );
+  assert.equal(
+    (await lootRequest(winner, `pickup-${winner.id}`, 'claim')).status,
+    'rejected',
+    'completed requests cannot award the chest twice',
+  );
+  await request(winner, {
+    type: 'loot-ack',
+    roundId: started.roundId,
+    requestId: `pickup-${winner.id}`,
+    accepted: false,
+  });
+  assert.equal(
+    lastState(winner).chests.find((entry) => entry.id === chest.id).claimedBy,
+    winner.id,
+    'late negative acknowledgements cannot reopen an awarded chest',
+  );
+
   const walkerId = started.players.find(
     (player) => player.position.x === geometry.spawn.x && player.position.y === geometry.spawn.y,
   ).playerId;
@@ -409,6 +640,11 @@ try {
     (message) => message.type === 'room-state' && message.started,
   );
   assert.notEqual(nextRound.roundId, started.roundId);
+  assert(
+    nextRound.chests.every((entry) => entry.claimedBy === null),
+    'new round resets all chest claims',
+  );
+  assert.notDeepEqual(nextRound.chests, started.chests, 'new round generates a new server layout');
   for (const player of nextRound.players)
     assert.deepEqual(
       player.position,

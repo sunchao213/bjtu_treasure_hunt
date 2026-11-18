@@ -31,6 +31,10 @@ export class SearchInteraction {
   isOpened(id: string): boolean {
     return this.opened.has(id);
   }
+  markOpened(id: string): void {
+    this.opened.add(id);
+    if (this.target === id) this.cancel();
+  }
   cancel(): void {
     this.target = null;
   }

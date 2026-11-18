@@ -10,12 +10,7 @@ import {
   monsterAnimationFor,
   monsterScaleFor,
 } from '../config/monster-sprites';
-import {
-  generateLootSpawns,
-  questSpawnPlan,
-  roundRandom,
-  type LootSpawn,
-} from '../modules/world/loot-spawns';
+import { generateLootSpawns, questSpawnPlan, type LootSpawn } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
@@ -45,6 +40,8 @@ import type { GameSnapshot, PlayerInput, RemotePlayerSnapshot } from '../shared/
 import type { TouchControls } from '../modules/world/touch-controls';
 import type { SoundManager } from '../modules/ui/sound-manager';
 import type { NetworkSession, PlayerSnapshot } from '../modules/network/network-session';
+import { RoomLootSearch } from '../modules/network/room-loot-search';
+import type { RoomChestSnapshot } from '../modules/network/network-protocol';
 import {
   isQuestComplete,
   hasCurrentRaidNotebook,
@@ -155,6 +152,8 @@ export class WorldScene extends Phaser.Scene {
     { text: Phaser.GameObjects.Text; offsetY: number }
   >();
   private networkInputElapsed = 0;
+  private roomRoundId: string | null = null;
+  private roomLootSearch?: RoomLootSearch;
   private lastRaidId: string | null = null;
   private previousInteract = false;
   private previousAttack = false;
@@ -238,7 +237,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   clearInteractions(): void {
-    this.search.cancel();
+    this.cancelSearch();
     this.services.touch.reset();
     this.input?.keyboard?.resetKeys();
     for (const enemy of this.combat.enemies) {
@@ -339,6 +338,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createWorld(): void {
+    if (this.services.network) {
+      this.roomLootSearch = new RoomLootSearch(
+        this.services.network,
+        (chest) => this.receiveRoomLoot(chest),
+        (message) => this.services.notify(message),
+      );
+    }
     for (const key of MONSTER_SPRITE_SHEETS) {
       if (!this.textures.exists(key) || !this.textures.get(key).has('0')) {
         throw new Error(`Missing animation frames: ${key}`);
@@ -429,7 +435,7 @@ export class WorldScene extends Phaser.Scene {
       this.hurtThisFrame = true;
       this.hurtFeedbackMs = COMBAT_RULES.feedback.playerHighlightMs;
       this.setPlayerAction('hurt', COMBAT_RULES.feedback.playerHighlightMs);
-      this.search.cancel();
+      this.cancelSearch();
       this.combat.onPlayerDamaged();
       this.services.notify(`受到 ${amount} 点伤害，当前生命 ${health}；搜索和撤离读条已中断。`);
       this.cameras.main.flash(COMBAT_RULES.feedback.cameraFlashMs, 255, 72, 72, false);
@@ -441,12 +447,13 @@ export class WorldScene extends Phaser.Scene {
     const onHidden = () => {
       if (document.hidden) {
         this.services.touch.reset();
-        this.search.cancel();
+        this.cancelSearch();
         this.services.controller.cancelExtraction();
       }
     };
     document.addEventListener('visibilitychange', onHidden);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.roomLootSearch?.dispose();
       this.releaseDamage?.();
       document.removeEventListener('visibilitychange', onHidden);
       keyboard?.removeAllKeys(true);
@@ -474,6 +481,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.updateRoomPlayers(deltaMs);
+    this.syncRoomLoot();
     if (this.services.isOnline?.()) {
       const snapshot = this.onlineSnapshot;
       const focused = document.activeElement;
@@ -576,7 +584,7 @@ export class WorldScene extends Phaser.Scene {
       this.moving = Math.hypot(movement.x, movement.y) > 0.1;
       this.services.sound.setLoop('footsteps', this.moving);
       if (this.moving) {
-        this.search.cancel();
+        this.cancelSearch();
       }
       this.position =
         this.services.network?.isInRoom() && this.services.network.getRoomState()?.started
@@ -643,7 +651,7 @@ export class WorldScene extends Phaser.Scene {
         this.services.notify('照明棒已部署，附近区域将保持可见 30 秒。');
       }
       if (down('SPACE')) {
-        this.search.cancel();
+        this.cancelSearch();
         const carriedItems = this.services.inventory.getCarriedItems();
         const equippedWeapon = this.services.inventory.getEquipment().primary;
         const weaponItem =
@@ -768,7 +776,7 @@ export class WorldScene extends Phaser.Scene {
       }
     } else if (!playable) {
       this.services.sound.setLoop('footsteps', false);
-      this.search.cancel();
+      this.cancelSearch();
       if (view.health <= 0) {
         this.setPlayerAction('death', Number.POSITIVE_INFINITY);
       }
@@ -1254,10 +1262,63 @@ export class WorldScene extends Phaser.Scene {
     return `${instruction} · 剩余 ${Math.ceil(hug.timer / 1000)} 秒 · 抱满 1.5 秒平静约 30 秒`;
   }
 
+  private cancelSearch(): void {
+    this.search.cancel();
+    this.roomLootSearch?.cancel();
+  }
+
+  private syncRoomLoot(): void {
+    const state = this.services.network?.getRoomState();
+    if (!this.roomRoundId || state?.roundId !== this.roomRoundId) return;
+    for (const chest of state.chests ?? []) {
+      if (chest.claimedBy && !this.search.isOpened(chest.id)) {
+        if (this.search.current() === chest.id) this.cancelSearch();
+        this.openChest(chest.id);
+      }
+    }
+  }
+
+  private openChest(id: string): void {
+    this.search.markOpened(id);
+    this.chestSprites.get(id)?.play('treasure-chest-open');
+    this.chestObjects.get(id)?.setAlpha(0.23);
+  }
+
+  private receiveRoomLoot(chest: RoomChestSnapshot): boolean {
+    const view = this.services.controller.getView();
+    if (
+      view.phase !== 'active' ||
+      !view.raidId ||
+      this.services.controller.isPaused() ||
+      !this.services.network?.isInRoom() ||
+      this.services.network.getRoomState()?.roundId !== this.roomRoundId ||
+      this.search.isOpened(chest.id)
+    )
+      return false;
+    const result = this.services.inventory.addLoot({
+      instanceId: `${view.raidId}:room:${chest.id}`,
+      itemId: chest.itemId,
+      origin: { kind: 'raid-loot', obtainedInRaidId: view.raidId },
+    });
+    this.cancelSearch();
+    if (!result.ok) {
+      this.services.notify('背包已满，宝箱已保留；腾出空间后可以重新搜索。');
+      return false;
+    }
+    this.openChest(chest.id);
+    this.services.events.emit('LocationInteracted', { raidId: view.raidId, locationId: chest.id });
+    this.banner = {
+      text: `已拾取：${ITEM_DEFINITIONS[chest.itemId]?.name ?? chest.itemId}`,
+      untilMs: this.time.now + 3200,
+    };
+    this.services.notify('搜索完成，物资进入本局背包。');
+    return true;
+  }
+
   private interact(held: boolean): void {
     const view = this.services.controller.getView();
     if (view.phase !== 'active' && view.phase !== 'extracting') {
-      this.search.cancel();
+      this.cancelSearch();
       return;
     }
     const carried = this.services.inventory.getCarriedItems();
@@ -1266,10 +1327,13 @@ export class WorldScene extends Phaser.Scene {
     );
     const chapter = questChapterById(this.questChapterId());
     const bagFull =
-      carried.filter((item) => !equippedIds.has(item.instanceId)).length >= RAID_RULES.bagCapacity;
+      carried
+        .filter((item) => !equippedIds.has(item.instanceId))
+        .reduce((slots, item) => slots + (ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1), 0) >=
+      RAID_RULES.bagCapacity;
     const hug = this.nearbyHug();
     if (hug) {
-      this.search.cancel();
+      this.cancelSearch();
       this.interaction = this.hugInstruction(hug);
       this.keyPrompt = { key: 'Q', label: '安抚' };
       return;
@@ -1282,7 +1346,7 @@ export class WorldScene extends Phaser.Scene {
       )
       .sort((a, b) => distance(a.position, this.position) - distance(b.position, this.position))[0];
     if (loot) {
-      this.search.cancel();
+      this.cancelSearch();
       if (bagFull) {
         this.interaction = `背包已满 · ${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}留在地上，先腾出空间再拾取`;
         return;
@@ -1314,13 +1378,13 @@ export class WorldScene extends Phaser.Scene {
     if (chest) {
       const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapter.id);
       if (prerequisite !== null) {
-        this.search.cancel();
+        this.cancelSearch();
         this.interaction = prerequisite;
         return;
       }
       // 满包时不启动搜索进度：否则每次 2 秒读条失败重来，玩家只看得到进度条循环。
       if (bagFull) {
-        this.search.cancel();
+        this.cancelSearch();
         this.interaction = '背包已满 · 先丢弃或替换物品再搜索';
         if (held && !this.previousInteract) {
           this.services.notify('背包已满，搜索点保留在原地；丢弃或替换物品后可以重新搜索。');
@@ -1330,7 +1394,28 @@ export class WorldScene extends Phaser.Scene {
       this.interaction = '长按 E 搜索';
       this.keyPrompt = { key: 'E', label: '搜索' };
       if (!held || this.moving || view.phase !== 'active') {
-        this.search.cancel();
+        this.cancelSearch();
+        return;
+      }
+      if (this.roomRoundId) {
+        const network = this.services.network;
+        const sharedChest = network?.getRoomState()?.chests?.find((point) => point.id === chest.id);
+        if (
+          !network?.isInRoom() ||
+          network.getRoomState()?.roundId !== this.roomRoundId ||
+          !sharedChest
+        ) {
+          this.cancelSearch();
+          this.interaction = '联机连接中断，暂时无法搜索';
+          return;
+        }
+        if (this.search.current() !== chest.id) {
+          this.search.begin(chest.id);
+          this.services.sound.play('box');
+        }
+        this.roomLootSearch?.hold(sharedChest);
+        if (this.roomLootSearch?.current() !== chest.id) this.search.cancel();
+        if (this.search.progress() >= 1) this.interaction = '搜索完成 · 等待领取确认…';
         return;
       }
       const wasSearching = this.search.current() === chest.id;
@@ -1384,7 +1469,7 @@ export class WorldScene extends Phaser.Scene {
     if (chapter.id === QUEST_CHAPTER_ID) {
       const steleDistance = distance(WORLD.stone, this.position);
       if (steleDistance < 78) {
-        this.search.cancel();
+        this.cancelSearch();
         if (!hasCurrentRaidNotebook(carried, view.raidId)) {
           this.interaction = '明湖石碑 · 先取得本局残缺手记';
           return;
@@ -1406,7 +1491,7 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     if (view.inExtractionZone) {
-      this.search.cancel();
+      this.cancelSearch();
       this.interaction =
         view.phase === 'extracting'
           ? '正在撤离 · 请留在区域内'
@@ -1430,14 +1515,14 @@ export class WorldScene extends Phaser.Scene {
           this.search.begin(`charge:${lamp.x}`);
           if (this.search.progress() >= 1) {
             this.lighting.charge();
-            this.search.cancel();
+            this.cancelSearch();
             this.services.notify('手电筒已充满。');
           }
         } else {
-          this.search.cancel();
+          this.cancelSearch();
         }
       } else {
-        this.search.cancel();
+        this.cancelSearch();
         const request = this.requestingHug();
         this.interaction = request ? this.hugInstruction(request) : '校园夜巡';
       }
@@ -1445,6 +1530,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private resetRaid(raidId: string | null): void {
+    this.roomLootSearch?.reset();
     this.lastRaidId = raidId;
     this.services.sound.setLoop('alarm', false);
     this.hurtFeedbackMs = 0;
@@ -1453,6 +1539,7 @@ export class WorldScene extends Phaser.Scene {
     this.banner = null;
     const network = this.services.network;
     const roundId = network?.isInRoom() ? network.getRoomState()?.roundId : null;
+    this.roomRoundId = raidId ? (roundId ?? null) : null;
     this.position = {
       ...(roundId ? (network?.getLocalPlayer()?.position ?? WORLD.spawn) : WORLD.spawn),
     };
@@ -1489,10 +1576,9 @@ export class WorldScene extends Phaser.Scene {
     this.chestObjects.clear();
     this.chestSprites.clear();
     this.searchPoints = raidId
-      ? generateLootSpawns(
-          roundId ? roundRandom(roundId) : Math.random,
-          questSpawnPlan(this.questChapterId()),
-        )
+      ? roundId
+        ? (network?.getRoomState()?.chests ?? []).map((chest) => ({ ...chest }))
+        : generateLootSpawns(Math.random, questSpawnPlan(this.questChapterId()))
       : [];
     for (const point of this.searchPoints) {
       const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);

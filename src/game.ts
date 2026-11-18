@@ -58,6 +58,7 @@ import { SoundManager } from './modules/ui/sound-manager';
 import { assetUrl } from './app/asset-url';
 
 import { NetworkSession } from './modules/network/network-session';
+import { onlineUnlockProgress } from './modules/network/online-unlock';
 import { bindRoomLobby } from './modules/ui/room-lobby';
 import { bindStage } from './modules/ui/stage';
 import type { AccountUser } from './modules/auth/auth-client';
@@ -65,6 +66,7 @@ import { accountStorage } from './modules/save/account-storage';
 
 import { CloudSave } from './modules/save/cloud-save';
 import { HttpCloudSaveApi } from './modules/save/cloud-save-api';
+import { bindSocialPanels } from './modules/ui/social-panels';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -101,6 +103,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       }
     });
   }
+  bindSocialPanels();
 
   type PrologueMode = 'intro' | 'discovery' | 'clue' | 'story';
   let prologueMode: PrologueMode = 'intro';
@@ -449,12 +452,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     const lobby = bindRoomLobby({
       network,
       confirm: confirmDialog,
+      unlock: () => onlineUnlockProgress(save.view().unlockedChapterIds),
       canEnter: () =>
+        onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
         sceneReady &&
         buyingItem === null &&
         controller.getView().phase === 'preparing' &&
         !controller.getView().isBusy,
       canPrepare: () =>
+        onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
         sceneReady &&
         buyingItem === null &&
         controller.getView().phase === 'preparing' &&
@@ -468,7 +474,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         if (sceneReady) scene.removeRemotePlayer(id);
       },
       onStart: async () => {
-        if (controller.getView().phase !== 'preparing') {
+        if (
+          !onlineUnlockProgress(save.view().unlockedChapterIds).unlocked ||
+          controller.getView().phase !== 'preparing'
+        ) {
           lobby.finish();
           return;
         }
@@ -594,6 +603,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let gameScroll = 0;
     for (const id of ['open-room', 'mobile-room']) {
       element(id).onclick = () => {
+        const unlock = onlineUnlockProgress(save.view().unlockedChapterIds);
+        if (!unlock.unlocked) {
+          notify(unlock.hint);
+          return;
+        }
         roomTrigger = id;
         gameScroll = app.scrollTop || window.scrollY;
         roomOpen = true;
@@ -926,6 +940,14 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
             : '开始单人探索 ↗';
       element('mode-solo').setAttribute('aria-pressed', String(!lobby.isJoined()));
       element('mode-room').setAttribute('aria-pressed', String(lobby.isJoined()));
+      const onlineUnlock = onlineUnlockProgress(save.view().unlockedChapterIds);
+      for (const id of ['mode-room', 'open-room', 'mobile-room']) {
+        element<HTMLButtonElement>(id).disabled = !onlineUnlock.unlocked;
+        element(id).title = onlineUnlock.unlocked ? '创建或加入联机房间' : onlineUnlock.hint;
+      }
+      element('mode-room').querySelector('small')!.textContent = onlineUnlock.unlocked
+        ? '创建房间或输入房间号加入'
+        : onlineUnlock.hint;
       // F02：按钮不再因为「不在区域 / 价值不足」直接禁用，否则点了没有任何反馈。
       element<HTMLButtonElement>('extract').disabled = !playable || view.phase === 'extracting';
       element('extract').textContent =
@@ -1045,7 +1067,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         lastWarehouse = warehouseSignature;
       }
       const settlement = view.result ?? (view.phase === 'preparing' ? archive.lastResult : null);
-      const endingReady = settlement !== null && chapterUnlockGranted(settlement, activeChapter.id);
+      const endingReady =
+        !archive.unlockedChapterIds.includes(activeChapter.id) &&
+        settlement !== null &&
+        chapterUnlockGranted(settlement, activeChapter.id);
       renderChapterUnlock(element('quest-unlock'), endingReady, activeChapter.id);
       // R07：成功撤离但证据不齐时，说明本章为什么还没解锁。
       renderChapterLock(element('quest-lock'), settlement, activeChapter.id);

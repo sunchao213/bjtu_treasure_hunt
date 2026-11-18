@@ -23,6 +23,8 @@ export function prepViewMarkup(): string {
             <p class="lobby-nav-label">行动中心</p>
             <button class="lobby-nav-item is-active" type="button" data-lobby-tab="prepare">出发准备</button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="warehouse">仓库</button>
+            <button class="lobby-nav-item" type="button" data-lobby-tab="profile">档案</button>
+            <button class="lobby-nav-item" type="button" data-lobby-tab="social">好友与聊天 <span id="social-unread" aria-label="未读消息">0</span></button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="shop">道具商店</button>
             <p class="lobby-nav-label">系统</p>
             <button class="lobby-nav-item" type="button" data-lobby-tab="settings">设置</button>
@@ -39,7 +41,7 @@ export function prepViewMarkup(): string {
           </header>
           <div class="mode-selection" role="group" aria-label="选择游戏模式">
             <button id="mode-solo" class="mode-option" aria-pressed="true"><span>01 / SOLO</span><b>单人探索</b><small>独自出发，自由调查校园</small></button>
-            <button id="mode-room" class="mode-option" aria-pressed="false"><span>02 / SQUAD</span><b>组队探索 ↗</b><small>创建房间或输入房间号加入</small></button>
+            <button id="mode-room" class="mode-option" aria-pressed="false" disabled><span>02 / SQUAD</span><b>组队探索 ↗</b><small>通关全部三个章节后解锁联机（0/3）</small></button>
           </div>
           <div id="preparation" class="prep-main">
             <div class="game-load-feedback"><p id="game-load-status" class="game-load-status" role="status">正在加载校园与角色资源…</p><button id="reload-game" class="secondary" hidden>重新加载校园</button></div>
@@ -62,6 +64,22 @@ export function prepViewMarkup(): string {
               <button id="tutorial-restart" class="text-button prep-tutorial" type="button">重看新手引导</button>
             </section>
           </div>
+          </section>
+          <section class="lobby-panel lobby-panel-wide" data-lobby-panel="profile" hidden aria-labelledby="lobby-profile-title">
+            <div class="lobby-panel-heading"><div><p class="prep-kicker">个人记录</p><h2 id="lobby-profile-title">行动档案</h2></div><button id="profile-refresh" class="secondary" type="button">刷新档案</button></div>
+            <p id="profile-status" class="lobby-panel-intro" role="status">正在读取档案…</p>
+            <label class="consent"><input id="profile-public" type="checkbox" />允许好友查看展示藏品与最近 20 局摘要</label>
+            <h3>对局历史</h3><ol id="profile-history" class="profile-history"></ol>
+          </section>
+          <section class="lobby-panel lobby-panel-wide" data-lobby-panel="social" hidden aria-labelledby="lobby-social-title">
+            <div class="lobby-panel-heading"><div><p class="prep-kicker">好友关系与私信</p><h2 id="lobby-social-title">好友与聊天</h2></div><button id="social-refresh" class="secondary" type="button">刷新</button></div>
+            <p id="social-status" class="lobby-panel-intro" role="status">好友为空。</p>
+            <form id="friend-request-form" class="social-request"><label class="field-label" for="friend-uid">对方账号 UID</label><input id="friend-uid" inputmode="text" maxlength="32" autocomplete="off" required pattern="[a-f0-9]{32}" /><button class="secondary" type="submit">发送好友申请</button></form>
+            <ul id="friend-list" class="friend-list"></ul>
+            <section id="friend-profile" hidden aria-labelledby="friend-profile-title"><h3 id="friend-profile-title">好友公开档案</h3><p id="friend-profile-status" class="muted"></p><ul id="friend-profile-history" class="profile-history"></ul></section>
+            <section class="chat-panel" aria-labelledby="chat-title"><h3 id="chat-title">私聊</h3><p id="chat-with" class="muted">选择一位已接受的好友。</p><ol id="chat-messages" class="chat-messages" aria-live="polite"></ol>
+              <form id="chat-form"><label class="field-label" for="chat-text">消息</label><textarea id="chat-text" maxlength="200" rows="3" disabled required></textarea><button id="chat-send" class="primary" type="submit" disabled>发送</button></form>
+            </section>
           </section>
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
             <div class="lobby-panel-heading"><div><p class="prep-kicker">永久保存</p><h2 id="lobby-warehouse-title">仓库与剧情档案</h2></div><span class="lobby-panel-meta" id="warehouse-count-label">0 件物品 · <b id="currency-count">0 交子</b></span></div>

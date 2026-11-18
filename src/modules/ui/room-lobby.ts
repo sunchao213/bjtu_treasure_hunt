@@ -5,6 +5,7 @@ import type { ConfirmHandle } from './confirm-dialog';
 interface LobbyOptions {
   readonly network: NetworkSession;
   readonly confirm: ConfirmHandle;
+  readonly unlock: () => { unlocked: boolean; hint: string };
   readonly canPrepare: () => boolean;
   readonly canEnter: () => boolean;
   readonly onChange: () => void;
@@ -85,7 +86,7 @@ export function bindRoomLobby(options: LobbyOptions) {
     const canPrepare = options.canPrepare();
     get('room-entry').hidden = !!state;
     get('room-lobby').hidden = !state;
-    get('network-status').textContent = message;
+    get('network-status').textContent = options.unlock().unlocked ? message : options.unlock().hint;
     button('network-connect').hidden = connected;
     button('network-connect').disabled =
       network.getStatus() === 'connecting' || network.getStatus() === 'reconnecting';
@@ -332,6 +333,7 @@ export function bindRoomLobby(options: LobbyOptions) {
     render,
     leave,
     connect: () => {
+      if (!options.unlock().unlocked) return;
       if (network.getStatus() === 'offline') network.connect();
     },
     isJoined: () => !!state,

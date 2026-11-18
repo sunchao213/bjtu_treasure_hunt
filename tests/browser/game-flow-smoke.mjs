@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { existsSync } from 'node:fs';
 import { cp, mkdir, readFile, readdir, utimes, writeFile } from 'node:fs/promises';
 import net from 'node:net';
@@ -454,7 +455,17 @@ try {
   await command('Target.disposeBrowserContext', { browserContextId: upgraded.browserContextId });
   pass('Cached 128px sprites → new 176px release → solo launch without clearing browser data');
 
-  const host = await newPage('host');
+  let host = await newPage('host');
+  for (const id of ['mode-room', 'open-room', 'mobile-room']) {
+    assert.equal(
+      await evaluate(host, `document.querySelector('#${id}').disabled`),
+      true,
+      'online entry is locked for a new account',
+    );
+  }
+  assert(
+    await evaluate(host, 'document.querySelector("#mode-room small").textContent.includes("0/3")'),
+  );
   assert.equal(await evaluate(host, 'document.querySelector("#start").disabled'), true);
   assert.equal(await evaluate(host, '!!document.querySelector("#room-panel")'), false);
   await screenshot(host, '01-lobby');
@@ -568,6 +579,11 @@ try {
       false,
       'ending must close before chapter unlock',
     );
+    assert.equal(
+      await evaluate(storyPage, 'document.querySelector("#mode-room").disabled'),
+      true,
+      'online remains locked until the final ending is saved',
+    );
     await click(storyPage, '#story-skip');
     await until(storyPage, `!!document.querySelector('[data-chapter-story="${expectedChapter}"]')`);
     await click(storyPage, '#next');
@@ -589,8 +605,23 @@ try {
   await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
   await finishChapter('siyuan-key', 'soothe-monster');
   await screenshot(storyPage, '11-chapter-three-unlocked');
+  assert.equal(
+    await evaluate(storyPage, 'document.querySelector("#mode-room").disabled'),
+    true,
+    'two completed chapters do not unlock online',
+  );
+  await click(storyPage, '#start');
+  await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
+  await searchEvidence(storyPage, 'soothe-charm');
+  await searchEvidence(storyPage, 'complete-record');
+  await finishChapter('soothe-monster', 'soothe-monster');
+  assert.equal(
+    await evaluate(storyPage, 'document.querySelector("#mode-room").disabled'),
+    false,
+    'all three saved endings unlock online without reloading',
+  );
   pass(
-    'Authored story flow: notebook search → stele prerequisite and story → extraction → ending-gated cloud unlock → archive replay → chapter two evidence → chapter three',
+    'All three chapters: real evidence searches → extraction → saved endings → online unlock; one/two chapters and pending final ending remain locked',
   );
 
   await click(storyPage, '[data-lobby-tab="shop"]');
@@ -617,7 +648,8 @@ try {
       storyPage,
       'document.querySelector("[data-shop-buy=thick-down-jacket]").disabled',
     ),
-    true,
+    afterPurchase < 100,
+    'shop affordability follows the balance after all three chapter rewards',
   );
   await screenshot(storyPage, '12-shop-purchases');
   await command('Fetch.enable', { patterns: [{ urlPattern: '*/api/save' }] }, storyPage.id);
@@ -717,15 +749,57 @@ try {
   await screenshot(storyPage, '13-purchased-items-used');
   await abandon(storyPage);
   pass(
-    'Standalone shop: balance, all three purchases, insufficient funds, failed save rollback, duplicate click, cloud reload, carry-in, healing, speed and invulnerability',
+    'Standalone shop: balance, all three purchases, affordability, failed save rollback, duplicate click, cloud reload, carry-in, healing, speed and invulnerability',
   );
 
+  // Use the account that actually completed all three chapters as the host.
+  await click(storyPage, '#next');
+  host = storyPage;
   await click(host, '#mode-room');
   await until(host, '!document.querySelector("#network-create").disabled');
   await click(host, '#network-create');
   await until(host, '/^[0-9]{6}$/.test(document.querySelector("#room-state-title").textContent)');
   const code = await evaluate(host, 'document.querySelector("#room-state-title").textContent');
   const guest = await newPage('guest');
+  // Only the second account is a completed-progress fixture, in the isolated test DB.
+  const guestId = await evaluate(
+    guest,
+    '(async () => (await (await fetch("/api/auth/me")).json()).user.id)()',
+  );
+  const fixtureDb = new DatabaseSync(join(directory, 'data', 'game.db'));
+  try {
+    const row = fixtureDb.prepare('SELECT data FROM player_saves WHERE user_id=?').get(guestId);
+    const data = row?.data
+      ? JSON.parse(row.data)
+      : {
+          schemaVersion: 3,
+          warehouse: [],
+          currency: 0,
+          codexIds: [],
+          activeRaid: null,
+          settledRaidIds: [],
+          lastResult: null,
+        };
+    data.unlockedChapterIds = ['siyuan-code', 'siyuan-key', 'soothe-monster'];
+    fixtureDb
+      .prepare('UPDATE player_saves SET data=?, revision=revision+1 WHERE user_id=?')
+      .run(JSON.stringify(data), guestId);
+  } finally {
+    fixtureDb.close();
+  }
+  await evaluate(guest, 'globalThis.reloadPending = true');
+  await command('Page.reload', {}, guest.id);
+  await until(
+    guest,
+    'typeof globalThis.reloadPending === "undefined" && document.querySelector("#game-load-status")?.dataset.state === "ready"',
+  );
+  if (await evaluate(guest, 'document.querySelector("#prologue-skip")?.checkVisibility()'))
+    await click(guest, '#prologue-skip');
+  assert.equal(
+    await evaluate(guest, 'document.querySelector("#mode-room").disabled'),
+    false,
+    'completed cloud progress restores online access',
+  );
   await click(guest, '#mode-room');
   await until(guest, '!document.querySelector("#network-join").disabled');
   await evaluate(guest, `document.querySelector('#network-room').value=${JSON.stringify(code)}`);
@@ -793,6 +867,88 @@ try {
     'peer receives actual server movement',
   );
   await screenshot(host, '05-room-game');
+  const sharedChest = roomAfter.chests
+    .filter((entry) => entry.zoneId === 'flag-lawn')
+    .sort((a, b) => b.y - a.y)[0];
+  for (const page of [host, guest]) {
+    await attachScene(page);
+    await evaluate(
+      page,
+      `(() => {
+      testScene.services.controller.activateInvulnerability(60000);
+      testScene.combat.enemies = [];
+      testScene.combat.updateSpawns = () => [];
+      for (const object of testScene.enemyObjects.values()) object.destroy();
+      testScene.enemyObjects.clear();
+    })()`,
+    );
+    // Walk via actual keyboard input and server collision, without teleporting.
+    for (const axis of ['x', 'y']) {
+      const target = axis === 'x' ? sharedChest.x : sharedChest.y + 35;
+      const start = await evaluate(
+        page,
+        `testScene.services.network.getLocalPlayer().position.${axis}`,
+      );
+      const positive = target > start;
+      const key = axis === 'x' ? (positive ? 'd' : 'a') : positive ? 's' : 'w';
+      await command(
+        'Input.dispatchKeyEvent',
+        {
+          type: 'keyDown',
+          key,
+          code: `Key${key.toUpperCase()}`,
+          windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+        },
+        page.id,
+      );
+      await until(
+        page,
+        `testScene.services.network.getLocalPlayer().position.${axis} ${positive ? '>=' : '<='} ${target}`,
+      );
+      await command(
+        'Input.dispatchKeyEvent',
+        {
+          type: 'keyUp',
+          key,
+          code: `Key${key.toUpperCase()}`,
+          windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+        },
+        page.id,
+      );
+    }
+    await delay(250);
+    const aim = await evaluate(
+      page,
+      `(() => {
+      testScene.lighting.enabled = true;
+      testScene.lighting.battery = 100;
+      const box = testScene.game.canvas.getBoundingClientRect(), camera = testScene.cameras.main;
+      return { x: box.left + (${sharedChest.x} - camera.worldView.x) * camera.zoom * box.width / testScene.scale.width,
+        y: box.top + (${sharedChest.y} - camera.worldView.y) * camera.zoom * box.height / testScene.scale.height };
+    })()`,
+    );
+    await command('Input.dispatchMouseEvent', { type: 'mouseMoved', ...aim }, page.id);
+  }
+  await Promise.all([interact(host, 2800), interact(guest, 2800)]);
+  for (const page of [host, guest])
+    await until(page, `testScene.search.isOpened(${JSON.stringify(sharedChest.id)})`);
+  const awardedCounts = await Promise.all(
+    [host, guest].map((page) =>
+      evaluate(
+        page,
+        `testScene.services.inventory.getCarriedItems().filter(item => item.instanceId.endsWith(':room:${sharedChest.id}')).length`,
+      ),
+    ),
+  );
+  assert.equal(
+    awardedCounts.reduce((sum, count) => sum + count, 0),
+    1,
+    'two real browsers search the same chest but receive exactly one item',
+  );
+  await screenshot(host, '14-shared-chest');
+  pass(
+    'Shared chest: real server movement → concurrent E search → one inventory grant → opened state in both browsers',
+  );
   await abandon(host);
   await click(host, '#next');
   await until(host, '!document.querySelector("#room-page").hidden');

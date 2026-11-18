@@ -9,7 +9,7 @@ sealed record SaveLeaseRequest(string? LeaseToken);
 sealed class SaveConflictException(string message) : Exception(message);
 
 // One game host owns this database. SQLite transactions also protect concurrent HTTP requests.
-sealed class GameDatabase
+sealed partial class GameDatabase
 {
     private const long LeaseDurationMs = 90_000;
     private readonly string connectionString;
@@ -29,7 +29,7 @@ sealed class GameDatabase
         command.CommandText = "PRAGMA journal_mode=WAL;";
         command.ExecuteScalar();
         command.CommandText = "PRAGMA user_version;";
-        if (Convert.ToInt32(command.ExecuteScalar()) > 1) throw new InvalidDataException("Database schema is newer than this game host.");
+        if (Convert.ToInt32(command.ExecuteScalar()) > 2) throw new InvalidDataException("Database schema is newer than this game host.");
         using (var transaction = connection.BeginTransaction())
         {
             command.Transaction = transaction;
@@ -144,6 +144,27 @@ sealed class GameDatabase
         return new CloudSaveReply(data, revision, token, expires);
     }
 
+    private static readonly string[] OnlineChapters = LoadOnlineChapters();
+    private static string[] LoadOnlineChapters()
+    {
+        using var stream = typeof(GameDatabase).Assembly.GetManifestResourceStream("online-unlock.json")!;
+        using var rules = JsonDocument.Parse(stream);
+        return rules.RootElement.GetProperty("requiredChapterIds").EnumerateArray().Select(id => id.GetString()!).ToArray();
+    }
+
+    public bool CanPlayOnline(string userId)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT data FROM player_saves WHERE user_id=$user;";
+        command.Parameters.AddWithValue("$user", userId);
+        if (command.ExecuteScalar() is not string raw) return false;
+        using var data = JsonDocument.Parse(raw);
+        if (!data.RootElement.TryGetProperty("unlockedChapterIds", out var chapters) || chapters.ValueKind != JsonValueKind.Array) return false;
+        var completed = chapters.EnumerateArray().Where(id => id.ValueKind == JsonValueKind.String).Select(id => id.GetString()).ToHashSet(StringComparer.Ordinal);
+        return OnlineChapters.All(completed.Contains);
+    }
+
     public object WriteSave(LoginSession session, SaveWriteRequest input)
     {
         using var connection = Open();
@@ -171,6 +192,7 @@ sealed class GameDatabase
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         command.Parameters.AddWithValue("$expires", expires);
         if (command.ExecuteNonQuery() != 1) throw new SaveConflictException("云存档占用已失效，请刷新重试。");
+        CaptureRaidHistory(connection, transaction, session.User.Id, input.Data);
         transaction.Commit();
         return new { revision = nextRevision, leaseExpiresAt = expires };
     }
