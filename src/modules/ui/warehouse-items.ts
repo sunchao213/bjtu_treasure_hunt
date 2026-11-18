@@ -131,10 +131,19 @@ const RARITY_NAMES: Readonly<Record<string, string>> = {
   legendary: '传说',
 };
 const DESCRIPTIONS: Readonly<Record<string, string>> = {
-  'portable-medkit': '使用后恢复 15 点生命；满血时无法使用。',
-  'torn-notebook': '思源楼前固定宝箱中的主线线索；调查明湖石碑后携带本局手记撤离可解锁第一章。',
-  'morning-coffee': '使用后恢复 25 点生命；满血时无法使用。',
-  'anomalous-feather': '第一章主线证据；与残缺手记共同构成明湖边的异常记录。',
+  'scratch-paper': '写满演算痕迹的校园收藏物；没有额外使用效果。',
+  'half-eraser': '只剩半块的普通收藏物；没有额外使用效果。',
+  'window-seat': '图书馆二楼西侧靠窗座位的凭证；没有额外使用效果。',
+  'school-badge': '刻有校训的校园徽章；没有额外使用效果。',
+  'gpa-charm': '校园传说中的护符，作为收藏物计分；没有额外使用效果。',
+  'library-reward-ticket': '背面印着借阅榜单的图书馆占座券；没有额外使用效果。',
+  'siyuan-key':
+    '第二章任务证据；携带本局被涂改的校园地图取得，用于开启后续调查；与本局地图一同成功撤离可解锁第二章。',
+  'portable-medkit': '使用后恢复 15 点生命；满血时无法使用，使用后消耗。',
+  'torn-notebook':
+    '思源楼前固定宝箱中的主线线索；携带手记调查明湖石碑取得异常羽毛，并将本局两件证据一同带出，可解锁第一章。',
+  'morning-coffee': '使用后恢复 25 点生命；满血时无法使用，使用后消耗。',
+  'anomalous-feather': '携带残缺手记调查明湖石碑后取得；与本局手记一同成功撤离可解锁第一章。',
   'marked-campus-map': '第二章任务证据；在中央教学楼公告栏调查后取得，再去寻找思源楼金钥匙。',
   'soothe-charm': '第三章任务证据；在芳华园发现，持有时可继续寻找完整记录。',
   'complete-record': '第三章任务证据；与本局安抚护符一起带回可解锁第三章。',

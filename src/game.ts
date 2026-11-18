@@ -1,10 +1,10 @@
 import './style.css';
 import './mobile-layout.css';
+import './archive-browser.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { createGame } from './app/create-game';
 import {
   HEALING_AMOUNTS,
-  isPurchasedItem,
   ITEM_DEFINITIONS,
   itemValueFor,
   RAID_RULES,
@@ -47,7 +47,8 @@ import {
   valueGapText,
   type ExtractionSnapshot,
 } from './modules/ui/extraction-feedback';
-import { renderCodex, exportCodexImage } from './modules/ui/codex';
+import { exportCodexImage } from './modules/ui/codex';
+import { renderArchiveBrowser } from './modules/ui/archive-browser';
 import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
 import { WorldScene } from './scenes/world-scene';
 import { contains } from './modules/world/movement';
@@ -527,7 +528,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     });
     let rulesOpen = false;
     let mapOpen = false;
-    let codexOpen = false;
     let storyOpen = false;
     let pendingEnding: { raidId: string; chapterId: string } | null = null;
     let roomOpen = false;
@@ -583,13 +583,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const active = view.phase === 'active' || view.phase === 'extracting';
       app.dataset.mobile = String(mobile());
       element('rotate-phone').hidden = true;
-      if (active && (rulesOpen || mapOpen || codexOpen || storyOpen || roomOpen)) {
+      if (active && (rulesOpen || mapOpen || storyOpen || roomOpen)) {
         if (!activeController.isPaused()) {
           activeController.pause();
           scene.clearInteractions();
         }
-      } else if (!rulesOpen && !mapOpen && !codexOpen && !storyOpen && !roomOpen)
-        activeController.resume();
+      } else if (!rulesOpen && !mapOpen && !storyOpen && !roomOpen) activeController.resume();
     };
     let roomTrigger = 'open-room';
     let gameScroll = 0;
@@ -635,7 +634,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     };
     element('mobile-rules').onclick = () => element('open-rules').click();
     element('hud-rules').onclick = () => element('open-rules').click();
-    element('hud-codex').onclick = () => element('open-codex').click();
     element('mobile-sound').onclick = () => {
       if (sound.getMusicState() === 'playing') {
         audibleVolume = sound.getSettings().volume;
@@ -670,42 +668,24 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       scene.clearInteractions();
       render();
     });
-    const codex = element<HTMLDialogElement>('codex-dialog');
-    const openCodex = () => {
-      if (codex.open) return;
-      codexOpen = true;
-      activeController.pause();
-      scene.clearInteractions();
-      const archive = save.view();
-      renderCodex(archive.codexIds, archive.unlockedChapterIds);
-      element('codex-export-status').textContent = '';
-      codex.showModal();
-      render();
-    };
-    for (const id of ['open-codex', 'archive-codex', 'mobile-codex']) {
-      element(id).onclick = openCodex;
+    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-archive-export]')) {
+      button.onclick = async () => {
+        button.disabled = true;
+        const status = button.parentElement?.querySelector<HTMLElement>(
+          '[data-archive-export-status]',
+        );
+        if (status) status.textContent = '生成中…';
+        try {
+          const archive = save.view();
+          await exportCodexImage(archive.codexIds, archive.unlockedChapterIds);
+          if (status) status.textContent = '已导出';
+        } catch (error) {
+          if (status) status.textContent = error instanceof Error ? '导出失败' : '导出失败';
+        } finally {
+          button.disabled = false;
+        }
+      };
     }
-    element('close-codex').onclick = () => codex.close();
-    codex.addEventListener('close', () => {
-      codexOpen = false;
-      scene.clearInteractions();
-      render();
-    });
-    element('export-codex').onclick = async () => {
-      const button = element<HTMLButtonElement>('export-codex');
-      button.disabled = true;
-      element('codex-export-status').textContent = '正在生成图鉴图片…';
-      try {
-        const archive = save.view();
-        await exportCodexImage(archive.codexIds, archive.unlockedChapterIds);
-        element('codex-export-status').textContent = '图鉴图片已生成，请查看浏览器下载。';
-      } catch (error) {
-        element('codex-export-status').textContent =
-          error instanceof Error ? error.message : '导出失败，请重试。';
-      } finally {
-        button.disabled = false;
-      }
-    };
     bindGameRules(
       () => {
         rulesOpen = true;
@@ -950,13 +930,14 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         renderInventory(carried, activeInventory.getEquipment());
         lastInventory = signature;
       }
+      renderArchiveBrowser(element('lobby-archive-browser'), archive);
       const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
       const supplies = archive.warehouse.filter(
         (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
       );
       element('warehouse-count').textContent = `${supplies.length} 件功能道具`;
       element('warehouse-count-label').textContent =
-        `${supplies.length} 件功能道具 · ${archive.currency} 交子`;
+        `${archive.warehouse.length} 件物品 · ${archive.currency} 交子`;
       renderShop(
         element('prep-view'),
         archive.warehouse,
@@ -977,21 +958,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
             (input) => input.value,
           ),
         );
-        for (const [id, purchased] of [
-          ['exploration', false],
-          ['purchase', true],
-        ] as const) {
-          const entries = supplies.filter((item) => isPurchasedItem(item) === purchased);
-          const list = element(`${id}-warehouse`);
-          list.replaceChildren(
-            ...entries.map((item) => {
-              const row = document.createElement('li');
-              row.textContent = `${ITEM_DEFINITIONS[item.itemId]?.name ?? item.itemId} · 占 ${ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1} 格`;
-              return row;
-            }),
-          );
-          element(`${id}-warehouse-empty`).hidden = entries.length > 0;
-        }
         loadout.replaceChildren();
         if (!supplies.length) {
           const empty = document.createElement('p');
@@ -1054,7 +1020,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         renderCodexPanel(element('codex-list'), element('story-archive'), archive);
         renderLobbyMissions(element('lobby-missions'), archive.unlockedChapterIds);
         renderPrepGoals(element('prep-goals'), activeChapter.id);
-        if (codex.open) renderCodex(archive.codexIds, archive.unlockedChapterIds);
         lastCodex = codexSignature;
       }
     }

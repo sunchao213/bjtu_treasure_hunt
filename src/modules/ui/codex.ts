@@ -1,8 +1,8 @@
-import { EXPLORATION_CATALOG_IDS, ITEM_DEFINITIONS, itemValueFor } from '../../config/game-config';
+import { ITEM_DEFINITIONS, itemValueFor } from '../../config/game-config';
 import { CHAPTERS, CODEX_ENTRIES } from '../quests/chapter-content';
 import type { Rarity } from '../../shared/types/game';
-import { iconSvg } from './icons';
-import { warehouseItemIconAssetPath, warehouseItemIconSvg } from './warehouse-items';
+import { warehouseItemIconAssetPath, warehouseItemDetails } from './warehouse-items';
+import { VALUE_COLLECTION_IDS } from './archive-browser';
 
 const rarityNames: Record<Rarity, string> = {
   pending: '待定',
@@ -82,25 +82,6 @@ const details: Record<string, { icon: string; description: string }> = {
     description: '传说收藏物；没有额外使用效果。',
   },
 };
-const iconPaths: Record<string, string> = {
-  medkit: 'M10 18H54V54H10Z M24 18V10H40V18 M28 28H36V34H42V42H36V48H28V42H22V34H28Z',
-  paper: 'M16 8H42L50 16V56H16Z M42 8V18H50 M24 28H42 M24 36H42 M24 44H36',
-  eraser: 'M10 38L34 14L54 34L30 58H22Z M24 24L44 44 M30 58H54',
-  map: 'M8 16L24 10L40 16L56 10V48L40 54L24 48L8 54Z M24 10V48 M40 16V54 M29 29L35 35 M35 29L29 35',
-  seat: 'M18 8H48V34H18Z M18 34L12 42H52L48 34 M16 42V56 M48 42V56 M24 15V27 M40 15V27',
-  coffee:
-    'M12 22H44V46Q44 54 36 54H20Q12 54 12 46Z M44 26H50Q58 26 54 36Q52 40 44 40 M20 8V15 M32 8V15',
-  badge:
-    'M32 8L40 21L55 24L45 36L46 52L32 46L18 52L19 36L9 24L24 21Z M26 28L32 24L38 28V36L32 40L26 36Z',
-  feather:
-    'M12 54L46 14 M18 46Q8 28 32 12Q44 4 54 10Q60 26 42 42Q30 52 18 46 M26 38L24 22 M34 29L49 28',
-  key: 'M24 10A14 14 0 1 1 24 38A14 14 0 1 1 24 10 M24 19A5 5 0 1 1 24 29A5 5 0 1 1 24 19 M34 34L54 54 M44 44L50 38 M50 50L56 44',
-  bat: 'M12 54L19 47 M16 49L34 25Q42 10 49 10Q56 10 54 18Q51 26 38 31L22 52Z M31 31L37 37',
-  helmet: 'M10 37A22 22 0 0 1 54 37V43H10Z M10 43H54 M32 15V32 M20 22L25 34 M44 22L39 34',
-  statue: 'M22 10H42L47 20L43 31L50 42V55H14V42L21 31L17 20Z M25 22H39 M27 31H37 M22 45H42',
-  watch: 'M24 8H40V18H46V46H40V56H24V46H18V18H24Z M24 23H40V41H24Z M32 27V33L37 36',
-  locked: 'M18 27V19A14 14 0 0 1 46 19V27 M12 27H52V56H12Z M32 37V46',
-};
 
 export interface CodexEntry {
   readonly id: string;
@@ -117,7 +98,7 @@ export interface CodexEntry {
 /** Only persisted codex IDs unlock entries; warehouse possession is not required. */
 export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
   const unlocked = new Set(ids);
-  return EXPLORATION_CATALOG_IDS.map((itemId, index) => {
+  return VALUE_COLLECTION_IDS.map((itemId, index) => {
     const item = ITEM_DEFINITIONS[itemId]!;
     const known = unlocked.has(item.itemId);
     const detail = details[item.itemId];
@@ -129,7 +110,10 @@ export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
       rarity: known ? rarityNames[item.rarity] : '未解锁',
       value: known ? itemValueFor(item) : null,
       description: known
-        ? [CODEX_ENTRIES[item.itemId], detail?.description ?? '校园收藏物。']
+        ? [
+            CODEX_ENTRIES[item.itemId],
+            warehouseItemDetails(item.itemId)?.description ?? detail?.description ?? '校园收藏物。',
+          ]
             .filter(Boolean)
             .join(' ')
         : '搜到物品并成功撤离后点亮此图鉴。',
@@ -137,51 +121,6 @@ export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
       icon: known ? (detail?.icon ?? 'paper') : 'locked',
     };
   });
-}
-
-export function codexMarkup(): string {
-  return `<dialog id="codex-dialog" class="rules-dialog codex-dialog" aria-labelledby="codex-title">
-    <header class="rules-header"><div><p class="rules-eyebrow">交大摸金录 · 收藏档案</p><h1 id="codex-title">物品图鉴 <small id="codex-count"></small></h1></div>
-      <button id="close-codex" class="rules-close" aria-label="关闭图鉴">${iconSvg('close', { size: 24 })}</button></header>
-    <div class="codex-content"><p>成功撤离后永久点亮；带入、丢弃或消耗已收藏物品不会熄灭图鉴。未解锁物品显示剪影。</p>
-      <p id="codex-chapter"></p><div id="codex-grid" class="codex-grid"></div></div>
-    <footer class="rules-footer codex-footer"><button id="export-codex" class="primary">导出图鉴图片（PNG）</button><span id="codex-export-status" role="status" aria-live="polite"></span></footer>
-  </dialog>`;
-}
-
-export function renderCodex(ids: readonly string[], chapters: readonly string[]): void {
-  const entries = getCodexEntries(ids);
-  const grid = document.getElementById('codex-grid');
-  if (!grid) return;
-  document.getElementById('codex-count')!.textContent =
-    `${entries.filter((e) => e.unlocked).length} / ${entries.length}`;
-  const unlockedChapters = chapters.filter((chapterId) => CHAPTERS[chapterId] !== undefined).length;
-  document.getElementById('codex-chapter')!.textContent = unlockedChapters
-    ? `章节：思源密码已解锁 ${unlockedChapters} / ${Object.keys(CHAPTERS).length}`
-    : '章节：思源密码未解锁 · 需携带本局残缺手记、调查明湖石碑并成功撤离';
-  grid.replaceChildren();
-  for (const entry of entries) {
-    const card = document.createElement('article');
-    card.className = `codex-card${entry.unlocked ? '' : ' codex-locked'}`;
-    card.style.setProperty('--codex-color', entry.color);
-    const visual = document.createElement('div');
-    visual.className = 'codex-visual';
-    visual.innerHTML = entry.unlocked
-      ? warehouseItemIconSvg(entry.id)
-      : `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="${iconPaths.locked}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    const number = document.createElement('small');
-    number.textContent = `NO. ${entry.number}`;
-    visual.append(number);
-    const name = document.createElement('h2');
-    name.textContent = entry.name;
-    const rarity = document.createElement('p');
-    rarity.className = 'codex-rarity';
-    rarity.textContent = `${entry.rarity}${entry.value === null ? '' : ` · ${entry.value} 价值`}`;
-    const description = document.createElement('p');
-    description.textContent = entry.description;
-    card.append(visual, name, rarity, description);
-    grid.append(card);
-  }
 }
 
 function wrapText(
@@ -228,7 +167,7 @@ export async function exportCodexImage(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('浏览器无法生成图鉴图片。');
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = '#14221e';
+  ctx.fillStyle = '#2b2521';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#ffe3a0';
   ctx.font = 'bold 44px Microsoft YaHei, sans-serif';
@@ -246,11 +185,11 @@ export async function exportCodexImage(
     160,
   );
   ctx.font = '20px Microsoft YaHei, sans-serif';
-  ctx.fillText('成功撤离后点亮图鉴；未解锁物品仅展示剪影。', 48, 199);
+  ctx.fillText('纯价值收藏物 · 成功撤离后永久点亮；未解锁物品显示问号。', 48, 199);
   entries.forEach((entry, index) => {
     const x = 48 + (index % 3) * 452;
     const y = 230 + Math.floor(index / 3) * 395;
-    ctx.fillStyle = '#20332b';
+    ctx.fillStyle = '#3c3229';
     ctx.fillRect(x, y, 430, 373);
     ctx.strokeStyle = entry.color;
     ctx.lineWidth = 2;
@@ -259,15 +198,9 @@ export async function exportCodexImage(
     if (image) {
       ctx.drawImage(image, x + 24, y + 8, 88, 88);
     } else if (!entry.unlocked) {
-      ctx.save();
-      ctx.translate(x + 24, y + 15);
-      ctx.scale(1.1, 1.1);
-      ctx.strokeStyle = entry.color;
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.stroke(new Path2D(iconPaths.locked));
-      ctx.restore();
+      ctx.fillStyle = '#c5a373';
+      ctx.font = 'bold 64px Georgia, serif';
+      ctx.fillText('?', x + 44, y + 75);
     }
     ctx.fillStyle = entry.color;
     ctx.font = '18px Microsoft YaHei, sans-serif';

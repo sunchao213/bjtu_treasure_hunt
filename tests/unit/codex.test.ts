@@ -1,94 +1,100 @@
 import { describe, expect, it } from 'vitest';
 import { getCodexEntries } from '../../src/modules/ui/codex';
-import { EXPLORATION_CATALOG_IDS, ITEM_CATALOG_IDS } from '../../src/config/game-config';
+import { archiveEntries, VALUE_COLLECTION_IDS } from '../../src/modules/ui/archive-browser';
+import { ALL_ITEM_IDS } from '../../src/config/game-config';
 import { CODEX_ENTRIES } from '../../src/modules/quests/chapter-content';
+import type { ItemInstance } from '../../src/shared/types/game';
 
-describe('persistent collection gallery', () => {
-  it('registers the three new collectibles with assigned rarity and value', () => {
-    const ids = ['electric-bike-helmet', 'david-head-statue', 'silver-watch'];
-    const entries = getCodexEntries(ids).filter((entry) => ids.includes(entry.id));
-    expect(entries).toMatchObject([
-      {
-        id: 'electric-bike-helmet',
-        name: '电瓶车头盔',
-        rarity: '普通',
-        value: 15,
-        unlocked: true,
-      },
-      { id: 'david-head-statue', name: '大卫头雕像', rarity: '史诗', value: 80, unlocked: true },
-      { id: 'silver-watch', name: '银色手表', rarity: '传说', value: 100, unlocked: true },
-    ]);
-  });
+const stored = (id: string, itemId: string): ItemInstance => ({
+  instanceId: id,
+  itemId,
+  origin: { kind: 'carry-in' },
+});
 
-  it('adds three collectible slots with their specified quality, value and blank artwork', () => {
-    const ids = ['strange-veined-ginkgo-leaf', 'hunter-binoculars', 'roller-skates'];
-    const entries = getCodexEntries(ids);
-    expect(entries.filter((entry) => ids.includes(entry.id))).toMatchObject([
-      { name: '叶脉奇怪的银杏叶', rarity: '传说', value: 150, icon: 'leaf', unlocked: true },
-      { name: '猎手望远镜', rarity: '史诗', value: 60, icon: 'binoculars', unlocked: true },
-      { name: '轮滑鞋', rarity: '普通', value: 15, icon: 'skates', unlocked: true },
-    ]);
-    const locked = getCodexEntries([]).filter((entry) => ids.includes(entry.id));
-    expect(locked).toHaveLength(3);
-    for (const entry of locked) {
-      expect(entry).toMatchObject({ name: '未发现物品', value: null, unlocked: false });
+describe('value collection and permanent warehouse', () => {
+  it('only catalogs value-only items, keeping quest evidence, healing and utilities out', () => {
+    const ids = getCodexEntries(ALL_ITEM_IDS).map((entry) => entry.id);
+    expect(ids).toEqual(VALUE_COLLECTION_IDS);
+    expect(ids).toContain('silver-watch');
+    expect(ids).toContain('david-head-statue');
+    for (const id of [
+      'anomalous-feather',
+      'siyuan-key',
+      'portable-medkit',
+      'morning-coffee',
+      'roller-skates',
+      'electric-bike-helmet',
+      'soothe-charm',
+      'bandage',
+    ]) {
+      expect(ids).not.toContain(id);
     }
   });
 
-  it('hides identity, value and purpose until an entry is unlocked', () => {
-    const locked = getCodexEntries([]).find((e) => e.id === 'anomalous-feather')!;
-    expect(locked).toMatchObject({
+  it('uses current rarity and per-item values for the unlocked collection', () => {
+    const entries = getCodexEntries(['silver-watch', 'david-head-statue', 'gpa-charm']);
+    expect(entries.find((entry) => entry.id === 'silver-watch')).toMatchObject({
+      name: '银色手表',
+      rarity: '传说',
+      value: 100,
+      unlocked: true,
+    });
+    expect(entries.find((entry) => entry.id === 'david-head-statue')).toMatchObject({
+      rarity: '史诗',
+      value: 80,
+    });
+    expect(entries.find((entry) => entry.id === 'gpa-charm')?.value).toBe(50);
+  });
+
+  it('hides identity, value and purpose until a collectible is unlocked', () => {
+    const entry = getCodexEntries([]).find((item) => item.id === 'silver-watch')!;
+    expect(entry).toMatchObject({
       unlocked: false,
       name: '未发现物品',
       rarity: '未解锁',
       value: null,
       icon: 'locked',
     });
-    expect(locked.description).not.toContain('明湖');
-    const known = getCodexEntries(['anomalous-feather']).find((e) => e.id === 'anomalous-feather')!;
-    expect(known).toMatchObject({
-      unlocked: true,
-      name: '异常羽毛',
-      rarity: '史诗',
-      value: 60,
-      icon: 'feather',
-    });
-    expect(known.description).toContain('第一章主线证据');
+    expect(entry.description).not.toContain('银色手表');
   });
 
-  it('ignores unknown save IDs and counts duplicate unlock IDs only once', () => {
-    const entries = getCodexEntries([
-      'unknown-item',
-      'portable-medkit',
-      'portable-medkit',
-      'morning-coffee',
-    ]);
-    expect(entries.filter((e) => e.unlocked)).toHaveLength(2);
-    expect(entries.map((e) => e.id)).toEqual(EXPLORATION_CATALOG_IDS);
-    expect(entries.find((e) => e.id === 'portable-medkit')?.description).toContain(
-      '恢复 15 点生命',
-    );
+  it('ignores unknown save IDs and duplicate unlock records', () => {
+    const entries = getCodexEntries(['unknown', 'silver-watch', 'silver-watch', 'bandage']);
+    expect(entries.filter((entry) => entry.unlocked)).toHaveLength(1);
   });
 
-  it('preserves the teammate-authored lore for every unlocked catalog entry', () => {
-    for (const entry of getCodexEntries(ITEM_CATALOG_IDS)) {
-      if (CODEX_ENTRIES[entry.id]) expect(entry.description).toContain(CODEX_ENTRIES[entry.id]);
+  it('preserves existing item lore and functional details for exports', () => {
+    for (const entry of getCodexEntries(VALUE_COLLECTION_IDS)) {
+      expect(entry.description).toContain(CODEX_ENTRIES[entry.id]);
+      expect(entry.description.length).toBeGreaterThan(10);
     }
   });
 
-  it('shows every item that can be saved after extraction', () => {
-    const unlocked = getCodexEntries(['morning-coffee', 'training-bat', 'stun-baton'])
-      .filter((entry) => entry.unlocked)
-      .map((entry) => entry.id);
-    expect(unlocked).toEqual(['morning-coffee']);
+  it('groups warehouse copies and includes purchased supplies, evidence and collectibles', () => {
+    const snapshot = {
+      codexIds: [],
+      warehouse: [
+        stored('a', 'bandage'),
+        stored('b', 'bandage'),
+        stored('c', 'anomalous-feather'),
+        stored('d', 'silver-watch'),
+        stored('e', 'unknown'),
+      ],
+    };
+    expect(archiveEntries(snapshot, 'warehouse')).toEqual([
+      { id: 'anomalous-feather', unlocked: true, count: 1 },
+      { id: 'silver-watch', unlocked: true, count: 1 },
+      { id: 'bandage', unlocked: true, count: 2 },
+    ]);
+    expect(archiveEntries({ codexIds: [], warehouse: [] }, 'warehouse')).toEqual([]);
   });
 
-  it('does not add shop-only supplies to the exploration gallery', () => {
-    const ids = getCodexEntries(['bandage', 'yellow-bike', 'thick-down-jacket']).map(
-      (entry) => entry.id,
+  it('unlocks the collection from permanent discovery records independently of warehouse possession', () => {
+    const entries = archiveEntries(
+      { codexIds: ['david-head-statue'], warehouse: [stored('a', 'silver-watch')] },
+      'collection',
     );
-    expect(ids).not.toContain('bandage');
-    expect(ids).not.toContain('yellow-bike');
-    expect(ids).not.toContain('thick-down-jacket');
+    expect(entries.find((entry) => entry.id === 'david-head-statue')?.unlocked).toBe(true);
+    expect(entries.find((entry) => entry.id === 'silver-watch')?.unlocked).toBe(false);
   });
 });

@@ -1,5 +1,4 @@
 import { gameRulesMarkup } from './game-rules';
-import { codexMarkup } from './codex';
 import { roomPageMarkup } from './room-page';
 import { iconSvg } from './icons';
 import { confirmMarkup } from './confirm-dialog';
@@ -7,6 +6,7 @@ import { storyDialogMarkup } from './story-dialog';
 import { tutorialMarkup } from './tutorial';
 import { assetUrl } from '../../app/asset-url';
 import { shopMarkup } from './shop';
+import { archiveBrowserMarkup } from './archive-browser';
 
 /**
  * F01 准备页整页首屏（与助教要求一致）：
@@ -64,19 +64,13 @@ export function prepViewMarkup(): string {
           </div>
           </section>
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
-            <div class="lobby-panel-heading"><div><p class="prep-kicker">永久保存</p><h2 id="lobby-warehouse-title">仓库与剧情档案</h2></div><span class="lobby-panel-meta" id="warehouse-count-label">0 件物品 · <b id="currency-count">0 交子</b></span></div>
-            <p class="lobby-panel-intro" id="warehouse-panel-intro">成功撤离后，物品和图鉴会保存到当前账号的云端仓库。</p>
-            <section class="side-card archive"><div class="section-kicker">永久仓库 <span id="warehouse-count">0 件</span></div>
-              <p id="archive-detail">成功撤离后，物品和图鉴会保存到当前账号的云端仓库。</p>
-              <div class="warehouse-sections" aria-label="永久仓库物品">
-                <section class="warehouse-section"><h3>探索地图物品</h3><p class="warehouse-subtitle">探索带回的功能物品</p><div id="exploration-warehouse" class="warehouse-grid"></div><p id="exploration-warehouse-empty" class="warehouse-empty">暂无功能物品</p></section>
-                <section class="warehouse-section"><h3>购买道具</h3><p class="warehouse-subtitle">商店购买的功能道具</p><div id="purchase-warehouse" class="warehouse-grid"></div><p id="purchase-warehouse-empty" class="warehouse-empty">暂无购买道具</p></section>
-              </div>
-              <button id="archive-codex" class="secondary">查看图鉴 / 导出图片</button>
-              <ul id="codex-list" hidden></ul><div id="story-archive"></div>
+            <div class="lobby-panel-heading archive-panel-heading"><div><p class="prep-kicker">思源记录册</p><h2 id="lobby-warehouse-title">收藏与仓库</h2></div><span class="lobby-panel-meta" id="warehouse-count-label">0 件物品</span></div>
+            ${archiveBrowserMarkup('lobby-archive-browser')}
+            <div class="archive-panel-tools"><span id="warehouse-count" hidden></span><p id="archive-detail" hidden></p>
+              <ul id="codex-list" hidden></ul><details class="archive-story"><summary>剧情档案</summary><div id="story-archive"></div></details>
               <details><summary>存档管理</summary>
                 <button id="export-save" class="secondary">导出存档备份（JSON）</button><button id="reset-save" class="text-button">重置存档</button></details>
-            </section>
+            </div>
           </section>
           ${shopMarkup()}
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="settings" hidden aria-labelledby="lobby-settings-title">
@@ -117,14 +111,14 @@ export function mountShell(root: HTMLElement): void {
     <header class="masthead">
       <a class="brand" href="./" aria-label="交大摸金录首页"><span class="brand-mark">交</span>
       <span>交大摸金录<small>思源密码 / CAMPUS EXTRACTION</small></span></a>
-      <div class="header-actions"><div class="build-label"><span class="status-dot"></span>海淀校区 · 夜巡</div><button id="open-room" class="rules-button" aria-controls="room-page">联机房间</button><button id="open-codex" class="rules-button">物品图鉴</button><button id="open-rules" class="rules-button">游戏规则</button></div>
+      <div class="header-actions"><div class="build-label"><span class="status-dot"></span>海淀校区 · 夜巡</div><button id="open-room" class="rules-button" aria-controls="room-page">联机房间</button><button id="open-rules" class="rules-button">游戏规则</button></div>
     </header>
     <main>${prepViewMarkup()}
       <div class="play-layout">
         <section class="map-panel" aria-label="游戏地图">
           <div class="map-top"><span><i class="status-dot"></i><b id="phase-label">准备出发</b></span>
-            <span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span class="map-actions"><button id="hud-codex" class="hud-button" aria-haspopup="dialog">图鉴</button><button id="hud-rules" class="hud-button" aria-haspopup="dialog">规则</button></span></span></div>
-          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-room" aria-controls="room-page">房间</button><button id="mobile-codex">图鉴</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
+            <span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span class="map-actions"><button id="hud-rules" class="hud-button" aria-haspopup="dialog">规则</button></span></span></div>
+          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-room" aria-controls="room-page">房间</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
           <div id="team-status" class="team-status" aria-label="队伍状态" hidden><span id="team-connection" class="network-quality"></span><ul id="team-players"></ul></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
@@ -185,20 +179,5 @@ export function mountShell(root: HTMLElement): void {
         <header><h2 id="campus-map-title">海淀主校区 · 校园图</h2><button id="close-campus-map" aria-label="关闭校园图">${iconSvg('close', { size: 20 })}</button></header>
         <div class="campus-map-scroll" tabindex="0" aria-label="校园图，可滚动查看各区域"><canvas id="campus-map-expanded" width="700" height="998" role="img" aria-label="海淀主校区地图，绿色圆点为撤离点，金色圆点为玩家当前位置"></canvas></div>
         <p id="campus-map-note">金色圆点：当前位置 · 绿色圆点：撤离点 · 蓝色圆点：队友 · 查看时暂停 · 手机可滑动查看<br>校园夜景底图用于游戏导航，不能用于现实导航。</p>
-      </dialog>${warehouseItemDialogMarkup()}${codexMarkup()}${storyDialogMarkup()}${confirmMarkup()}${roomPageMarkup()}`;
-}
-
-function warehouseItemDialogMarkup(): string {
-  return `<dialog id="warehouse-item-dialog" class="warehouse-item-dialog" aria-labelledby="warehouse-item-title">
-    <button id="warehouse-item-close" class="warehouse-item-close" type="button" aria-label="关闭道具详情">×</button>
-    <div id="warehouse-item-icon" class="warehouse-detail-icon"></div>
-    <h2 id="warehouse-item-title"></h2>
-    <dl class="warehouse-item-attributes">
-      <div><dt>类型</dt><dd id="warehouse-item-category"></dd></div>
-      <div><dt>稀有度</dt><dd id="warehouse-item-rarity"></dd></div>
-      <div><dt>价值</dt><dd id="warehouse-item-value"></dd></div>
-      <div><dt>背包占格</dt><dd id="warehouse-item-slots"></dd></div>
-    </dl>
-    <p id="warehouse-item-description" class="warehouse-item-description"></p>
-  </dialog>`;
+      </dialog>${storyDialogMarkup()}${confirmMarkup()}${roomPageMarkup()}`;
 }

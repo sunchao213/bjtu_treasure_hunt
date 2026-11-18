@@ -1706,7 +1706,8 @@ html:not([data-touch='true']) .prep-equipment li {
 html:not([data-touch='true']) .prep-warning {
   line-height: 1.6;
 }
-@media (max-width: 760px) and (pointer: coarse) {
+/* Touch devices share one landscape layout, including CSS-rotated phones. */
+@media (pointer: coarse) {
   #app[data-phase='preparing'] main {
     display: block;
     height: auto;
@@ -3180,14 +3181,6 @@ footer {
   }
 }
 
-.codex-dialog {
-  width: min(1000px, calc(100% - 24px));
-}
-.codex-dialog h1 small {
-  color: #a8b8ad;
-  font-size: 16px;
-  white-space: nowrap;
-}
 .codex-content {
   padding: 16px 24px;
   overflow-y: auto;
@@ -3255,10 +3248,6 @@ footer {
 .codex-footer .primary {
   width: auto;
   flex-shrink: 0;
-}
-#codex-export-status {
-  color: #b4c4b9;
-  font-size: 12px;
 }
 @media (max-width: 600px) and (pointer: coarse) {
   .codex-grid {
