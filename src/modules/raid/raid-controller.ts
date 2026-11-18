@@ -24,6 +24,9 @@ export class RaidController implements RaidControllerPort {
   private inZone = false;
   private health = 0;
   private speedMultiplier = 1;
+  private speedMultiplierUntil = 0;
+  private shield = 0;
+  private shieldUntil = 0;
   private invulnerableUntil = 0;
   private isBusy = false;
   private saveError = false;
@@ -91,6 +94,9 @@ export class RaidController implements RaidControllerPort {
       this.steleInvestigated = false;
       this.health = this.rules.maxHealth;
       this.speedMultiplier = 1;
+      this.speedMultiplierUntil = 0;
+      this.shield = 0;
+      this.shieldUntil = 0;
       this.invulnerableUntil = 0;
       this.startedAtMs = this.clock();
       this.endedAtMs = null;
@@ -189,6 +195,13 @@ export class RaidController implements RaidControllerPort {
       return;
     }
     if (this.clock() < this.invulnerableUntil) return;
+    const activeShield = this.clock() < this.shieldUntil ? this.shield : 0;
+    if (activeShield > 0) {
+      const absorbed = Math.min(activeShield, amount);
+      this.shield -= absorbed;
+      amount -= absorbed;
+      if (amount <= 0) return;
+    }
     this.health = Math.max(0, this.health - amount);
     this.cancelExtraction();
     if (this.raidId) {
@@ -209,6 +222,10 @@ export class RaidController implements RaidControllerPort {
   }
 
   getMoveSpeedMultiplier(): number {
+    if (this.speedMultiplierUntil > 0 && this.clock() >= this.speedMultiplierUntil) {
+      this.speedMultiplier = 1;
+      this.speedMultiplierUntil = 0;
+    }
     return this.speedMultiplier;
   }
 
@@ -221,6 +238,39 @@ export class RaidController implements RaidControllerPort {
   setSpeedMultiplier(multiplier: number): boolean {
     if (!this.playable() || !Number.isFinite(multiplier) || multiplier <= 0) return false;
     this.speedMultiplier = multiplier;
+    this.speedMultiplierUntil = 0;
+    return true;
+  }
+
+  activateSpeedBoost(multiplier: number, durationMs: number): boolean {
+    if (
+      !this.playable() ||
+      !Number.isFinite(multiplier) ||
+      multiplier <= 0 ||
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0
+    ) {
+      return false;
+    }
+    if (this.getMoveSpeedMultiplier() >= multiplier) return false;
+    this.speedMultiplier = multiplier;
+    this.speedMultiplierUntil = this.clock() + durationMs;
+    return true;
+  }
+
+  activateShield(amount: number, durationMs: number): boolean {
+    if (
+      !this.playable() ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0
+    ) {
+      return false;
+    }
+    if (this.clock() >= this.shieldUntil) this.shield = 0;
+    this.shield = Math.max(this.shield, amount);
+    this.shieldUntil = Math.max(this.shieldUntil, this.clock() + durationMs);
     return true;
   }
 
@@ -308,7 +358,10 @@ export class RaidController implements RaidControllerPort {
     this.extractionStartedAtMs = null;
     this.health = this.rules.maxHealth;
     this.speedMultiplier = 1;
+    this.speedMultiplierUntil = 0;
     this.invulnerableUntil = 0;
+    this.shield = 0;
+    this.shieldUntil = 0;
     this.inventory.clear();
     return true;
   }

@@ -1,4 +1,5 @@
 import type { ItemDefinition, ItemInstance, RaidRules } from '../../shared/types/game';
+import { itemValueFor } from '../../config/game-config';
 
 export interface SettlementRetention {
   readonly warehouse: ItemInstance[];
@@ -30,7 +31,7 @@ export function retainSettlementItems(
     if (previousIndex !== undefined) {
       const previous = warehouse[previousIndex];
       if (previous) {
-        nextCurrency += values[definitions[previous.itemId]!.rarity];
+        nextCurrency += itemValueFor(definitions[previous.itemId]!, values) ?? 0;
         warehouse.splice(previousIndex, 1);
         for (const [id, index] of collectibleIndexes) {
           if (index > previousIndex) collectibleIndexes.set(id, index - 1);

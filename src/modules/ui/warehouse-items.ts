@@ -1,4 +1,4 @@
-import { ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { ITEM_DEFINITIONS, itemValueFor } from '../../config/game-config';
 
 interface WarehouseIcon {
   readonly path: string;
@@ -93,13 +93,25 @@ const ICONS: Readonly<Record<string, WarehouseIcon>> = {
     path: 'M10 12H28L32 16L36 12H54V52H36L32 56L28 52H10Z M32 16V56 M17 23H25 M17 31H25 M39 23H47 M39 31H47 M38 41L42 45L49 37',
     color: '#f3ce81',
   },
+  'electric-bike-helmet': {
+    path: 'M16 36L20 20H44L48 36V52H16Z M23 20V14H41V20 M22 36H42 M25 44H39',
+    color: '#9aa69d',
+  },
+  'david-head-statue': {
+    path: 'M23 10H41L46 18L43 31L48 40V54H16V40L21 31L18 18Z M25 22H39 M27 31H37 M24 44H40',
+    color: '#9aa69d',
+  },
+  'silver-watch': {
+    path: 'M25 8H39V18H45V46H39V56H25V46H19V18H25Z M24 22H40V42H24Z M28 27H36V37H28Z',
+    color: '#9aa69d',
+  },
 };
 
 export interface WarehouseItemDetails {
   readonly name: string;
   readonly category: string;
   readonly rarity: string;
-  readonly value: number;
+  readonly value: number | null;
   readonly bagSlots: number;
   readonly description: string;
 }
@@ -112,27 +124,31 @@ const CATEGORY_NAMES: Readonly<Record<string, string>> = {
   utility: '辅助道具',
 };
 const RARITY_NAMES: Readonly<Record<string, string>> = {
+  pending: '待定',
   common: '普通',
   uncommon: '稀有',
   epic: '史诗',
   legendary: '传说',
 };
 const DESCRIPTIONS: Readonly<Record<string, string>> = {
-  'portable-medkit': '使用后恢复 30 点生命；满血时无法使用。',
+  'portable-medkit': '使用后恢复 15 点生命；满血时无法使用。',
   'torn-notebook': '思源楼前固定宝箱中的主线线索；调查明湖石碑后携带本局手记撤离可解锁第一章。',
   'morning-coffee': '使用后恢复 25 点生命；满血时无法使用。',
-  'anomalous-feather': '校园探索中的普通收藏物，不参与章节任务条件。',
+  'anomalous-feather': '第一章主线证据；与残缺手记共同构成明湖边的异常记录。',
   'marked-campus-map': '第二章任务证据；在中央教学楼公告栏调查后取得，再去寻找思源楼金钥匙。',
   'soothe-charm': '第三章任务证据；在芳华园发现，持有时可继续寻找完整记录。',
   'complete-record': '第三章任务证据；与本局安抚护符一起带回可解锁第三章。',
+  'electric-bike-helmet': '使用后获得 15 点护盾，持续 5 秒。',
+  'david-head-statue': '大卫头雕像，史诗收藏物；没有额外使用效果。',
+  'silver-watch': '银色手表，传说收藏物；没有额外使用效果。',
   'training-bat': '近身攻击装备，携带时可以攻击敌人。',
   'stun-baton': '可使用 15 次，命中后短暂击晕敌人。',
   bandage: '使用后恢复 10 点生命。',
-  'yellow-bike': '使用后移速提升 20%。',
-  'thick-down-jacket': '使用后获得 5 秒无敌效果。',
+  'yellow-bike': '使用后移动速度提升 30%，持续 5 秒。',
+  'thick-down-jacket': '使用后获得 30 点护盾，持续 5 秒。',
   'strange-veined-ginkgo-leaf': '叶脉纹路异常的校园传说收藏物，计入本局携带价值。',
   'hunter-binoculars': '留有探索痕迹的史诗收藏物，计入本局携带价值。',
-  'roller-skates': '校园轮滑活动留下的稀有收藏物，计入本局携带价值。',
+  'roller-skates': '使用后移动速度提升 15%，持续 5 秒。',
 };
 
 export function warehouseItemIcon(itemId: string): WarehouseIcon | null {
@@ -143,13 +159,10 @@ export function warehouseItemIconIds(): readonly string[] {
   return Object.keys(ICONS);
 }
 
-const SVG_ITEM_IDS = new Set(['marked-campus-map', 'soothe-charm', 'complete-record']);
-
 /** Public artwork used by warehouse tiles and the item detail dialog. */
 export function warehouseItemIconAssetPath(itemId: string): string | null {
   if (!ICONS[itemId]) return null;
-  const extension = SVG_ITEM_IDS.has(itemId) ? 'svg' : 'png';
-  return `/assets/items/icons/${encodeURIComponent(itemId)}.${extension}`;
+  return `/assets/items/icons/${encodeURIComponent(itemId)}.png`;
 }
 
 export function warehouseItemDetails(itemId: string): WarehouseItemDetails | null {
@@ -159,7 +172,7 @@ export function warehouseItemDetails(itemId: string): WarehouseItemDetails | nul
     name: item.name,
     category: CATEGORY_NAMES[item.kind] ?? '道具',
     rarity: RARITY_NAMES[item.rarity] ?? item.rarity,
-    value: RAID_RULES.values[item.rarity],
+    value: itemValueFor(item),
     bagSlots: item.bagSlots ?? 1,
     description: DESCRIPTIONS[itemId] ?? '探索中发现并成功撤离后保存在仓库。',
   };

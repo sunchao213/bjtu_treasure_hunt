@@ -17,7 +17,7 @@ import {
   type LootSpawn,
 } from '../modules/world/loot-spawns';
 import { WORLD } from '../config/world-config';
-import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
+import { ITEM_DEFINITIONS, itemValueFor, RAID_RULES } from '../config/game-config';
 import { contains, movePlayer } from '../modules/world/movement';
 import { SearchInteraction } from '../modules/world/search-interaction';
 import {
@@ -1367,7 +1367,9 @@ export class WorldScene extends Phaser.Scene {
           const pickup =
             beat ??
             `已拾取：${definition?.name ?? chest.itemId}${
-              definition ? `（本局价值 ${RAID_RULES.values[definition.rarity]}）` : ''
+              definition && itemValueFor(definition) !== null
+                ? `（本局价值 ${itemValueFor(definition)}）`
+                : ''
             }`;
           this.banner = { text: pickup, untilMs: this.time.now + (beat === null ? 3200 : 6000) };
           this.services.notify('搜索完成，物资进入本局背包。');
@@ -1393,10 +1395,23 @@ export class WorldScene extends Phaser.Scene {
           this.interaction = '明湖石碑 · 已调查';
           return;
         }
+        if (bagFull) {
+          this.interaction = '背包已满 · 调查后无法收取异常羽毛';
+          return;
+        }
         this.interaction = '按 E 调查明湖石碑';
         this.keyPrompt = { key: 'E', label: '调查' };
         if (held && !this.previousInteract && view.phase === 'active' && view.raidId) {
           if (this.services.controller.investigateStele()) {
+            const feather = this.services.inventory.addLoot({
+              instanceId: `${view.raidId}:anomalous-feather`,
+              itemId: 'anomalous-feather',
+              origin: { kind: 'raid-loot', obtainedInRaidId: view.raidId },
+            });
+            if (!feather.ok) {
+              this.services.notify('背包已满或羽毛已存在，请先整理背包。');
+              return;
+            }
             this.services.events.emit('SteleInvestigated', { raidId: view.raidId });
             this.banner = { text: steleStoryBeat(), untilMs: this.time.now + 6000 };
             this.services.notify('明湖石碑调查完成。');

@@ -66,16 +66,16 @@ export const QUEST_CHAPTERS: readonly QuestChapterSpec[] = [
         spawnIndex: -1,
       },
       {
-        itemId: 'minghu-stele',
-        label: '「明湖石碑调查记录」',
-        searchHint: '前往明湖石碑附近按 E 调查',
+        itemId: EVIDENCE_FEATHER,
+        label: '「异常羽毛」',
+        searchHint: '携带残缺手记前往明湖石碑调查并取得异常羽毛',
         placeName: '明湖石碑',
         spawnZoneId: '',
         spawnIndex: -1,
       },
     ],
     prerequisiteHint: '明湖石碑：先在思源楼前取得本局残缺手记。',
-    completeHint: '任务完成：携带本局残缺手记成功撤离可解锁第一章。',
+    completeHint: '线索齐备：携带本局残缺手记与异常羽毛成功撤离可解锁第一章。',
   },
   {
     id: SECOND_CHAPTER_ID,
@@ -214,11 +214,10 @@ export function chapterEvidence(
   chapterId: string = QUEST_CHAPTER_ID,
   steleInvestigated = false,
 ): ChapterEvidence {
+  void steleInvestigated;
   const chapter = questChapterById(chapterId);
   const evidenceIds = chapter.evidence.map((entry) => entry.itemId);
-  const carriedIds = evidenceIds.filter((itemId) =>
-    itemId === 'minghu-stele' ? steleInvestigated : hasEvidence(items, itemId, raidId),
-  );
+  const carriedIds = evidenceIds.filter((itemId) => hasEvidence(items, itemId, raidId));
   return {
     chapterId: chapter.id,
     evidenceIds,
@@ -235,8 +234,8 @@ export function carriedEvidence(
   raidId: string | null,
 ): CarriedEvidence {
   const notebook = hasEvidence(items, EVIDENCE_NOTEBOOK, raidId);
-  const feather = false;
-  return { notebook, feather, collected: notebook ? 1 : 0 };
+  const feather = hasEvidence(items, EVIDENCE_FEATHER, raidId);
+  return { notebook, feather, collected: Number(notebook) + Number(feather) };
 }
 
 /** 兼容旧调用方：只认本局新获得且仍携带的手记。 */
@@ -327,8 +326,5 @@ export function chapterUnlockGranted(
     return false;
   }
   const chapter = questChapterById(chapterId);
-  if (chapterId === QUEST_CHAPTER_ID) {
-    return hasEvidence(result.items, EVIDENCE_NOTEBOOK, result.raidId);
-  }
   return chapter.evidence.every((entry) => hasEvidence(result.items, entry.itemId, result.raidId));
 }

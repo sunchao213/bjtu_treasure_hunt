@@ -6,7 +6,9 @@ import {
   HEALING_AMOUNTS,
   isPurchasedItem,
   ITEM_DEFINITIONS,
+  itemValueFor,
   RAID_RULES,
+  UTILITY_EFFECTS,
 } from './config/game-config';
 import { renderShop, SHOP_EFFECTS } from './modules/ui/shop';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
@@ -30,7 +32,6 @@ import {
   chapterUnlockGranted,
   questChapterForEvidence,
   questProgress,
-  QUEST_CHAPTER_ID,
 } from './modules/quests/quest-service';
 import { chapterContentById } from './modules/quests/chapter-content';
 import { bindStoryDialog, stepForEvidence } from './modules/ui/story-dialog';
@@ -759,16 +760,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       storyShownPerRaid.add(key);
       story.open({ kind: 'step', step }, chapterContentById(chapterId));
     });
-    events.on('SteleInvestigated', ({ raidId }) => {
-      const chapterId = activeQuestChapter(save.view().unlockedChapterIds).id;
-      if (chapterId !== QUEST_CHAPTER_ID) return;
-      const step = stepForEvidence('minghu-stele', chapterContentById(chapterId));
-      if (!step) return;
-      const key = `${raidId}:minghu-stele`;
-      if (storyShownPerRaid.has(key)) return;
-      storyShownPerRaid.add(key);
-      story.open({ kind: 'step', step }, chapterContentById(chapterId));
-    });
     // 剧情档案的「回看」按钮随存档状态重渲染，用事件委托绑定。
     element('story-archive').addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest<HTMLElement>('[data-chapter-story]');
@@ -1098,7 +1089,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           ? '已装备 · 不占背包格'
           : item.origin.kind === 'carry-in'
             ? '带入物 · 不计本局价值'
-            : `本局搜得 · ${RAID_RULES.values[definition.rarity]} 价值`;
+            : itemValueFor(definition) === null
+              ? '本局搜得 · 价值待定'
+              : `本局搜得 · ${itemValueFor(definition)} 价值`;
         label.append(sub);
         li.append(label);
         if (definition.kind === 'healing') {
@@ -1138,16 +1131,17 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           use.title = SHOP_EFFECTS[item.itemId]!;
           use.onclick = () => {
             const consumed = activeInventory.consumeUtility(item.instanceId, () => {
-              if (item.itemId === 'yellow-bike') {
-                return (
-                  activeController.getMoveSpeedMultiplier() < 1.2 &&
-                  activeController.setSpeedMultiplier(1.2)
+              const effect = UTILITY_EFFECTS[item.itemId];
+              if (!effect) return false;
+              if (effect.speedMultiplier !== undefined) {
+                return activeController.activateSpeedBoost(
+                  effect.speedMultiplier,
+                  effect.durationMs,
                 );
               }
-              return (
-                item.itemId === 'thick-down-jacket' &&
-                activeController.activateInvulnerability(5000)
-              );
+              return effect.shield !== undefined
+                ? activeController.activateShield(effect.shield, effect.durationMs)
+                : false;
             });
             notify(
               consumed.ok

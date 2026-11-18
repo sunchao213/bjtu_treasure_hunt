@@ -67,6 +67,21 @@ async function setup(
 }
 
 describe('A extraction lifecycle', () => {
+  it('expires speed boosts and shields, and a renewed smaller shield does not inherit an expired value', async () => {
+    const s = await setup();
+    expect(s.controller.activateSpeedBoost(1.3, 5_000)).toBe(true);
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1.3);
+    expect(s.controller.activateShield(30, 5_000)).toBe(true);
+    s.controller.applyDamage(20);
+    expect(s.controller.getView().health).toBe(100);
+
+    s.advance(5_000);
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    expect(s.controller.activateShield(15, 5_000)).toBe(true);
+    s.controller.applyDamage(20);
+    expect(s.controller.getView().health).toBe(95);
+  });
+
   it("only investigates once when carrying this raid's notebook and resets for the next raid", async () => {
     const s = await setup();
     expect(s.controller.getView().steleInvestigated).toBe(false);
@@ -124,6 +139,11 @@ describe('A extraction lifecycle', () => {
       origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
     });
     expect(s.controller.investigateStele()).toBe(true);
+    s.inventory.addLoot({
+      instanceId: 'current-feather',
+      itemId: 'anomalous-feather',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
+    });
     s.controller.setExtractionPresence(true);
     expect(s.controller.startExtraction().ok).toBe(true);
     s.advance(5_000);
@@ -199,7 +219,7 @@ describe('A extraction lifecycle', () => {
 
   it('rejects 95, rejects outside zone, and allows exactly 100', async () => {
     const s = await setup();
-    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    s.inventory.addLoot(loot('epic', 'hunter-binoculars'));
     s.inventory.addLoot(loot('rare'));
     s.inventory.addLoot(loot('common', 'scratch-paper'));
     s.controller.setExtractionPresence(true);
@@ -221,7 +241,7 @@ describe('A extraction lifecycle', () => {
 
   it('rejects extraction at exactly 99 value', async () => {
     const s = await setup(600_000, undefined, { ...RAID_RULES.values, common: 9, uncommon: 30 });
-    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    s.inventory.addLoot(loot('epic', 'hunter-binoculars'));
     s.inventory.addLoot(loot('rare', 'window-seat'));
     s.inventory.addLoot(loot('common', 'scratch-paper'));
     s.controller.setExtractionPresence(true);
@@ -231,7 +251,7 @@ describe('A extraction lifecycle', () => {
 
   it('cancels immediately when 110 drops to 85; restored eligibility needs a fresh 5 seconds', async () => {
     const s = await setup();
-    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    s.inventory.addLoot(loot('epic', 'hunter-binoculars'));
     s.inventory.addLoot(loot('rare-1'));
     s.inventory.addLoot(loot('rare-2'));
     s.controller.setExtractionPresence(true);

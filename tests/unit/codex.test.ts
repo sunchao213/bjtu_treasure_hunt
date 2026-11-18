@@ -4,13 +4,29 @@ import { EXPLORATION_CATALOG_IDS, ITEM_CATALOG_IDS } from '../../src/config/game
 import { CODEX_ENTRIES } from '../../src/modules/quests/chapter-content';
 
 describe('persistent collection gallery', () => {
+  it('registers the three new collectibles with assigned rarity and value', () => {
+    const ids = ['electric-bike-helmet', 'david-head-statue', 'silver-watch'];
+    const entries = getCodexEntries(ids).filter((entry) => ids.includes(entry.id));
+    expect(entries).toMatchObject([
+      {
+        id: 'electric-bike-helmet',
+        name: '电瓶车头盔',
+        rarity: '普通',
+        value: 15,
+        unlocked: true,
+      },
+      { id: 'david-head-statue', name: '大卫头雕像', rarity: '史诗', value: 80, unlocked: true },
+      { id: 'silver-watch', name: '银色手表', rarity: '传说', value: 100, unlocked: true },
+    ]);
+  });
+
   it('adds three collectible slots with their specified quality, value and blank artwork', () => {
     const ids = ['strange-veined-ginkgo-leaf', 'hunter-binoculars', 'roller-skates'];
     const entries = getCodexEntries(ids);
     expect(entries.filter((entry) => ids.includes(entry.id))).toMatchObject([
       { name: '叶脉奇怪的银杏叶', rarity: '传说', value: 150, icon: 'leaf', unlocked: true },
       { name: '猎手望远镜', rarity: '史诗', value: 60, icon: 'binoculars', unlocked: true },
-      { name: '轮滑鞋', rarity: '稀有', value: 25, icon: 'skates', unlocked: true },
+      { name: '轮滑鞋', rarity: '普通', value: 15, icon: 'skates', unlocked: true },
     ]);
     const locked = getCodexEntries([]).filter((entry) => ids.includes(entry.id));
     expect(locked).toHaveLength(3);
@@ -37,7 +53,7 @@ describe('persistent collection gallery', () => {
       value: 60,
       icon: 'feather',
     });
-    expect(known.description).toContain('普通收藏物');
+    expect(known.description).toContain('第一章主线证据');
   });
 
   it('ignores unknown save IDs and counts duplicate unlock IDs only once', () => {
@@ -50,7 +66,7 @@ describe('persistent collection gallery', () => {
     expect(entries.filter((e) => e.unlocked)).toHaveLength(2);
     expect(entries.map((e) => e.id)).toEqual(EXPLORATION_CATALOG_IDS);
     expect(entries.find((e) => e.id === 'portable-medkit')?.description).toContain(
-      '恢复 30 点生命',
+      '恢复 15 点生命',
     );
   });
 

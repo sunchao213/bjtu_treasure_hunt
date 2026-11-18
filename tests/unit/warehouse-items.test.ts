@@ -44,8 +44,14 @@ describe('warehouse item tiles', () => {
     expect(warehouseItemDetails('yellow-bike')).toMatchObject({
       name: '小黄车',
       category: '辅助道具',
-      value: 10,
+      value: 30,
       bagSlots: 2,
+    });
+    expect(warehouseItemDetails('silver-watch')).toMatchObject({
+      name: '银色手表',
+      rarity: '传说',
+      value: 100,
+      description: '银色手表，传说收藏物；没有额外使用效果。',
     });
     expect(warehouseItemDetails('unknown')).toBeNull();
   });

@@ -102,6 +102,16 @@ export class OnlineRaidController implements RaidControllerPort {
     void multiplier;
     return false;
   }
+  activateSpeedBoost(multiplier: number, durationMs: number): boolean {
+    void multiplier;
+    void durationMs;
+    return false;
+  }
+  activateShield(amount: number, durationMs: number): boolean {
+    void amount;
+    void durationMs;
+    return false;
+  }
   applyDamage(amount: number): void {
     void amount;
   }

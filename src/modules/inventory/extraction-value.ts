@@ -1,4 +1,5 @@
 import type { ItemDefinition, ItemInstance, RaidRules } from '../../shared/types/game';
+import { itemValueFor } from '../../config/game-config';
 
 /** Pure calculation from authoritative carried instances and a per-raid rule snapshot. */
 export function calculateExtractionValue(
@@ -28,7 +29,7 @@ export function calculateExtractionValue(
     if (!definition) {
       throw new Error(`Unknown item definition: ${item.itemId}`);
     }
-    const value = values[definition.rarity];
+    const value = itemValueFor(definition, values) ?? 0;
     if (!Number.isSafeInteger(value) || value < 0) {
       throw new Error('Invalid item value');
     }

@@ -9,7 +9,6 @@ import {
   activeQuestChapter,
   chapterEvidence,
   chapterUnlockGranted,
-  hasCurrentRaidNotebook,
   questChapterById,
   visibleQuestChapters,
 } from '../quests/quest-service';
@@ -235,9 +234,12 @@ export function chapterLockHint(
   if (chapterUnlockGranted(result, chapterId)) return null;
   const chapter = questChapterById(chapterId);
   if (chapterId === 'siyuan-code') {
-    return hasCurrentRaidNotebook(result.items, result.raidId)
-      ? '本章未解锁：尚未调查明湖石碑。'
-      : '本章未解锁：需带回本局在思源楼前取得的「残缺手记」。';
+    const evidence = chapterEvidence(result.items, result.raidId, chapterId);
+    const missing = chapter.evidence
+      .filter((entry) => !evidence.carriedIds.includes(entry.itemId))
+      .map((entry) => entry.label);
+    if (missing.length === 0) return '本章未解锁：任务完成状态未记录，请核对本局任务进度。';
+    return `本章未解锁：需同时带回${missing.join('和')}。`;
   }
   const evidence = chapterEvidence(result.items, result.raidId, chapterId);
   const missing = chapter.evidence

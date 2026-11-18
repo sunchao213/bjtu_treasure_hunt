@@ -1,16 +1,18 @@
-import { EXPLORATION_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import { EXPLORATION_CATALOG_IDS, ITEM_DEFINITIONS, itemValueFor } from '../../config/game-config';
 import { CHAPTERS, CODEX_ENTRIES } from '../quests/chapter-content';
 import type { Rarity } from '../../shared/types/game';
 import { iconSvg } from './icons';
 import { warehouseItemIconAssetPath, warehouseItemIconSvg } from './warehouse-items';
 
 const rarityNames: Record<Rarity, string> = {
+  pending: '待定',
   common: '普通',
   uncommon: '稀有',
   epic: '史诗',
   legendary: '传说',
 };
 const rarityColors: Record<Rarity, string> = {
+  pending: '#9aa69d',
   common: '#c4cfc6',
   uncommon: '#8cd6b3',
   epic: '#c2a2ee',
@@ -19,7 +21,7 @@ const rarityColors: Record<Rarity, string> = {
 const details: Record<string, { icon: string; description: string }> = {
   'portable-medkit': {
     icon: 'medkit',
-    description: '使用后恢复 30 点生命并消耗；满血时不能使用，消耗后不再计入携带价值。',
+    description: '使用后恢复 15 点生命并消耗；满血时不能使用，消耗后不再计入携带价值。',
   },
   'library-reward-ticket': {
     icon: 'paper',
@@ -39,7 +41,7 @@ const details: Record<string, { icon: string; description: string }> = {
   'school-badge': { icon: 'badge', description: '刻有校训的徽章，校园收藏物。' },
   'anomalous-feather': {
     icon: 'feather',
-    description: '普通收藏物，不参与章节任务条件。',
+    description: '明湖石碑调查后出现的第一章主线证据，与残缺手记共同构成异常记录。',
   },
   'gpa-charm': { icon: 'badge', description: '校园传说中的护符，作为收藏物计分。' },
   'siyuan-key': { icon: 'key', description: '思源楼主题的传说收藏物，具有较高携带价值。' },
@@ -53,7 +55,7 @@ const details: Record<string, { icon: string; description: string }> = {
   },
   'roller-skates': {
     icon: 'skates',
-    description: '校园轮滑活动主题的稀有收藏物，作为收藏物计分。',
+    description: '使用后移动速度提升 15%，持续 5 秒。',
   },
   'training-bat': {
     icon: 'bat',
@@ -66,6 +68,18 @@ const details: Record<string, { icon: string; description: string }> = {
   'reinforced-bat': {
     icon: 'bat',
     description: '强化近身训练装备，携带时提升攻击伤害；仓库带入不计本局价值。',
+  },
+  'electric-bike-helmet': {
+    icon: 'helmet',
+    description: '使用后获得 15 点护盾，持续 5 秒。',
+  },
+  'david-head-statue': {
+    icon: 'statue',
+    description: '史诗收藏物；没有额外使用效果。',
+  },
+  'silver-watch': {
+    icon: 'watch',
+    description: '传说收藏物；没有额外使用效果。',
   },
 };
 const iconPaths: Record<string, string> = {
@@ -82,6 +96,9 @@ const iconPaths: Record<string, string> = {
     'M12 54L46 14 M18 46Q8 28 32 12Q44 4 54 10Q60 26 42 42Q30 52 18 46 M26 38L24 22 M34 29L49 28',
   key: 'M24 10A14 14 0 1 1 24 38A14 14 0 1 1 24 10 M24 19A5 5 0 1 1 24 29A5 5 0 1 1 24 19 M34 34L54 54 M44 44L50 38 M50 50L56 44',
   bat: 'M12 54L19 47 M16 49L34 25Q42 10 49 10Q56 10 54 18Q51 26 38 31L22 52Z M31 31L37 37',
+  helmet: 'M10 37A22 22 0 0 1 54 37V43H10Z M10 43H54 M32 15V32 M20 22L25 34 M44 22L39 34',
+  statue: 'M22 10H42L47 20L43 31L50 42V55H14V42L21 31L17 20Z M25 22H39 M27 31H37 M22 45H42',
+  watch: 'M24 8H40V18H46V46H40V56H24V46H18V18H24Z M24 23H40V41H24Z M32 27V33L37 36',
   locked: 'M18 27V19A14 14 0 0 1 46 19V27 M12 27H52V56H12Z M32 37V46',
 };
 
@@ -110,7 +127,7 @@ export function getCodexEntries(ids: readonly string[]): CodexEntry[] {
       unlocked: known,
       name: known ? item.name : '未发现物品',
       rarity: known ? rarityNames[item.rarity] : '未解锁',
-      value: known ? RAID_RULES.values[item.rarity] : null,
+      value: known ? itemValueFor(item) : null,
       description: known
         ? [CODEX_ENTRIES[item.itemId], detail?.description ?? '校园收藏物。']
             .filter(Boolean)

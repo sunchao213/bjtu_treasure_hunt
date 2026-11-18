@@ -11,6 +11,7 @@ import {
 } from '../../src/modules/quests/chapter-content';
 import {
   EVIDENCE_NOTEBOOK,
+  EVIDENCE_FEATHER,
   NOTEBOOK_PREREQUISITE_HINT,
   QUEST_CHAPTER_ID,
   QUEST_COMPLETE_HINT,
@@ -41,14 +42,14 @@ describe('第一章剧情内容', () => {
     expect(findStep(FIRST_CHAPTER, 'step-missing')).toBeUndefined();
   });
 
-  it('每一步的前置条件与任务链一致：手记 → 石碑 → 撤离', () => {
+  it('每一步的前置条件与任务链一致：手记 → 石碑与羽毛 → 撤离', () => {
     expect(findStep(FIRST_CHAPTER, 'step-1-siyuan-chest')?.requiresEvidence).toEqual([]);
     expect(findStep(FIRST_CHAPTER, 'step-2-minghu-stele')?.requiresEvidence).toEqual([
       EVIDENCE_NOTEBOOK,
     ]);
     expect(findStep(FIRST_CHAPTER, 'step-3-south-extraction')?.requiresEvidence).toEqual([
       EVIDENCE_NOTEBOOK,
-      'minghu-stele',
+      EVIDENCE_FEATHER,
     ]);
   });
 
@@ -61,9 +62,9 @@ describe('第一章剧情内容', () => {
     expect(FIRST_CHAPTER.unlockHint).toContain('成功撤离');
   });
 
-  it('场景剧情提示只在取得手记时触发线索一', () => {
+  it('取得手记和异常羽毛时分别触发对应线索', () => {
     expect(evidenceStoryBeat(EVIDENCE_NOTEBOOK)).toContain('线索一');
-    expect(evidenceStoryBeat('anomalous-feather')).toBeNull();
+    expect(evidenceStoryBeat(EVIDENCE_FEATHER)).toContain('线索二');
     expect(evidenceStoryBeat('scratch-paper')).toBeNull();
   });
 });
@@ -96,7 +97,7 @@ describe('剧情稿 v1.1 对齐：学生视角与完整章节', () => {
     expect(FIRST_CHAPTER.prologue).toContain('校园卡');
     expect(FIRST_CHAPTER.prologue).toContain('别走地图上没有的路');
     expect(FIRST_CHAPTER.epilogue).toContain('新的记忆缺口');
-    expect(FIRST_CHAPTER.settlementSummary).toContain('明湖石碑');
+    expect(FIRST_CHAPTER.settlementSummary).toContain('异常羽毛');
     // V1.0 冻结范围不含联机与经济，结算文案不得出现互助组、组队、排行榜等承诺。
     expect(FIRST_CHAPTER.settlementSummary).not.toMatch(/互助组|组队|联机|排行榜/);
   });
@@ -129,6 +130,6 @@ describe('剧情稿 v1.1 对齐：学生视角与完整章节', () => {
 
   it('局内文案与剧情稿表 7 逐字一致', () => {
     expect(NOTEBOOK_PREREQUISITE_HINT).toBe('明湖石碑：先在思源楼前取得本局残缺手记。');
-    expect(QUEST_COMPLETE_HINT).toBe('任务完成：携带本局残缺手记成功撤离可解锁第一章。');
+    expect(QUEST_COMPLETE_HINT).toBe('线索齐备：携带本局残缺手记与异常羽毛成功撤离可解锁第一章。');
   });
 });

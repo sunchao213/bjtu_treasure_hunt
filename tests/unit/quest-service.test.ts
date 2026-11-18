@@ -43,27 +43,30 @@ describe('本局手记身份判定', () => {
     expect(hasCurrentRaidNotebook([notebook], null)).toBe(false);
   });
 
-  it('异常羽毛按普通收藏处理，不计入任务进度', () => {
+  it('异常羽毛是第一章证据，必须是本局新取得的羽毛', () => {
     expect(carriedEvidence([feather], RAID_ID)).toEqual({
       notebook: false,
-      feather: false,
-      collected: 0,
+      feather: true,
+      collected: 1,
     });
-    expect(isQuestComplete([notebook, feather], RAID_ID, false)).toBe(false);
-    expect(isQuestComplete([notebook], RAID_ID, true)).toBe(true);
+    expect(
+      carriedEvidence([loot('old-feather', 'anomalous-feather', 'raid-old')], RAID_ID).feather,
+    ).toBe(false);
+    expect(isQuestComplete([notebook, feather], RAID_ID, false)).toBe(true);
+    expect(isQuestComplete([notebook], RAID_ID, true)).toBe(false);
   });
 });
 
 describe('明湖石碑任务进度', () => {
-  it('必须同时持有本局手记并已调查石碑才完成', () => {
+  it('必须同时持有本局手记与异常羽毛才完成', () => {
     expect(isQuestComplete([], RAID_ID, true)).toBe(false);
     expect(isQuestComplete([notebook], RAID_ID, false)).toBe(false);
     expect(isQuestComplete([carryIn('carry', 'torn-notebook')], RAID_ID, true)).toBe(false);
     expect(isQuestComplete([loot('old', 'torn-notebook', 'raid-old')], RAID_ID, true)).toBe(false);
-    expect(isQuestComplete([notebook], RAID_ID, true)).toBe(true);
+    expect(isQuestComplete([notebook, feather], RAID_ID)).toBe(true);
   });
 
-  it('进度卡显示取得手记与调查石碑两步', () => {
+  it('进度卡显示取得手记、调查石碑并带回羽毛', () => {
     expect(questProgress([], null).statusText).toBe('开始探索后，可按线索搜集任务证据。');
     const initial = questProgress([], RAID_ID);
     expect(initial.statusText).toContain('思源楼前');
@@ -74,7 +77,7 @@ describe('明湖石碑任务进度', () => {
     expect(notebookOnly.collected).toBe(1);
     expect(notebookOnly.complete).toBe(false);
 
-    const done = questProgress([notebook], RAID_ID, true);
+    const done = questProgress([notebook, feather], RAID_ID, true);
     expect(done.statusText).toBe(QUEST_COMPLETE_HINT);
     expect(done.collected).toBe(2);
     expect(done.complete).toBe(true);
@@ -86,8 +89,8 @@ describe('明湖石碑任务进度', () => {
 });
 
 describe('章节解锁判定', () => {
-  it('成功撤离、任务已完成且携带本局手记时解锁，羽毛无关', () => {
-    expect(chapterUnlockGranted(result({ items: [notebook] }))).toBe(true);
+  it('成功撤离且带回本局手记与羽毛时解锁', () => {
+    expect(chapterUnlockGranted(result({ items: [notebook] }))).toBe(false);
     expect(chapterUnlockGranted(result({ items: [notebook, feather] }))).toBe(true);
   });
 

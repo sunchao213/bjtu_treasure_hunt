@@ -68,7 +68,7 @@ describe('formal persistence and migration', () => {
     expect(reloaded.view().warehouse).toHaveLength(2);
   });
 
-  it('unlocks only after successful extraction with a completed task and the current-raid notebook', async () => {
+  it('unlocks only after successful extraction with a completed task and both current-raid clues', async () => {
     const cases = [
       { outcome: 'success' as const, complete: true, originRaidId: 'story', unlock: true },
       { outcome: 'success' as const, complete: false, originRaidId: 'story', unlock: false },
@@ -79,11 +79,11 @@ describe('formal persistence and migration', () => {
       const save = new PersistentSave(new MemoryStorage());
       await save.beginRaid('story', []);
       const evidence: ItemInstance[] = [
-        {
-          instanceId: `story:torn-notebook:${index}`,
-          itemId: 'torn-notebook',
-          origin: { kind: 'raid-loot', obtainedInRaidId: testCase.originRaidId },
-        },
+        ...['torn-notebook', 'anomalous-feather'].map((itemId) => ({
+          instanceId: `story:${itemId}:${index}`,
+          itemId,
+          origin: { kind: 'raid-loot' as const, obtainedInRaidId: testCase.originRaidId },
+        })),
       ];
       await save.finalizeRaid({
         ...result('story'),

@@ -3,8 +3,10 @@ import type { ItemInstance } from '../../shared/types/game';
 
 export const SHOP_EFFECTS: Readonly<Record<string, string>> = {
   bandage: '恢复 10 点生命；满血时不会消耗。',
-  'yellow-bike': '本局移动速度提升 20%；每局使用一次即可。',
-  'thick-down-jacket': '获得 5 秒无敌，适合遭遇敌人时使用。',
+  'yellow-bike': '移动速度提升 30%，持续 5 秒。',
+  'thick-down-jacket': '获得 30 点护盾，持续 5 秒。',
+  'roller-skates': '移动速度提升 15%，持续 5 秒。',
+  'electric-bike-helmet': '获得 15 点护盾，持续 5 秒。',
 };
 
 export function shopMarkup(): string {

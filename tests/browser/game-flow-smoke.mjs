@@ -700,7 +700,7 @@ try {
   await click(storyPage, '#inventory [data-item-id="yellow-bike"] button');
   assert.equal(
     await evaluate(storyPage, 'testScene.services.controller.getMoveSpeedMultiplier()'),
-    1.2,
+    1.3,
     'purchased bike applies speed',
   );
   await click(storyPage, '#inventory [data-item-id="thick-down-jacket"] button');
@@ -708,7 +708,7 @@ try {
   assert.equal(
     await evaluate(storyPage, 'testScene.services.controller.getView().health'),
     90,
-    'purchased jacket blocks damage',
+    'purchased jacket shield absorbs damage',
   );
   await until(
     storyPage,
@@ -717,7 +717,7 @@ try {
   await screenshot(storyPage, '13-purchased-items-used');
   await abandon(storyPage);
   pass(
-    'Standalone shop: balance, all three purchases, insufficient funds, failed save rollback, duplicate click, cloud reload, carry-in, healing, speed and invulnerability',
+    'Standalone shop: balance, all three purchases, insufficient funds, failed save rollback, duplicate click, cloud reload, carry-in, healing, speed and shield effects',
   );
 
   await click(host, '#mode-room');

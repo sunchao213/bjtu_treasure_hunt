@@ -1,10 +1,12 @@
-export type Rarity = 'common' | 'uncommon' | 'epic' | 'legendary';
+export type Rarity = 'pending' | 'common' | 'uncommon' | 'epic' | 'legendary';
 
 export interface ItemDefinition {
   readonly itemId: string;
   readonly name: string;
   readonly rarity: Rarity;
   readonly kind: 'collectible' | 'healing' | 'quest' | 'weapon' | 'utility';
+  /** Extraction value override; null marks a value that is still pending. */
+  readonly value?: number | null;
   /** Number of raid bag slots occupied by one instance. */
   readonly bagSlots?: number;
   /** Purchase price in the persistent warehouse currency. */
@@ -89,6 +91,8 @@ export interface RaidControllerPort {
   heal(amount: number): boolean;
   getMoveSpeedMultiplier(): number;
   setSpeedMultiplier(multiplier: number): boolean;
+  activateSpeedBoost(multiplier: number, durationMs: number): boolean;
+  activateShield(amount: number, durationMs: number): boolean;
   activateInvulnerability(durationMs: number): boolean;
   applyDamage(amount: number): void;
   cancelExtraction(): void;

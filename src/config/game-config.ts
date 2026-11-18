@@ -7,34 +7,37 @@ export const RAID_RULES: RaidRules = {
   searchDurationMs: 2_000,
   maxHealth: 100,
   bagCapacity: 6,
-  values: { common: 10, uncommon: 25, epic: 60, legendary: 150 },
+  values: { pending: 0, common: 10, uncommon: 25, epic: 60, legendary: 150 },
 };
 
 export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object.fromEntries(
   [
     ['scratch-paper', '草稿纸', 'common', 'collectible'],
     ['half-eraser', '半块橡皮', 'common', 'collectible'],
-    ['portable-medkit', '随身急救包', 'common', 'healing'],
+    ['portable-medkit', '随身急救包', 'common', 'healing', undefined, undefined, 15],
     ['torn-notebook', '残缺手记', 'uncommon', 'quest'],
     ['window-seat', '靠窗座凭证', 'uncommon', 'collectible'],
     ['morning-coffee', '早八不困咖啡', 'uncommon', 'healing'],
     ['school-badge', '校训徽章', 'uncommon', 'collectible'],
-    ['anomalous-feather', '异常羽毛', 'epic', 'collectible'],
-    ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible'],
-    ['library-reward-ticket', '图书馆占座券', 'epic', 'collectible'],
+    ['anomalous-feather', '异常羽毛', 'epic', 'collectible', undefined, undefined, 60],
+    ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible', undefined, undefined, 50],
+    ['library-reward-ticket', '图书馆占座券', 'epic', 'collectible', undefined, undefined, 50],
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],
     ['strange-veined-ginkgo-leaf', '叶脉奇怪的银杏叶', 'legendary', 'collectible'],
     ['hunter-binoculars', '猎手望远镜', 'epic', 'collectible'],
-    ['roller-skates', '轮滑鞋', 'uncommon', 'collectible'],
+    ['roller-skates', '轮滑鞋', 'common', 'utility', undefined, undefined, 15],
     ['marked-campus-map', '被涂改的校园地图', 'common', 'quest'],
     ['soothe-charm', '安抚护符', 'epic', 'quest'],
     ['complete-record', '完整记录', 'legendary', 'quest'],
+    ['electric-bike-helmet', '电瓶车头盔', 'common', 'utility', undefined, undefined, 15],
+    ['david-head-statue', '大卫头雕像', 'epic', 'collectible', undefined, undefined, 80],
+    ['silver-watch', '银色手表', 'legendary', 'collectible', undefined, undefined, 100],
     ['training-bat', '训练棍', 'common', 'weapon'],
     ['stun-baton', '电击器', 'uncommon', 'weapon'],
     ['bandage', '创可贴', 'common', 'healing', 1, 10],
-    ['yellow-bike', '小黄车', 'common', 'utility', 2, 50],
-    ['thick-down-jacket', '超厚羽绒服', 'common', 'utility', 1, 100],
-  ].map(([itemId, name, rarity, kind, bagSlots, price]) => {
+    ['yellow-bike', '小黄车', 'uncommon', 'utility', 2, 50, 30],
+    ['thick-down-jacket', '超厚羽绒服', 'uncommon', 'utility', 1, 100, 30],
+  ].map(([itemId, name, rarity, kind, bagSlots, price, value]) => {
     // Static configuration; the satisfies check belongs on the typed object below.
     const definition: ItemDefinition = {
       itemId: String(itemId ?? ''),
@@ -43,10 +46,18 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
       kind: kind as ItemDefinition['kind'],
       ...(typeof bagSlots === 'number' ? { bagSlots } : {}),
       ...(typeof price === 'number' ? { price } : {}),
+      ...(typeof value === 'number' || value === null ? { value } : {}),
     };
     return [definition.itemId, definition];
   }),
 );
+
+export function itemValueFor(
+  definition: Pick<ItemDefinition, 'rarity' | 'value'>,
+  values: RaidRules['values'] = RAID_RULES.values,
+): number | null {
+  return definition.value === null ? null : (definition.value ?? values[definition.rarity]);
+}
 
 /** Exploration discoveries that can be permanently recorded in the gallery. */
 export const ITEM_CATALOG_IDS = [
@@ -67,6 +78,9 @@ export const ITEM_CATALOG_IDS = [
   'marked-campus-map',
   'soothe-charm',
   'complete-record',
+  'electric-bike-helmet',
+  'david-head-statue',
+  'silver-watch',
 ] as const;
 
 /** All known item IDs, including shop-only supplies, for save/config validation. */
@@ -98,9 +112,18 @@ export function isExplorationItem(
 
 /** Healing amounts are effects, not extraction values; values reflect current product rules. */
 export const HEALING_AMOUNTS: Readonly<Record<string, number>> = {
-  'portable-medkit': 30,
+  'portable-medkit': 15,
   'morning-coffee': 25,
   bandage: 10,
+};
+
+export const UTILITY_EFFECTS: Readonly<
+  Record<string, { speedMultiplier?: number; shield?: number; durationMs: number }>
+> = {
+  'yellow-bike': { speedMultiplier: 1.3, durationMs: 5_000 },
+  'roller-skates': { speedMultiplier: 1.15, durationMs: 5_000 },
+  'thick-down-jacket': { shield: 30, durationMs: 5_000 },
+  'electric-bike-helmet': { shield: 15, durationMs: 5_000 },
 };
 
 export type CatalogItemId = (typeof ITEM_CATALOG_IDS)[number];

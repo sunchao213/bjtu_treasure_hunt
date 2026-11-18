@@ -4,6 +4,7 @@ import {
   ITEM_CATALOG_IDS,
   ITEM_DEFINITIONS,
   assertKnownItemId,
+  HEALING_AMOUNTS,
   isCatalogItemId,
   isKnownItemId,
 } from '../../src/config/game-config';
@@ -32,6 +33,21 @@ describe('product item catalog configuration', () => {
     expect(isKnownItemId('campus-map')).toBe(false);
     expect(isCatalogItemId('campus-map')).toBe(false);
     expect(ITEM_DEFINITIONS['portable-medkit']?.kind).toBe('healing');
+    expect(HEALING_AMOUNTS['portable-medkit']).toBe(15);
+    expect(ITEM_DEFINITIONS['roller-skates']).toMatchObject({
+      kind: 'utility',
+      rarity: 'common',
+      value: 15,
+    });
+    expect(ITEM_DEFINITIONS['electric-bike-helmet']).toMatchObject({
+      kind: 'utility',
+      rarity: 'common',
+      value: 15,
+    });
+    expect(ITEM_DEFINITIONS['david-head-statue']).toMatchObject({ rarity: 'epic', value: 80 });
+    expect(ITEM_DEFINITIONS['silver-watch']).toMatchObject({ rarity: 'legendary', value: 100 });
+    expect(ITEM_DEFINITIONS['gpa-charm']).toMatchObject({ rarity: 'epic', value: 50 });
+    expect(ITEM_DEFINITIONS['library-reward-ticket']).toMatchObject({ rarity: 'epic', value: 50 });
   });
 
   it('rejects unknown definitions and accepts every configured search-point item', () => {
