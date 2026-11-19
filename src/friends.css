@@ -1,0 +1,404 @@
+/**
+ * R15 好友面板样式。
+ *
+ * 视觉与大厅其余面板保持一致：同一套深色底、细描边、小圆角，金色只用于
+ * 未读与主操作，青绿只用于成功提示；不复用游戏内 HUD 的高对比度配色。
+ */
+
+.friends-panel .lobby-panel-intro {
+  margin-bottom: 14px;
+}
+
+.friends-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.friends-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 「我的 UID」：好友申请按 UID 发起，这里必须能看见并一键复制。
+   暖底 + 金色描边与风险提示块同一套语汇，表示「给你的信息」。 */
+.friends-self {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #4b4938;
+  border-radius: 6px;
+  background: #24251c;
+}
+
+.friends-self-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.friends-self-text span {
+  color: #b28c55;
+  font-size: 11px;
+}
+
+.friends-self-text code {
+  color: #f5f0d3;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.friends-self .secondary {
+  flex: 0 0 auto;
+  width: auto;
+  margin-top: 0;
+}
+
+.friends-apply {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #3b403d;
+  border-radius: 6px;
+  background: #1d2320;
+}
+
+.friends-apply-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* 大厅的 .primary/.secondary 默认 width:100%，在行内布局里会挤掉输入框，这里收窄。 */
+.friends-apply-row .primary,
+.friends-send .primary,
+.friends-row .primary,
+.friends-row .secondary {
+  flex: 0 0 auto;
+  width: auto;
+  margin-top: 0;
+}
+
+.friends-apply-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #3b403d;
+  border-radius: 6px;
+  background: #121514;
+  color: #e5e7e6;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.friends-apply-row input::placeholder {
+  color: #7f8c82;
+  letter-spacing: 0;
+  font-family: inherit;
+}
+
+.friends-status {
+  min-height: 18px;
+  margin: 0;
+  color: #9da79f;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.friends-status[data-tone='ok'] {
+  color: #9bb967;
+}
+
+.friends-status[data-tone='error'] {
+  color: #d65a4a;
+}
+
+.friends-block {
+  padding: 12px;
+  border: 1px solid #2b322f;
+  border-radius: 6px;
+  background: #171b19;
+}
+
+.friends-block h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: #b7c0b6;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.friends-count {
+  padding: 1px 7px;
+  border: 1px solid #3b403d;
+  border-radius: 999px;
+  color: #8a9a8d;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.friends-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.friends-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #2b322f;
+  border-radius: 6px;
+  background: #1d2320;
+}
+
+.friends-row:hover {
+  border-color: #4b4938;
+}
+
+.friends-row-main {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.friends-row-main b {
+  overflow: hidden;
+  color: #e5e7e6;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friends-row-main small {
+  overflow: hidden;
+  color: #7f8c82;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friends-unread {
+  align-self: flex-start;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e6ac48;
+  color: #121514;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.friends-tag {
+  align-self: flex-start;
+  padding: 1px 6px;
+  border: 1px solid #4b4938;
+  border-radius: 999px;
+  color: #b28c55;
+  font-size: 10px;
+}
+
+.friends-action {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.friends-empty {
+  margin: 0;
+  color: #7f8c82;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.friends-blocked {
+  padding: 10px 12px;
+  border: 1px solid #2b322f;
+  border-radius: 6px;
+  background: #171b19;
+  color: #9da79f;
+  font-size: 12px;
+}
+
+.friends-blocked summary {
+  cursor: pointer;
+  color: #b7c0b6;
+}
+
+.friends-blocked .friends-list {
+  margin-top: 8px;
+}
+
+/* ── 聊天区 ───────────────────────────────────────────────────────── */
+.friends-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 340px;
+  padding: 12px;
+  border: 1px solid #3b403d;
+  border-radius: 6px;
+  background: #171b19;
+}
+
+.friends-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #2b322f;
+}
+
+.friends-chat-head div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.friends-chat-head b {
+  color: #f5f0d3;
+  font-size: 14px;
+}
+
+.friends-chat-head span {
+  overflow: hidden;
+  color: #7f8c82;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friends-messages {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 200px;
+  max-height: 320px;
+  margin: 10px 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.friends-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  max-width: 78%;
+}
+
+.friends-msg p {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid #2b322f;
+  border-radius: 6px;
+  background: #1d2320;
+  color: #e5e7e6;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.friends-msg small {
+  color: #7f8c82;
+  font-size: 10px;
+}
+
+.friends-msg.is-mine {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.friends-msg.is-mine p {
+  border-color: #4b4938;
+  background: #24251c;
+  color: #f5f0d3;
+}
+
+.friends-send {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #2b322f;
+}
+
+.friends-send input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #3b403d;
+  border-radius: 6px;
+  background: #121514;
+  color: #e5e7e6;
+  font-size: 13px;
+}
+
+.friends-send input::placeholder {
+  color: #7f8c82;
+}
+
+/* 导航角标：未读总数，与大厅金色强调一致 */
+.lobby-nav-badge {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e6ac48;
+  color: #121514;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* 窄屏：聊天区换到名册下方，避免左右两栏挤压主操作 */
+@media (max-width: 900px) {
+  .friends-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .friends-chat {
+    min-height: 280px;
+  }
+
+  .friends-messages {
+    max-height: 240px;
+  }
+}
+
+html[data-touch='true'] .friends-action {
+  min-height: 36px;
+  padding: 0 12px;
+}

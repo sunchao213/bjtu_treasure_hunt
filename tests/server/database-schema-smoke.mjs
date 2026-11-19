@@ -63,7 +63,8 @@ test('schema initialization is repeatable and an online SQLite backup preserves 
       'now',
     );
     db.exec(schema);
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1);
+    // user_version=2 起包含好友关系、屏蔽、私聊消息与已读游标（R15）。
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
     await backup(db, join(directory, 'backup.db'));
     const restored = new DatabaseSync(join(directory, 'backup.db'), { readOnly: true });
     try {
