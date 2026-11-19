@@ -16,6 +16,22 @@ const DUCK_ANIMATIONS = {
   death: 'duck-death',
 } as const;
 
+const CAT_ANIMATIONS = {
+  idle: 'cat-idle',
+  moving: 'cat-walk',
+  attack: 'cat-attack',
+  hurt: 'cat-hurt',
+  death: 'cat-death',
+} as const;
+
+const SWAN_ANIMATIONS = {
+  idle: 'swan-idle',
+  moving: 'swan-walk',
+  attack: 'swan-attack',
+  hurt: 'swan-hurt',
+  death: 'swan-death',
+} as const;
+
 const SQUIRREL_ANIMATIONS = {
   idle: 'squirrel-idle',
   moving: 'squirrel-walk',
@@ -38,6 +54,16 @@ export const MONSTER_SPRITE_SHEETS = [
   'duck-attack',
   'duck-hurt',
   'duck-death',
+  'cat-idle',
+  'cat-walk',
+  'cat-attack',
+  'cat-hurt',
+  'cat-death',
+  'swan-idle',
+  'swan-walk',
+  'swan-attack',
+  'swan-hurt',
+  'swan-death',
   'squirrel-idle',
   'squirrel-walk',
   'squirrel-request',
@@ -56,6 +82,16 @@ export const MONSTER_ANIMATIONS: Readonly<Record<string, MonsterAnimationAsset>>
   'duck-attack': { texture: 'duck-attack', frameRate: 9, repeat: 0 },
   'duck-hurt': { texture: 'duck-hurt', frameRate: 10, repeat: 0 },
   'duck-death': { texture: 'duck-death', frameRate: 8, repeat: 0 },
+  'cat-idle': { texture: 'cat-idle', frameRate: 5, repeat: -1 },
+  'cat-walk': { texture: 'cat-walk', frameRate: 9, repeat: -1 },
+  'cat-attack': { texture: 'cat-attack', frameRate: 9, repeat: 0 },
+  'cat-hurt': { texture: 'cat-hurt', frameRate: 10, repeat: 0 },
+  'cat-death': { texture: 'cat-death', frameRate: 8, repeat: 0 },
+  'swan-idle': { texture: 'swan-idle', frameRate: 5, repeat: -1 },
+  'swan-walk': { texture: 'swan-walk', frameRate: 9, repeat: -1 },
+  'swan-attack': { texture: 'swan-attack', frameRate: 9, repeat: 0 },
+  'swan-hurt': { texture: 'swan-hurt', frameRate: 10, repeat: 0 },
+  'swan-death': { texture: 'swan-death', frameRate: 8, repeat: 0 },
   'squirrel-idle': { texture: 'squirrel-idle', frameRate: 6, repeat: -1 },
   'squirrel-walk': { texture: 'squirrel-walk', frameRate: 10, repeat: -1 },
   'squirrel-request': { texture: 'squirrel-request', frameRate: 10, repeat: -1 },
@@ -72,6 +108,12 @@ export const MONSTER_ANIMATIONS: Readonly<Record<string, MonsterAnimationAsset>>
   'squirrel-mutant-death': { texture: 'squirrel-mutant-death', frameRate: 8, repeat: 0 },
 };
 
+function patrolAnimations(enemy: Enemy) {
+  if (enemy.species === 'cat') return CAT_ANIMATIONS;
+  if (enemy.species === 'swan') return SWAN_ANIMATIONS;
+  return DUCK_ANIMATIONS;
+}
+
 export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
   if (enemy.state === 'mutation-warning') {
     return SQUIRREL_ANIMATIONS.request;
@@ -80,7 +122,7 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
     if (enemy.kind === 'hug' && enemy.mutated) {
       return MUTANT_ANIMATIONS.death;
     }
-    return enemy.kind === 'hug' ? SQUIRREL_ANIMATIONS.death : DUCK_ANIMATIONS.death;
+    return enemy.kind === 'hug' ? SQUIRREL_ANIMATIONS.death : patrolAnimations(enemy).death;
   }
 
   if (enemy.state === 'windup') {
@@ -88,7 +130,7 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
       ? MUTANT_ANIMATIONS.attack
       : enemy.kind === 'hug'
         ? SQUIRREL_ANIMATIONS.idle
-        : DUCK_ANIMATIONS.attack;
+        : patrolAnimations(enemy).attack;
   }
 
   if (enemy.state === 'stunned') {
@@ -96,7 +138,7 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
       ? MUTANT_ANIMATIONS.hurt
       : enemy.kind === 'hug'
         ? SQUIRREL_ANIMATIONS.hurt
-        : DUCK_ANIMATIONS.hurt;
+        : patrolAnimations(enemy).hurt;
   }
 
   if (enemy.kind === 'hug') {
@@ -109,7 +151,8 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
     return moving ? SQUIRREL_ANIMATIONS.moving : SQUIRREL_ANIMATIONS.idle;
   }
 
-  return moving ? DUCK_ANIMATIONS.moving : DUCK_ANIMATIONS.idle;
+  const patrol = patrolAnimations(enemy);
+  return moving ? patrol.moving : patrol.idle;
 }
 
 export function monsterScaleFor(enemy: Enemy): number {

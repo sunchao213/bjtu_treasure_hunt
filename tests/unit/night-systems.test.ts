@@ -156,6 +156,10 @@ describe('night combat', () => {
     const firstWave = combat.updateSpawns(1, findPosition);
     expect(firstWave).toHaveLength(COMBAT_RULES.spawning.spawnCount);
     expect(firstWave.every((enemy) => enemy.kind === 'patrol')).toBe(true);
+    expect(firstWave.map((enemy) => enemy.species)).toEqual(['duck', 'cat', 'swan', 'duck']);
+    expect(new Set(firstWave.map((enemy) => enemy.health))).toEqual(
+      new Set([COMBAT_RULES.enemy.patrol.health]),
+    );
     expect(firstWave.every((enemy) => enemy.route.length === 1 && enemy.wanders)).toBe(true);
     for (const enemy of firstWave) {
       expect(enemy.route[0]).not.toEqual(enemy.position);

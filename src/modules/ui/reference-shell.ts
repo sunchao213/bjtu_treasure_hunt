@@ -62,6 +62,7 @@ export function prepViewMarkup(): string {
             <section class="prep-block prep-launch" aria-labelledby="prep-launch-title">
               <h3 id="prep-launch-title">出发前确认</h3>
               <p class="prep-warning">失败、超时或刷新页面会<b>损失本局全部携带物（含带入装备）</b>；未带入的仓库物品保留。</p>
+              <p id="next-map" class="prep-map">本局地图：海淀夜巡</p>
               <label class="consent"><input id="risk-consent" type="checkbox" />我已了解上述风险，愿意出发。</label>
               <button id="start" class="primary prep-start" disabled>开始探索 <span>↗</span></button>
               <button id="tutorial-restart" class="text-button prep-tutorial" type="button">重看新手引导</button>

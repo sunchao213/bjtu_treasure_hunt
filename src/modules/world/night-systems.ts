@@ -1,6 +1,7 @@
 import type { Point, Rect } from '../../shared/types/game';
 import { COMBAT_RULES } from '../../config/combat-config';
 import { movePlayer } from './movement';
+import { activeMap } from '../../config/play-map';
 import { WORLD } from '../../config/world-config';
 
 export const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
@@ -68,6 +69,10 @@ function distanceToRect(position: Point, rect: Rect): number {
   return Math.hypot(dx, dy);
 }
 
+function nearExtraction(position: Point, gap: number): boolean {
+  return activeMap().extractions.some((zone) => distanceToRect(position, zone) < gap);
+}
+
 export interface LightSource extends Point {
   radius: number;
 }
@@ -123,7 +128,7 @@ export class NightLighting {
     return true;
   }
   sources(): readonly LightSource[] {
-    return [...LAMPS, ...this.flares];
+    return [...activeMap().lamps, ...this.flares];
   }
   visible(target: Point, player: Point, aim: number, walls: readonly Rect[]): boolean {
     if (distance(target, player) <= 62 && lineOfSight(player, target, walls)) {
@@ -167,9 +172,14 @@ export class NightLighting {
 export type EnemyState =
   'patrol' | 'chase' | 'windup' | 'request' | 'calmed' | 'mutation-warning' | 'stunned' | 'dead';
 export type CombatWeaponId = 'training-bat' | 'stun-baton';
+/** Patrol animals share duck combat numbers. The field only picks a sprite. */
+export const PATROL_SPECIES = ['duck', 'cat', 'swan'] as const;
+export type PatrolSpecies = (typeof PATROL_SPECIES)[number];
 export interface Enemy {
   id: string;
   kind: 'patrol' | 'hug';
+  /** Set on patrol enemies. Omitted enemies render as ducks. */
+  species?: PatrolSpecies;
   position: Point;
   home: Point;
   route: readonly Point[];
@@ -184,9 +194,11 @@ export interface Enemy {
   wanders: boolean;
 }
 export function createEnemies(random: () => number = Math.random): Enemy[] {
-  const bounds = { x: 45, y: 50, width: WORLD.width - 90, height: WORLD.height - 100 };
+  const map = activeMap();
+  const bounds = { x: 45, y: 50, width: map.width - 90, height: map.height - 100 };
   const usedPositions: Point[] = [];
-  return WORLD.enemyRoutes.map((enemyConfig) => {
+  let patrolOrdinal = 0;
+  return map.enemyRoutes.map((enemyConfig) => {
     let position: Point | null = null;
     for (let attempt = 0; attempt < COMBAT_RULES.spawning.candidateAttempts; attempt++) {
       const candidatePosition = {
@@ -198,10 +210,9 @@ export function createEnemies(random: () => number = Math.random): Enemy[] {
         candidatePosition.x > bounds.x + bounds.width - 18 ||
         candidatePosition.y < bounds.y + 18 ||
         candidatePosition.y > bounds.y + bounds.height - 18 ||
-        WORLD.obstacles.some((obstacle) => overlaps(candidatePosition, 18, obstacle)) ||
-        distanceToRect(candidatePosition, WORLD.extraction) <
-          COMBAT_RULES.spawning.extractionSafeDistance ||
-        distance(candidatePosition, WORLD.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
+        map.obstacles.some((obstacle) => overlaps(candidatePosition, 18, obstacle)) ||
+        nearExtraction(candidatePosition, COMBAT_RULES.spawning.extractionSafeDistance) ||
+        distance(candidatePosition, map.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
         usedPositions.some(
           (position) =>
             distance(candidatePosition, position) < COMBAT_RULES.spawning.minEnemyDistance,
@@ -217,10 +228,9 @@ export function createEnemies(random: () => number = Math.random): Enemy[] {
         for (let x = bounds.x + 24; x < bounds.x + bounds.width - 24; x += 32) {
           const candidate = { x, y };
           if (
-            WORLD.obstacles.some((obstacle) => overlaps(candidate, 18, obstacle)) ||
-            distanceToRect(candidate, WORLD.extraction) <
-              COMBAT_RULES.spawning.extractionSafeDistance ||
-            distance(candidate, WORLD.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
+            map.obstacles.some((obstacle) => overlaps(candidate, 18, obstacle)) ||
+            nearExtraction(candidate, COMBAT_RULES.spawning.extractionSafeDistance) ||
+            distance(candidate, map.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
             usedPositions.some(
               (used) => distance(candidate, used) < COMBAT_RULES.spawning.minEnemyDistance,
             )
@@ -237,8 +247,13 @@ export function createEnemies(random: () => number = Math.random): Enemy[] {
       y: bounds.y + bounds.height / 2,
     };
     usedPositions.push(spawnPosition);
+    const species =
+      enemyConfig.kind === 'patrol'
+        ? PATROL_SPECIES[patrolOrdinal++ % PATROL_SPECIES.length]
+        : undefined;
     return {
       ...enemyConfig,
+      species,
       route: [{ ...spawnPosition }],
       position: { ...spawnPosition },
       home: { ...spawnPosition },
@@ -264,7 +279,8 @@ export function findEnemySpawnPosition(
   random: () => number = Math.random,
 ): Point | null {
   const rules = COMBAT_RULES.spawning;
-  const bounds = { x: 45, y: 50, width: WORLD.width - 90, height: WORLD.height - 100 };
+  const map = activeMap();
+  const bounds = { x: 45, y: 50, width: map.width - 90, height: map.height - 100 };
   for (let attempt = 0; attempt < rules.candidateAttempts; attempt++) {
     const point = {
       x: bounds.x + random() * bounds.width,
@@ -272,9 +288,9 @@ export function findEnemySpawnPosition(
     };
     if (
       distance(player, point) < rules.minPlayerDistance ||
-      lighting.visible(point, player, aim, WORLD.obstacles) ||
-      WORLD.obstacles.some((obstacle) => overlaps(point, 18, obstacle)) ||
-      distanceToRect(point, WORLD.extraction) < rules.extractionSafeDistance ||
+      lighting.visible(point, player, aim, map.obstacles) ||
+      map.obstacles.some((obstacle) => overlaps(point, 18, obstacle)) ||
+      nearExtraction(point, rules.extractionSafeDistance) ||
       enemies.some(
         (enemy) =>
           enemy.state !== 'dead' && distance(enemy.position, point) < rules.minEnemyDistance,
@@ -288,7 +304,8 @@ export function findEnemySpawnPosition(
 }
 
 function findPatrolWaypoint(anchor: Point, current: Point, random: () => number): Point | null {
-  const bounds = { x: 45, y: 50, width: WORLD.width - 90, height: WORLD.height - 100 };
+  const map = activeMap();
+  const bounds = { x: 45, y: 50, width: map.width - 90, height: map.height - 100 };
   for (let attempt = 0; attempt < COMBAT_RULES.spawning.candidateAttempts; attempt++) {
     const angle = random() * Math.PI * 2 + attempt * 2.399963229728653;
     const radius =
@@ -305,10 +322,10 @@ function findPatrolWaypoint(anchor: Point, current: Point, random: () => number)
       point.x > bounds.x + bounds.width - 18 ||
       point.y < bounds.y + 18 ||
       point.y > bounds.y + bounds.height - 18 ||
-      WORLD.obstacles.some((obstacle) => overlaps(point, 18, obstacle)) ||
-      distanceToRect(point, WORLD.extraction) < COMBAT_RULES.spawning.extractionSafeDistance ||
+      map.obstacles.some((obstacle) => overlaps(point, 18, obstacle)) ||
+      nearExtraction(point, COMBAT_RULES.spawning.extractionSafeDistance) ||
       distance(current, point) < COMBAT_RULES.spawning.patrolStepMinDistance ||
-      !lineOfSight(current, point, WORLD.obstacles)
+      !lineOfSight(current, point, map.obstacles)
     ) {
       continue;
     }
@@ -329,6 +346,7 @@ export class NightCombat {
   private spawnTimer = 0;
   private hugSpawnTimer: number = COMBAT_RULES.spawning.hugSpawnIntervalMs;
   private nextSpawnId = 1;
+  private nextPatrolSpecies = 0;
 
   constructor(private readonly random: () => number = Math.random) {
     this.enemies = createEnemies(this.random);
@@ -344,6 +362,7 @@ export class NightCombat {
     this.currentWeaponId = 'training-bat';
     this.weaponUsesRemaining = null;
     this.nextSpawnId = 1;
+    this.nextPatrolSpecies = 0;
     this.resetSpawnTimer();
     this.hugSpawnTimer = COMBAT_RULES.spawning.hugSpawnIntervalMs;
   }
@@ -364,6 +383,7 @@ export class NightCombat {
         const enemy: Enemy = {
           id: `spawn-${this.nextSpawnId++}`,
           kind: 'patrol',
+          species: PATROL_SPECIES[this.nextPatrolSpecies++ % PATROL_SPECIES.length],
           position: { ...position },
           home: { ...position },
           route: [patrolPoint],
