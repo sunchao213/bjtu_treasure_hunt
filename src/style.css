@@ -1207,6 +1207,26 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   color: #d1ad6a;
   white-space: nowrap;
 }
+.currency-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  color: #eee4d0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.currency-display img {
+  display: block;
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.currency-display b {
+  font-size: 18px;
+  font-weight: 600;
+}
 .shop-wallet b {
   font-size: 24px;
 }
@@ -1325,9 +1345,25 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   margin-bottom: 8px;
 }
 .lobby-panel-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
   padding-bottom: 4px;
   color: #9b9e94;
   font-size: 12px;
+}
+.lobby-panel-meta .currency-display {
+  gap: 4px;
+  padding: 2px 9px 2px 5px;
+  border: 1px solid #62523b;
+  background: #171615;
+}
+.lobby-panel-meta .currency-display img {
+  width: 27px;
+  height: 27px;
+}
+.lobby-panel-meta .currency-display b {
+  font-size: 16px;
 }
 .lobby-panel-intro {
   max-width: 66ch;

@@ -64,7 +64,7 @@ export function prepViewMarkup(): string {
           </div>
           </section>
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
-            <div class="lobby-panel-heading archive-panel-heading"><div><p class="prep-kicker">思源记录册</p><h2 id="lobby-warehouse-title">收藏与仓库</h2></div><span class="lobby-panel-meta" id="warehouse-count-label">0 件物品</span></div>
+            <div class="lobby-panel-heading archive-panel-heading"><div><p class="prep-kicker">思源记录册</p><h2 id="lobby-warehouse-title">收藏与仓库</h2></div><span class="lobby-panel-meta" id="warehouse-count-label"><span id="warehouse-item-count">0 件物品</span><span class="currency-display"><img src="${assetUrl('assets/ui/jiaozi.png')}" alt="" /><b id="warehouse-currency">0</b></span></span></div>
             ${archiveBrowserMarkup('lobby-archive-browser')}
             <div class="archive-panel-tools"><span id="warehouse-count" hidden></span><p id="archive-detail" hidden></p>
               <ul id="codex-list" hidden></ul><details class="archive-story"><summary>剧情档案</summary><div id="story-archive"></div></details>

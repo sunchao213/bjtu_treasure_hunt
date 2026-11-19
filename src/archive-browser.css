@@ -533,6 +533,7 @@ html[data-touch='true'] .archive-panel-heading .prep-kicker {
   display: none;
 }
 html[data-touch='true'] .archive-panel-heading .lobby-panel-meta {
+  gap: 8px;
   font-size: 10px;
   white-space: nowrap;
 }

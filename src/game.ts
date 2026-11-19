@@ -936,8 +936,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
       );
       element('warehouse-count').textContent = `${supplies.length} 件功能道具`;
-      element('warehouse-count-label').textContent =
-        `${archive.warehouse.length} 件物品 · ${archive.currency} 交子`;
+      element('warehouse-item-count').textContent = `${archive.warehouse.length} 件物品`;
+      element('warehouse-currency').textContent = String(archive.currency);
       renderShop(
         element('prep-view'),
         archive.warehouse,
