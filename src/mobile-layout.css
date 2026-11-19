@@ -95,10 +95,16 @@ html[data-touch='true'] #app .map-viewport {
   overflow: hidden;
 }
 html[data-touch='true'] #app .map-toast {
-  bottom: 76px;
+  /* 摇杆和右侧搜索键最高约 93px，再加 10px 边距和 12px 空隙。 */
+  bottom: 115px;
   max-width: calc(100% - 20px);
   padding: 6px 10px;
   font-size: 11px;
+}
+html[data-touch='true'][data-compact='true'] #app .map-toast {
+  left: 8px;
+  max-width: min(220px, 42%);
+  transform: none;
 }
 html[data-touch='true'] #app .interaction {
   grid-column: 1 / -1;
