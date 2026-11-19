@@ -1,3 +1,4 @@
+import { activeMap } from '../../config/play-map';
 import { WORLD } from '../../config/world-config';
 import type { Point, Rect } from '../../shared/types/game';
 import { EVIDENCE_CAMPUS_MAP, questChapterById, QUEST_CHAPTER_ID } from '../quests/quest-service';
@@ -46,14 +47,16 @@ export function clearLootPosition(
   radius = 35,
   avoidForegroundOcclusion = false,
 ): boolean {
-  const obstacles = avoidForegroundOcclusion
-    ? [...WORLD.obstacles, ...FOREGROUND_OCCLUSION_ZONES]
-    : WORLD.obstacles;
+  const map = activeMap();
+  const obstacles =
+    avoidForegroundOcclusion && map.id === 'campus'
+      ? [...map.obstacles, ...FOREGROUND_OCCLUSION_ZONES]
+      : map.obstacles;
   return (
-    p.x >= WORLD.bounds.x + radius &&
-    p.x <= WORLD.bounds.x + WORLD.bounds.width - radius &&
-    p.y >= WORLD.bounds.y + radius &&
-    p.y <= WORLD.bounds.y + WORLD.bounds.height - radius &&
+    p.x >= 30 + radius &&
+    p.x <= map.width - 30 - radius &&
+    p.y >= 35 + radius &&
+    p.y <= map.height - 35 - radius &&
     !obstacles.some(
       (w) =>
         p.x + radius > w.x &&
@@ -113,9 +116,10 @@ export function generateLootSpawns(
   for (let i = 0; i < fixedQuestPoints.length; i++) {
     const quest = fixedQuestPoints[i]!;
     const point = quest.fixedPoint!;
+    const questChest = activeMap().questChest;
     if (
       !clearLootPosition(point) ||
-      Math.hypot(point.x - WORLD.questChest.x, point.y - WORLD.questChest.y) < 90
+      (questChest !== null && Math.hypot(point.x - questChest.x, point.y - questChest.y) < 90)
     ) {
       throw new Error(`Invalid fixed quest position for ${quest.itemId}`);
     }
@@ -146,13 +150,14 @@ export function generateLootSpawns(
     }
     return pool[pool.length - 1]!.itemId;
   };
-  for (const zone of WORLD.lootZones) {
+  const questChest = activeMap().questChest;
+  for (const zone of activeMap().lootZones) {
     const candidates: Point[] = [];
     for (let x = zone.x + 25; x < zone.x + zone.width - 20; x += 50) {
       for (let y = zone.y + 25; y < zone.y + zone.height - 20; y += 50) {
         if (
           clearLootPosition({ x, y }, 35, true) &&
-          Math.hypot(x - WORLD.questChest.x, y - WORLD.questChest.y) >= 90 &&
+          (questChest === null || Math.hypot(x - questChest.x, y - questChest.y) >= 90) &&
           result.every((other) => Math.hypot(x - other.x, y - other.y) >= 90)
         ) {
           candidates.push({ x, y });
@@ -200,8 +205,8 @@ export function generateLootSpawns(
       result.push({ ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
     }
   }
-  if (plan.some((entry) => entry.itemId === 'torn-notebook')) {
-    result.push({ ...WORLD.questChest, itemId: 'torn-notebook' });
+  if (plan.some((entry) => entry.itemId === 'torn-notebook') && questChest) {
+    result.push({ ...questChest, itemId: 'torn-notebook' });
   }
   return result;
 }

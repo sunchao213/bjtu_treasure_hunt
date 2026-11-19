@@ -69,6 +69,23 @@ describe('monster sprite manifest', () => {
     );
   });
 
+  it('maps cat and swan patrol states with the same poses as the duck', () => {
+    for (const species of ['cat', 'swan'] as const) {
+      expect(monsterAnimationFor(makeEnemy({ species }), false)).toBe(`${species}-idle`);
+      expect(monsterAnimationFor(makeEnemy({ species }), true)).toBe(`${species}-walk`);
+      expect(monsterAnimationFor(makeEnemy({ species, state: 'windup' }), false)).toBe(
+        `${species}-attack`,
+      );
+      expect(monsterAnimationFor(makeEnemy({ species, state: 'stunned' }), false)).toBe(
+        `${species}-hurt`,
+      );
+      expect(monsterAnimationFor(makeEnemy({ species, state: 'dead' }), false)).toBe(
+        `${species}-death`,
+      );
+      expect(monsterScaleFor(makeEnemy({ species }))).toBe(0.4);
+    }
+  });
+
   it('keeps the reduced relative scale for each visual variant', () => {
     expect(monsterScaleFor(makeEnemy())).toBe(0.4);
     expect(monsterScaleFor(makeEnemy({ kind: 'hug' }))).toBe(0.38);

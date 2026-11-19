@@ -60,6 +60,7 @@ export function prepViewMarkup(): string {
 
               <label class="v19-risk-consent"><input id="risk-consent" type="checkbox" /><span>出发风险我已知悉</span></label>
               <button id="start" class="v19-hotspot v19-start" type="button" disabled aria-label="开始探索"></button>
+              <p id="next-map" class="v19-load-status">本局地图：海淀夜巡</p>
               <p id="game-load-status" class="v19-load-status" role="status">正在加载校园与角色资源…</p>
               <button id="reload-game" class="v19-sr-only" type="button" hidden>重新加载校园</button>
               <p class="v19-sr-only" id="lobby-prepare-title">行前准备</p>

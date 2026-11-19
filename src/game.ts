@@ -55,7 +55,7 @@ import { renderArchiveBrowser } from './modules/ui/archive-browser';
 import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
 import { WorldScene } from './scenes/world-scene';
 import { contains } from './modules/world/movement';
-import { WORLD } from './config/world-config';
+import { activeMap, upcomingMap } from './config/play-map';
 import { EventBus } from './shared/events/game-events';
 import type { InventoryClientPort, ItemInstance, RaidControllerPort } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
@@ -919,9 +919,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element<HTMLProgressElement>('battery-progress').value = lighting.battery;
       app.dataset.valueReady = String(view.value >= view.threshold);
       element('gate-label').textContent = view.value >= view.threshold ? '可以撤离' : '继续搜集';
+      const nextMap = upcomingMap();
+      element('next-map').textContent = nextMap.hasStory
+        ? `本局地图：${nextMap.title}`
+        : `本局地图：${nextMap.title}（无剧情线索）`;
       element('value-hint').textContent =
         view.value >= view.threshold
-          ? '条件已达成，去南侧撤离点停留 5 秒。'
+          ? activeMap().hasStory
+            ? '条件已达成，去南侧撤离点停留 5 秒。'
+            : '条件已达成，进入撤离区停留 5 秒。'
           : `还差 ${view.threshold - view.value} 价值 · 带入物不计分`;
       element('interaction-label').textContent = interacted;
       element<HTMLProgressElement>('interaction-progress').value =
@@ -1415,8 +1421,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const teleportTargets: Record<string, () => { x: number; y: number } | null> = {
         'debug-tp-notebook': () =>
           debugScene.searchPoints.find((point) => point.itemId === 'torn-notebook') ?? null,
-        'debug-tp-feather': () => ({ ...WORLD.stone }),
-        'debug-tp-extract': () => ({ ...WORLD.spawn }),
+        'debug-tp-feather': () => {
+          const stone = activeMap().stone;
+          return stone ? { ...stone } : null;
+        },
+        'debug-tp-extract': () => ({ ...activeMap().spawn }),
       };
       const questPointNames: Record<string, string> = {
         'debug-tp-notebook': '思源楼前',
@@ -1439,7 +1448,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
             { x: target.x, y: target.y },
           ];
           const spot =
-            candidates.find((p) => !WORLD.obstacles.some((w) => contains(w, p))) ?? target;
+            candidates.find((p) => !activeMap().obstacles.some((w) => contains(w, p))) ?? target;
           debugScene.position = { x: spot.x, y: spot.y };
           debugScene.aim = Math.atan2(target.y - spot.y, target.x - spot.x);
           debugScene.lighting.enabled = true;
