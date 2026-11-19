@@ -17,68 +17,125 @@ import { friendsPanelMarkup } from './friends-panel';
 export function prepViewMarkup(): string {
   return `
       <section id="prep-view" class="prep-view" hidden aria-label="行前准备">
-        <div class="prep-page">
-          <nav class="lobby-nav" aria-label="准备大厅功能">
-            <div class="lobby-nav-brand"><span class="lobby-nav-mark">交</span><span><b>思源密码</b><small>OPERATIONS DESK</small></span></div>
-            <div class="lobby-profile-mini"><span id="lobby-player-avatar" class="lobby-avatar"></span><span><b id="lobby-player-name"></b><small>海淀校区 · 账号云存档</small></span><i class="status-dot"></i></div>
-            <p class="lobby-nav-label">行动中心</p>
-            <button class="lobby-nav-item is-active" type="button" data-lobby-tab="prepare">出发准备</button>
-            <button class="lobby-nav-item" type="button" data-lobby-tab="warehouse">仓库</button>
-            <button class="lobby-nav-item" type="button" data-lobby-tab="shop">道具商店</button>
-            <button class="lobby-nav-item" type="button" data-lobby-tab="friends">好友 <span id="friends-nav-badge" class="lobby-nav-badge" hidden></span></button>
-            <p class="lobby-nav-label">系统</p>
-            <button class="lobby-nav-item" type="button" data-lobby-tab="settings">设置</button>
-            <div class="lobby-nav-footer"><span class="status-dot"></span>账号云存档<br /><small>准备 · 探索 · 撤离</small></div>
-          </nav>
-          <section class="lobby-panel is-active" data-lobby-panel="prepare" aria-labelledby="lobby-prepare-title">
-          <div class="lobby-commandbar"><div><span class="lobby-eyebrow">准备大厅 / 任务简报</span><strong>夜间行动窗口 · 23:40 - 04:30</strong></div><div class="lobby-weather"><span class="weather-moon">◐</span><span><b>小雨 · 能见度低</b><small>异常活动：轻度</small></span></div></div>
-          <header class="prep-hero">
-            <p class="prep-kicker">思源密码 · 行前准备</p>
-            <h2 id="lobby-prepare-title">今晚，一起平安归来。</h2>
-            <p class="prep-brief">搜集物资，调查校园异闻。携带价值达到 100 后，回到南门安全撤离。</p>
-            <div id="lobby-missions"></div>
-            <ol id="prep-goals" class="prep-goals" aria-label="本局目标"></ol>
-          </header>
-          <div class="mode-selection" role="group" aria-label="选择游戏模式">
-            <button id="mode-solo" class="mode-option" aria-pressed="true"><span>01 / SOLO</span><b>单人探索</b><small>独自出发，自由调查校园</small></button>
-            <button id="mode-room" class="mode-option" aria-pressed="false"><span>02 / SQUAD</span><b>组队探索 ↗</b><small>创建房间或输入房间号加入</small></button>
-          </div>
-          <div id="preparation" class="prep-main">
-            <div class="game-load-feedback"><p id="game-load-status" class="game-load-status" role="status">正在加载校园与角色资源…</p><button id="reload-game" class="secondary" hidden>重新加载校园</button></div>
-            <section class="prep-block prep-kit" aria-labelledby="prep-kit-title">
-              <h3 id="prep-kit-title">装备与带入</h3>
-              <ul class="prep-equipment">
-                <li><b>手电筒</b><span>电量 100% · 默认开启，照亮搜索点</span></li>
-              </ul>
-              <label class="field-label" for="starter-weapon">初始武器</label>
-              <select id="starter-weapon"><option value="">不携带武器</option><option value="training-bat" selected>训练棍 · 伤害 35</option><option value="stun-baton">电击器 · 伤害 15 · 可使用 15 次</option></select>
-              <label class="field-label" for="loadout-item">仓库带入选择</label>
-              <div id="loadout" class="loadout-options" aria-describedby="loadout-slots"><p class="loadout-empty">仓库中暂无可带入的功能物品。</p></div>
-              <p id="loadout-slots" class="loadout-slots">已选 0 / 6 格</p>
-            </section>
-            <section class="prep-block prep-launch" aria-labelledby="prep-launch-title">
-              <h3 id="prep-launch-title">出发前确认</h3>
-              <p class="prep-warning">失败、超时或刷新页面会<b>损失本局全部携带物（含带入装备）</b>；未带入的仓库物品保留。</p>
-              <label class="consent"><input id="risk-consent" type="checkbox" />我已了解上述风险，愿意出发。</label>
-              <button id="start" class="primary prep-start" disabled>开始探索 <span>↗</span></button>
-              <button id="tutorial-restart" class="text-button prep-tutorial" type="button">重看新手引导</button>
-            </section>
-          </div>
+        <div class="prep-page v19-prep-page">
+          <section class="lobby-panel v19-home-panel is-active" data-lobby-panel="prepare">
+            <div class="v19-lobby-canvas" aria-label="思源密码游戏大厅">
+              <div class="v19-wallet" id="lobby-wallet" aria-label="当前交子余额"><span id="lobby-currency">0</span></div>
+              <span id="lobby-player-avatar" class="v19-sr-only"></span>
+              <span id="lobby-player-name" class="v19-player-name"></span>
+
+              <button class="v19-hotspot v19-nav-shop" type="button" data-lobby-tab="mall" aria-label="商城"></button>
+              <button class="v19-hotspot v19-nav-archive" type="button" data-lobby-tab="warehouse" aria-label="档案与仓库"></button>
+              <button class="v19-hotspot v19-nav-friends" type="button" data-lobby-tab="friends" aria-label="好友"></button>
+              <button class="v19-hotspot v19-nav-codex" type="button" data-lobby-tab="warehouse" aria-label="图鉴"></button>
+              <button id="open-ranking" class="v19-hotspot v19-nav-ranking" type="button" aria-label="排行榜"></button>
+              <button class="v19-hotspot v19-nav-settings" type="button" data-lobby-tab="settings" aria-label="设置"></button>
+              <button class="v19-hotspot v19-nav-mail" type="button" data-lobby-tab="mail" aria-label="邮件">
+                <span id="mail-unread-badge" class="v19-mail-badge" hidden>0</span>
+              </button>
+
+              <button id="v19-mission-open" class="v19-hotspot v19-task-button" type="button" aria-label="查看任务"></button>
+              <button id="v19-skin-open" class="v19-hotspot v19-skin-button" type="button" aria-label="时装"></button>
+              <button class="v19-hotspot v19-teammate v19-teammate-one" type="button" aria-label="邀请队友" data-open-room></button>
+              <button class="v19-hotspot v19-teammate v19-teammate-two" type="button" aria-label="邀请队友" data-open-room></button>
+              <button class="v19-hotspot v19-teammate v19-teammate-three" type="button" aria-label="邀请队友" data-open-room></button>
+
+              <label class="v19-fill-team"><input id="fill-team" type="checkbox" /><span>补齐队友-4人</span></label>
+              <div class="v19-fill-cost"><span>需要消耗</span><b aria-hidden="true">●</b><span>10000</span></div>
+              <button id="v19-map-open" class="v19-hotspot v19-map-card" type="button" aria-label="查看海淀校区地图"></button>
+              <button id="mode-room" class="v19-hotspot v19-hidden-mode" type="button" aria-label="组队探索"></button>
+              <!-- 联机房间页的程序化入口；v19 大厅的好友图标改为打开好友面板，房间仍由队友位与模式按钮进入。 -->
+              <button id="open-room" class="v19-sr-only" type="button" tabindex="-1" aria-hidden="true">联机房间</button>
+              <button id="mode-solo" class="v19-sr-only" type="button" aria-pressed="true">单人探索</button>
+
+              <form id="lobby-chat" class="v19-chat" aria-label="房间聊天">
+                <input id="lobby-chat-input" type="text" aria-label="聊天消息" placeholder="和朋友聊天..." maxlength="160" autocomplete="off" />
+                <p id="lobby-chat-latest" class="v19-chat-latest" role="status" aria-live="polite"></p>
+                <button type="submit" aria-label="发送消息"></button>
+              </form>
+              <button id="mobile-sound" class="v19-hotspot v19-microphone" type="button" aria-label="关闭麦克风" aria-pressed="true" title="关闭麦克风"></button>
+              <button id="v19-earpiece" class="v19-hotspot v19-volume" type="button" aria-label="关闭听筒" aria-pressed="true" title="关闭听筒"></button>
+              <button class="v19-hotspot v19-shop-bottom" type="button" data-lobby-tab="shop" aria-label="打开商店"></button>
+              <button id="v19-loadout-open" class="v19-hotspot v19-backpack" type="button" aria-label="背包与装备"></button>
+
+              <label class="v19-risk-consent"><input id="risk-consent" type="checkbox" /><span>出发风险我已知悉</span></label>
+              <button id="start" class="v19-hotspot v19-start" type="button" disabled aria-label="开始探索"></button>
+              <p id="game-load-status" class="v19-load-status" role="status">正在加载校园与角色资源…</p>
+              <button id="reload-game" class="v19-sr-only" type="button" hidden>重新加载校园</button>
+              <p class="v19-sr-only" id="lobby-prepare-title">行前准备</p>
+            </div>
+
+            <dialog id="v19-mission-dialog" class="v19-dialog" aria-labelledby="v19-mission-title">
+              <header><h2 id="v19-mission-title">本局任务</h2><button type="button" data-v19-close>关闭</button></header>
+              <div id="lobby-missions"></div><ol id="prep-goals" class="prep-goals" aria-label="本局目标"></ol>
+              <button id="tutorial-restart" class="secondary" type="button">重看新手引导</button>
+            </dialog>
+            <dialog id="v19-skin-dialog" class="v19-dialog" aria-labelledby="v19-skin-title">
+              <header><h2 id="v19-skin-title">时装</h2><button type="button" data-v19-close>关闭</button></header>
+              <p>角色外观暂未开放。</p>
+            </dialog>
+            <dialog id="v19-ranking-dialog" class="v19-dialog" aria-labelledby="v19-ranking-title">
+              <header><h2 id="v19-ranking-title">排行榜</h2><button type="button" data-v19-close>关闭</button></header>
+              <p>排行榜暂未接入。</p>
+            </dialog>
+            <dialog id="v19-loadout-dialog" class="v19-dialog v19-loadout-dialog" aria-labelledby="v19-loadout-title">
+              <header><h2 id="v19-loadout-title">背包与出发装备</h2><button id="v19-loadout-close" type="button">返回大厅</button></header>
+              <p class="prep-warning">失败、超时或刷新页面会损失本局全部携带物（包括带入装备）；未带入的仓库物品会保留。</p>
+              <div id="preparation" class="prep-main v19-preparation">
+                <div class="game-load-feedback"><p class="v19-sr-only">校园状态</p><button id="reload-game-dialog" type="button" hidden>重新加载校园</button></div>
+                <section class="prep-block prep-kit" aria-labelledby="prep-kit-title">
+                  <h3 id="prep-kit-title">装备与带入</h3>
+                  <ul class="prep-equipment"><li><b>手电筒</b><span>电量 100% · 默认开启，照亮搜索点</span></li></ul>
+                  <label class="field-label" for="starter-weapon">初始武器</label>
+                  <select id="starter-weapon"><option value="">不携带武器</option><option value="training-bat" selected>训练棍 · 伤害 35</option><option value="stun-baton">电击器 · 伤害 15 · 可使用 15 次</option></select>
+                  <label class="field-label" for="loadout-item">仓库带入选择</label>
+                  <div id="loadout" class="loadout-options" aria-describedby="loadout-slots"><p class="loadout-empty">仓库中暂无可带入的功能物品。</p></div>
+                  <p id="loadout-slots" class="loadout-slots">已选 0 / 6 格</p>
+                </section>
+              </div>
+            </dialog>
           </section>
-          <section class="lobby-panel lobby-panel-wide" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
+
+          <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
+            <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
             <div class="lobby-panel-heading archive-panel-heading"><div><p class="prep-kicker">思源记录册</p><h2 id="lobby-warehouse-title">收藏与仓库</h2></div><span class="lobby-panel-meta" id="warehouse-count-label"><span id="warehouse-item-count">0 件物品</span><span class="currency-display"><img src="${assetUrl('assets/ui/jiaozi.png')}" alt="" /><b id="warehouse-currency">0</b></span></span></div>
             ${archiveBrowserMarkup('lobby-archive-browser')}
             <div class="archive-panel-tools"><span id="warehouse-count" hidden></span><p id="archive-detail" hidden></p>
               <ul id="codex-list" hidden></ul><details class="archive-story"><summary>剧情档案</summary><div id="story-archive"></div></details>
-              <details><summary>存档管理</summary>
-                <button id="export-save" class="secondary">导出存档备份（JSON）</button><button id="reset-save" class="text-button">重置存档</button></details>
+              <details><summary>存档管理</summary><button id="export-save" class="secondary">导出存档备份（JSON）</button><button id="reset-save" class="text-button">重置存档</button></details>
             </div>
           </section>
+          <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="mall" hidden aria-labelledby="lobby-mall-title">
+            <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
+            <div class="lobby-panel-heading"><div><p class="prep-kicker">交子流通</p><h2 id="lobby-mall-title">商城</h2></div><span class="lobby-panel-meta">建设中</span></div>
+            <p class="lobby-panel-intro">商城负责武器购买、升级与出售，以及成长类商品。界面尚未开放，当前补给请走大厅底部的「商店」。</p>
+            <button class="v19-gold-button" type="button" data-lobby-tab="shop">前往道具商店</button>
+          </section>
           ${shopMarkup()}
-          ${friendsPanelMarkup()}
-          <section class="lobby-panel lobby-panel-wide" data-lobby-panel="settings" hidden aria-labelledby="lobby-settings-title">
+          ${friendsPanelMarkup()
+            // R15 好友面板由 main 提供，这里补上 v19 子页的实底背景与返回大厅按钮。
+            .replace(
+              'class="lobby-panel lobby-panel-wide friends-panel"',
+              'class="lobby-panel lobby-panel-wide friends-panel v19-subpage"',
+            )
+            .replace(
+              '<div class="lobby-panel-heading">',
+              '<button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button><div class="lobby-panel-heading">',
+            )}
+          <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="mail" hidden aria-labelledby="lobby-mail-title">
+            <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
+            <div class="lobby-panel-heading"><div><p class="prep-kicker">思源信箱</p><h2 id="lobby-mail-title">邮件</h2></div><span class="lobby-panel-meta" id="lobby-mail-meta">0 封未读</span></div>
+            <p class="lobby-panel-intro">任务奖励、系统通知与队友留言都会送到这里。邮件界面尚未开放，奖励结算仍会直接进入仓库与交子余额。</p>
+            <div class="lobby-mail-empty">
+              <p class="lobby-mail-empty-title">信箱空空如也</p>
+              <p class="lobby-mail-empty-hint">完成三章任务后，委托与奖励邮件会陆续送达。</p>
+            </div>
+          </section>
+          <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="settings" hidden aria-labelledby="lobby-settings-title">
+            <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
             <div class="lobby-panel-heading"><div><p class="prep-kicker">体验选项</p><h2 id="lobby-settings-title">设置</h2></div></div>
             <div id="lobby-settings-slot" class="lobby-settings-slot"></div>
+            <div class="lobby-settings-links"><button id="open-rules" class="text-button" type="button">游戏规则与帮助</button></div>
           </section>
         </div>
       </section>`;
@@ -114,14 +171,14 @@ export function mountShell(root: HTMLElement): void {
     <header class="masthead">
       <a class="brand" href="./" aria-label="交大摸金录首页"><span class="brand-mark">交</span>
       <span>交大摸金录<small>思源密码 / CAMPUS EXTRACTION</small></span></a>
-      <div class="header-actions"><div class="build-label"><span class="status-dot"></span>海淀校区 · 夜巡</div><button id="open-room" class="rules-button" aria-controls="room-page">联机房间</button><button id="open-rules" class="rules-button">游戏规则</button></div>
+      <div class="header-actions"><div class="build-label"><span class="status-dot"></span>海淀校区 · 夜巡</div><button id="open-room-legacy" class="rules-button" aria-controls="room-page">联机房间</button><button id="open-rules-legacy" class="rules-button">游戏规则</button></div>
     </header>
     <main>${prepViewMarkup()}
       <div class="play-layout">
         <section class="map-panel" aria-label="游戏地图">
           <div class="map-top"><span><i class="status-dot"></i><b id="phase-label">准备出发</b></span>
             <span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span class="map-actions"><button id="hud-rules" class="hud-button" aria-haspopup="dialog">规则</button></span></span></div>
-          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound" aria-pressed="false">开启声音</button><button id="mobile-room" aria-controls="room-page">房间</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
+          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound-game" aria-pressed="false">开启声音</button><button id="mobile-room" aria-controls="room-page">房间</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
           <div id="team-status" class="team-status" aria-label="队伍状态" hidden><span id="team-connection" class="network-quality"></span><ul id="team-players"></ul></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>

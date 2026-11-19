@@ -11,7 +11,8 @@ export const SHOP_EFFECTS: Readonly<Record<string, string>> = {
 };
 
 export function shopMarkup(): string {
-  return `<section class="lobby-panel lobby-panel-wide" data-lobby-panel="shop" hidden aria-labelledby="shop-title">
+  return `<section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="shop" hidden aria-labelledby="shop-title">
+    <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
     <div class="lobby-panel-heading"><div><p class="prep-kicker">行动补给</p><h2 id="shop-title">道具商店</h2></div>
       <span class="shop-wallet">余额 <span class="currency-display"><img src="${assetUrl('assets/ui/jiaozi.png')}" alt="" /><b id="shop-balance">0</b></span></span></div>
     <p class="lobby-panel-intro">重复收藏在成功撤离后自动兑换为交子。购买的道具先存入仓库，在出发准备中勾选带入，再从局内背包使用。</p>

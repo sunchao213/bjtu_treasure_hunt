@@ -1,5 +1,6 @@
 export const NETWORK_PROTOCOL_VERSION = 1 as const;
 export const ROOM_CAPACITY = 10;
+export const ROOM_CHAT_LIMIT = 160;
 export const isRoomCode = (value: unknown): value is string =>
   typeof value === 'string' && /^[0-9]{6}$/.test(value);
 
@@ -34,6 +35,7 @@ export type ClientMessage =
   | { readonly type: 'start-game' }
   | { readonly type: 'finish-game'; readonly roundId: string }
   | { readonly type: 'leave-room' }
+  | { readonly type: 'room-chat'; readonly text: string }
   | {
       readonly type: 'player-input';
       readonly sequence: number;
@@ -63,6 +65,13 @@ export type ServerMessage =
       readonly players: readonly PlayerSnapshot[];
     }
   | { readonly type: 'player-left'; readonly playerId: string }
+  | {
+      readonly type: 'room-chat';
+      readonly roomId: string;
+      readonly playerId: string;
+      readonly displayName: string;
+      readonly text: string;
+    }
   | { readonly type: 'pong'; readonly sentAt: number; readonly serverTime: number }
   | { readonly type: 'error'; readonly code: string; readonly message: string };
 
@@ -94,6 +103,12 @@ export function isClientMessage(value: unknown): value is ClientMessage {
   if (value.type === 'transfer-host') return nonEmpty(value.playerId);
   if (value.type === 'finish-game') return nonEmpty(value.roundId);
   if (value.type === 'leave-room') return true;
+  if (value.type === 'room-chat')
+    return (
+      typeof value.text === 'string' &&
+      value.text.trim().length > 0 &&
+      value.text.length <= ROOM_CHAT_LIMIT
+    );
   if (value.type === 'ping') return Number.isFinite(value.sentAt);
   return (
     value.type === 'player-input' &&
@@ -120,6 +135,15 @@ export function isServerMessage(value: unknown): value is ServerMessage {
     );
   }
   if (value.type === 'player-left') return nonEmpty(value.playerId);
+  if (value.type === 'room-chat')
+    return (
+      isRoomCode(value.roomId) &&
+      nonEmpty(value.playerId) &&
+      nonEmpty(value.displayName) &&
+      typeof value.text === 'string' &&
+      value.text.trim().length > 0 &&
+      value.text.length <= ROOM_CHAT_LIMIT
+    );
   if (value.type === 'pong')
     return Number.isFinite(value.sentAt) && Number.isFinite(value.serverTime);
   if (value.type === 'error') return nonEmpty(value.code) && nonEmpty(value.message);

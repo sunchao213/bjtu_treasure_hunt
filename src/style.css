@@ -367,28 +367,43 @@ select {
 .room-member:last-child {
   border-bottom: 0;
 }
-/* 联机房间卡默认折叠成一行。它排在局内右栏，而准备阶段整块 `.play-layout`
-   本来就是隐藏的，等于这张卡只在最不该出现的时候（对局中）占位；
-   展开时右栏会把「临时背包 / 结算卡」顶出画框。折叠后只留标题和连接状态。 */
-.room-card > summary.section-kicker {
-  justify-content: flex-start;
-  gap: 6px;
-  list-style: none;
-  cursor: pointer;
+.room-dialog {
+  width: 460px;
+  max-width: calc(100% - 28px);
+  max-height: 620px;
+  margin: auto;
+  padding: 20px;
+  overflow: auto;
+  border: 1px solid #686046;
+  border-radius: 10px;
+  color: #e5e7e6;
+  background: #121715;
+  box-shadow: 0 24px 80px #000b;
 }
-.room-card > summary.section-kicker::-webkit-details-marker {
-  display: none;
+.room-dialog::backdrop {
+  background: #050706bb;
+  backdrop-filter: blur(3px);
 }
-.room-card > summary.section-kicker::before {
-  content: '▸';
-  font-size: 10px;
-  color: #8d9b83;
+.room-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
 }
-.room-card[open] > summary.section-kicker::before {
-  content: '▾';
-}
-.room-card > summary.section-kicker #room-connection {
+.room-dialog header form {
   margin-left: auto;
+}
+.room-dialog header .room-close {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 5px;
+}
+.room-dialog header .room-close svg {
+  width: 18px;
+  height: 18px;
 }
 button {
   cursor: pointer;
@@ -1318,6 +1333,35 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   color: #d1ad6a;
   font-size: 23px;
 }
+.lobby-wallet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 138px;
+  padding: 6px 13px;
+  border: 1px solid #aa8b50;
+  border-radius: 999px;
+  color: #f0c96e;
+  background: linear-gradient(180deg, #332918, #1a1812);
+  box-shadow:
+    inset 0 0 0 2px #11130f,
+    0 2px 12px #d9a64424;
+}
+.lobby-wallet svg {
+  width: 23px;
+  height: 23px;
+}
+.lobby-wallet-label {
+  color: #bcae8e;
+  font-size: 10px;
+}
+.lobby-wallet b {
+  margin-left: auto;
+  color: #f1d37e;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
 .lobby-weather b,
 .lobby-weather small {
   display: block;
@@ -1630,6 +1674,80 @@ html.lobby-open:not([data-touch='true']) #game-page {
 .prep-launch {
   border-color: #5c563a;
   background: linear-gradient(180deg, #1b1a14, #14130f);
+}
+.lobby-fill-team {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 10px 0 0;
+  color: #d7cfb8;
+  font-size: 12px;
+  cursor: pointer;
+}
+.lobby-fill-team input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #d9b35e;
+  cursor: pointer;
+}
+.lobby-commandbar .lobby-room-open {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+}
+.lobby-chat {
+  flex: 1 1 240px;
+  min-width: 0;
+  max-width: 340px;
+}
+.lobby-chat-field {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.lobby-chat-latest {
+  position: absolute;
+  inset: 0 11px;
+  align-content: center;
+  overflow: hidden;
+  margin: 0;
+  color: #d9d1bd;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.lobby-chat-latest.is-obscured {
+  opacity: 0;
+}
+.lobby-chat-compose {
+  display: flex;
+  min-height: 40px;
+  border: 1px solid #a28a52;
+  border-radius: 5px;
+  background: #121311;
+}
+.lobby-chat-compose input {
+  width: 100%;
+  height: 100%;
+  padding: 8px 11px;
+  border: 0;
+  color: #eee7d8;
+  background: transparent;
+  font-size: 12px;
+}
+.lobby-chat-compose input::placeholder {
+  color: #aaa18d;
+  opacity: 1;
+}
+.lobby-chat-compose button {
+  min-width: 54px;
+  border: 0;
+  border-left: 1px solid #66583a;
+  color: #f1d37e;
+  background: #262218;
+  font-size: 11px;
 }
 .prep-equipment {
   list-style: none;
@@ -3362,6 +3480,29 @@ html:not([data-touch='true']) #stage dialog[open] {
   transform: translate(-50%, -50%) scale(var(--stage-scale));
   transform-origin: center center;
 }
+html:not([data-touch='true']) #stage .room-dialog {
+  max-width: 460px;
+}
+@media (pointer: coarse) {
+  .room-dialog {
+    max-height: min(620px, calc(100% - 28px));
+  }
+  .lobby-wallet {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+}
+@media (max-width: 760px) and (pointer: coarse) {
+  .lobby-commandbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-block: 8px;
+  }
+  .lobby-chat {
+    flex: 1 1 190px;
+    max-width: none;
+  }
+}
 /* 弹窗高度按画框算（720 − 边距），不跟着窗口高度变。 */
 html:not([data-touch='true']) #stage .rules-dialog {
   max-height: 696px;
@@ -3376,4 +3517,691 @@ html:not([data-touch='true']) #stage .story-dialog[open] {
 html:not([data-touch='true']) #stage .campus-map-dialog {
   width: 900px;
   max-height: 704px;
+}
+
+/* V19 定稿准备大厅：1280×720 像素画布，与源图上的交互区逐一对齐。 */
+@font-face {
+  font-family: 'Zpix';
+  src: url('/assets/fonts/zpix.ttf') format('truetype');
+  font-display: swap;
+}
+#app[data-phase='preparing'] .masthead {
+  display: none;
+}
+#app[data-phase='preparing'] main {
+  display: block;
+  width: 0;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+#app[data-phase='preparing'] main > :not(#prep-view) {
+  display: none !important;
+}
+#app[data-phase='preparing'] .v19-prep-page {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 1280px;
+  height: 720px;
+  max-width: none;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  background: #170e0d;
+  box-shadow: none;
+}
+.v19-home-panel {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+}
+.v19-lobby-canvas {
+  position: absolute;
+  inset: 0;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261119d') center / 1280px 720px
+    no-repeat;
+  color: #fff0c2;
+  font-family: 'Zpix', 'Microsoft YaHei', sans-serif;
+  image-rendering: pixelated;
+}
+.v19-sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+}
+.v19-wallet,
+.v19-player-name,
+.v19-hotspot,
+.v19-fill-team,
+.v19-fill-cost,
+.v19-chat,
+.v19-risk-consent,
+.v19-load-status,
+#reload-game {
+  position: absolute;
+  z-index: 2;
+}
+/* 余额数字从火焰图标右侧开始左对齐，与定稿示例数值位置一致 */
+.v19-wallet {
+  left: 187px;
+  top: 34px;
+  width: 140px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0;
+  color: #ffe18a;
+  font-size: 32px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 2px 2px #6c3518;
+}
+.v19-player-name {
+  left: 572px;
+  top: 117px;
+  width: 146px;
+  height: 44px;
+  overflow: hidden;
+  color: #ffe8a6;
+  font-size: 33px;
+  line-height: 44px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 2px 2px #401f18;
+}
+.v19-hotspot {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+}
+.v19-hotspot:hover,
+.v19-hotspot:focus-visible {
+  outline: 3px solid #ffe29a;
+  outline-offset: 1px;
+  /* 只染底色，不能用 background 简写，否则会把闭麦/关听筒的斜杠一起重置掉 */
+  background-color: #ffdc8020;
+}
+.v19-nav-shop {
+  left: 712px;
+  top: 14px;
+  width: 69px;
+  height: 93px;
+}
+.v19-nav-archive {
+  left: 786px;
+  top: 14px;
+  width: 69px;
+  height: 93px;
+}
+.v19-nav-friends {
+  left: 860px;
+  top: 14px;
+  width: 72px;
+  height: 93px;
+}
+.v19-nav-codex {
+  left: 936px;
+  top: 14px;
+  width: 71px;
+  height: 93px;
+}
+.v19-nav-ranking {
+  left: 1012px;
+  top: 14px;
+  width: 74px;
+  height: 94px;
+}
+.v19-nav-settings {
+  left: 1090px;
+  top: 14px;
+  width: 80px;
+  height: 94px;
+}
+.v19-nav-mail {
+  left: 1174px;
+  top: 14px;
+  width: 84px;
+  height: 94px;
+  background-image: url('/assets/ui/nav-mail.png?v=20261119c');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+.v19-mail-badge {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 2px solid #2b1208;
+  border-radius: 10px;
+  background: #d3402f;
+  color: #ffe9bd;
+  font:
+    700 13px/16px 'Microsoft YaHei',
+    sans-serif;
+  text-align: center;
+  box-shadow: 0 1px 0 #00000060;
+}
+.v19-task-button {
+  left: 995px;
+  top: 132px;
+  width: 255px;
+  height: 72px;
+}
+.v19-skin-button {
+  left: 995px;
+  top: 204px;
+  width: 255px;
+  height: 72px;
+}
+.v19-teammate-one {
+  left: 210px;
+  top: 250px;
+  width: 73px;
+  height: 75px;
+  border-radius: 50%;
+}
+.v19-teammate-two {
+  left: 420px;
+  top: 250px;
+  width: 76px;
+  height: 75px;
+  border-radius: 50%;
+}
+.v19-teammate-three {
+  left: 815px;
+  top: 241px;
+  width: 85px;
+  height: 84px;
+  border-radius: 50%;
+}
+/* 三个队友位的金圈与圈内加号都已烘进背景图（11/12/13 队友槽），
+   HTML 只保留可点击的透明热区，不能再画一遍「+」，否则大字号字符会压出重影。 */
+/* 背景图已画好勾选框与「补齐队友-4人」文字，HTML 只保留可点击的透明热区与勾选状态 */
+.v19-fill-team {
+  left: 1001px;
+  top: 371px;
+  width: 214px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: transparent;
+  font-size: 19px;
+  cursor: pointer;
+}
+.v19-fill-team span {
+  display: none;
+}
+.v19-fill-team input {
+  appearance: none;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 41px;
+  margin: 0;
+  border: 3px solid #f4d37c;
+  border-radius: 3px;
+  background: #241310;
+  cursor: pointer;
+}
+.v19-fill-team input:checked::after {
+  content: '✓';
+  display: block;
+  color: #fff2cf;
+  font:
+    bold 27px/35px Arial,
+    sans-serif;
+  text-align: center;
+}
+/* 只渲染数字，紧接在背景图的金球右侧 */
+.v19-fill-cost {
+  left: 1125px;
+  top: 429px;
+  width: 90px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  color: #f4e9dd;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 1px 2px #17100e;
+}
+.v19-fill-cost span:first-child,
+.v19-fill-cost b {
+  display: none;
+}
+.v19-map-card {
+  left: 995px;
+  top: 419px;
+  width: 257px;
+  height: 145px;
+}
+.v19-hidden-mode {
+  left: -20px;
+  top: -20px;
+  width: 1px;
+  height: 1px;
+}
+/* 背景图里的聊天框已擦掉烘死的占位文字，由 input 的 placeholder 独占渲染；
+   左内边距与字号按定稿文字实测（x=53.5、字高 23.5px）对齐 */
+.v19-chat {
+  left: 24px;
+  top: 520px;
+  width: 382px;
+  height: 75px;
+  display: flex;
+  align-items: center;
+  padding: 0 66px 0 30px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+}
+.v19-chat input {
+  width: 100%;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff4e8;
+  font:
+    23px/1 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
+  text-shadow: 1px 2px #21120f;
+}
+.v19-chat input::placeholder {
+  color: #fff4e8;
+  opacity: 1;
+}
+.v19-chat:focus-within {
+  outline: 2px solid #f5d77c;
+  background: #170e0caa;
+}
+.v19-chat-latest {
+  position: absolute;
+  left: 22px;
+  right: 65px;
+  top: 12px;
+  margin: 0;
+  overflow: hidden;
+  color: #fff0dc;
+  font:
+    15px/20px 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.v19-chat-latest.is-obscured {
+  display: none;
+}
+.v19-chat button {
+  position: absolute;
+  right: 4px;
+  top: 8px;
+  width: 58px;
+  height: 66px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.v19-microphone {
+  left: 82px;
+  top: 626px;
+  width: 73px;
+  height: 87px;
+}
+.v19-volume {
+  left: 166px;
+  top: 626px;
+  width: 72px;
+  height: 87px;
+}
+/* 闭麦 / 关听筒：底图里的图标保持不动，只在按键上叠一张同尺寸的奶白斜杠素材，
+   不接真实音频，纯状态与图标切换。 */
+.v19-microphone,
+.v19-volume {
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: 100% 100%;
+}
+.v19-microphone.is-off {
+  background-image: url('/assets/ui/audio/mic-off-cream.png?v=20261119');
+}
+.v19-volume.is-off {
+  background-image: url('/assets/ui/audio/volume-off-cream.png?v=20261119');
+}
+.v19-shop-bottom {
+  left: 504px;
+  top: 628px;
+  width: 142px;
+  height: 83px;
+}
+.v19-backpack {
+  left: 660px;
+  top: 628px;
+  width: 136px;
+  height: 83px;
+}
+/* 风险勾选：F01 要求的「勾选框」必须保留（未勾选时 startExploration 直接返回 false），
+   但用像素风金框重绘，与「补齐队友」的勾选框同一套视觉，不再用浏览器原生方块 */
+.v19-risk-consent {
+  left: 802px;
+  top: 654px;
+  width: 130px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff4dc;
+  font:
+    12px/1 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
+  text-shadow: 1px 1px #160e0b;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.v19-risk-consent input {
+  appearance: none;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 2px solid #f4d37c;
+  border-radius: 3px;
+  background: #241310;
+  box-shadow: 0 0 0 1px #100b09;
+  cursor: pointer;
+}
+.v19-risk-consent input:checked::after {
+  content: '✓';
+  display: block;
+  color: #fff2cf;
+  font:
+    bold 13px/14px Arial,
+    sans-serif;
+  text-align: center;
+}
+.v19-risk-consent input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.v19-start {
+  left: 937px;
+  top: 621px;
+  width: 316px;
+  height: 91px;
+}
+.v19-start:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.55) brightness(0.82);
+}
+.v19-start:disabled::after {
+  content: '';
+  position: absolute;
+  inset: 8px 0;
+  border-radius: 18px;
+  background: #11090677;
+  pointer-events: none;
+}
+.v19-load-status {
+  left: 12px;
+  top: 10px;
+  width: 260px;
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: #180d0dee;
+  color: #fff0c2;
+  font:
+    12px 'Zpix',
+    sans-serif;
+}
+.v19-load-status[data-state='ready'] {
+  display: none;
+}
+#reload-game:not([hidden]) {
+  left: 12px;
+  top: 44px;
+  color: #fff0c2;
+  background: #351813;
+  border: 1px solid #e0aa54;
+}
+/* 子页必须是「实底」：以前直接拿大厅背景图当底，等于把大厅透在下面，
+   设置/商店这类表单页看起来像浮在半空的透明层。改成深色羊皮纸底 + 金边内框。 */
+.v19-subpage {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: block;
+  width: 1280px;
+  height: 720px;
+  max-width: none;
+  margin: 0;
+  padding: 28px 38px;
+  overflow: auto;
+  border: 0;
+  background: linear-gradient(180deg, #251713 0%, #1a100d 58%, #150d0b 100%);
+  box-shadow:
+    inset 0 0 0 3px #6d4d24,
+    inset 0 0 0 6px #2b1a12,
+    inset 0 0 120px #00000080;
+  color: #fff1d3;
+}
+/* 子页里的卡片：深底 + 细金边，和像素风金框统一 */
+.v19-subpage .side-card,
+.v19-subpage .lobby-settings-slot .settings {
+  max-width: 620px;
+  margin: 14px 0;
+  padding: 18px 22px;
+  border: 1px solid #6d4d24;
+  border-radius: 2px;
+  background: #17100d;
+  box-shadow: inset 0 0 0 2px #241610;
+}
+.v19-subpage .lobby-settings-slot .settings label {
+  color: #e9d9b6;
+}
+/* 原生蓝色滑块和像素风不搭，换成金杆金块 */
+.v19-subpage input[type='range'] {
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  border: 1px solid #6d4d24;
+  border-radius: 0;
+  background: #241611;
+  box-shadow: inset 0 0 0 2px #150d0a;
+  cursor: pointer;
+}
+.v19-subpage input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 24px;
+  border: 1px solid #1a100c;
+  border-radius: 0;
+  background: #e8c477;
+  box-shadow: inset 0 0 0 2px #a2793a;
+}
+.v19-subpage input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 22px;
+  border: 1px solid #1a100c;
+  border-radius: 0;
+  background: #e8c477;
+  box-shadow: inset 0 0 0 2px #a2793a;
+}
+.v19-subpage .secondary {
+  border: 1px solid #6d4d24;
+  border-radius: 2px;
+  background: #241611;
+  color: #ffe4a0;
+}
+.v19-subpage .secondary:hover:enabled {
+  background: #33200f;
+}
+/* 退出登录是普通按钮，不该拉成整行灰条 */
+.v19-subpage .lobby-settings-slot .secondary {
+  width: auto;
+  min-width: 132px;
+  margin-top: 12px;
+}
+.v19-subpage .text-button {
+  color: #b08c58;
+}
+/* 设置页两张卡片并排，别挤在左侧一列留一大片空 */
+.lobby-settings-slot {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 1080px;
+  align-items: start;
+}
+.lobby-settings-slot .settings {
+  margin: 0;
+  max-width: none;
+}
+/* 卡片标题保留，作为金框卡的小节名（原来被全局隐藏，两栏并排后没有标题会分不清） */
+.v19-subpage .lobby-settings-slot .settings h2 {
+  display: block;
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: #e8c477;
+}
+@media (max-width: 900px) {
+  .lobby-settings-slot {
+    grid-template-columns: 1fr;
+  }
+}
+/* 规则入口从大厅顶部挪进设置页，别再占一格顶部图标 */
+.lobby-settings-links {
+  display: flex;
+  gap: 16px;
+  margin-top: 18px;
+  align-items: flex-start;
+}
+.v19-subpage .lobby-settings-links .text-button {
+  width: auto;
+  padding: 8px 16px;
+  border: 1px solid #6d4d24;
+  border-radius: 2px;
+  background: #1d1310;
+  color: #e8c477;
+  font-size: 13px;
+}
+.v19-subpage .lobby-settings-links .text-button:hover {
+  background: #2b1c15;
+}
+/* 邮件页空态 */
+.lobby-mail-empty {
+  max-width: 620px;
+  margin-top: 16px;
+  padding: 26px 24px;
+  border: 1px dashed #5c4021;
+  border-radius: 2px;
+  background: #17100dcc;
+  text-align: center;
+}
+.lobby-mail-empty-title {
+  margin: 0 0 8px;
+  color: #e8c477;
+  font-size: 16px;
+  letter-spacing: 0.12em;
+}
+.lobby-mail-empty-hint {
+  margin: 0;
+  color: #a98f68;
+  font-size: 13px;
+}
+.v19-gold-button {
+  margin-top: 18px;
+  padding: 10px 22px;
+  border: 2px solid #8a6a35;
+  border-radius: 2px;
+  background: #2a1a10;
+  color: #ffe4a0;
+  font:
+    15px/1 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
+  cursor: pointer;
+}
+.v19-gold-button:hover,
+.v19-gold-button:focus-visible {
+  border-color: #e8c477;
+  background: #3a2413;
+  outline: none;
+}
+.v19-back-button {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 9px 16px;
+  color: #ffe4a0;
+  background: #281711;
+  border: 2px solid #d5a64e;
+  cursor: pointer;
+}
+.v19-dialog {
+  width: 680px;
+  max-width: 90vw;
+  max-height: 82vh;
+  padding: 24px;
+  overflow: auto;
+  border: 3px solid #d9aa50;
+  background: #211411;
+  color: #fff0d0;
+  box-shadow: 0 12px 60px #000c;
+}
+.v19-dialog::backdrop {
+  background: #080504c9;
+}
+.v19-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.v19-dialog > header h2 {
+  margin: 0;
+  color: #ffdf91;
+  font:
+    24px 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
+}
+.v19-dialog > header button {
+  padding: 8px 14px;
+  border: 1px solid #d9aa50;
+  color: #ffe8ad;
+  background: #392016;
+  cursor: pointer;
+}
+.v19-loadout-dialog {
+  width: 760px;
 }

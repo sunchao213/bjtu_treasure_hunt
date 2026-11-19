@@ -213,6 +213,30 @@ app.Map("/ws", async context =>
                         joinedRoomId = null;
                     }
                     break;
+                case "room-chat":
+                    var chatText = ReadString(root, "text", "").Trim();
+                    if (chatText.Length is 0 or > 160)
+                    {
+                        await SendError(client, "INVALID_MESSAGE", "聊天消息须为 1 至 160 个字符。", json);
+                        break;
+                    }
+                    if (joinedRoomId is null || !rooms.TryGetValue(joinedRoomId, out var chatRoom)) break;
+                    Client[] chatRecipients;
+                    lock (chatRoom.Gate)
+                    {
+                        if (!chatRoom.Clients.TryGetValue(client.Id, out var member) || member != client) break;
+                        chatRecipients = chatRoom.Clients.Values.ToArray();
+                    }
+                    var chatMessage = new
+                    {
+                        type = "room-chat",
+                        roomId = joinedRoomId,
+                        playerId = client.Id,
+                        displayName = client.DisplayName,
+                        text = chatText,
+                    };
+                    await Task.WhenAll(chatRecipients.Select(peer => Send(peer, chatMessage, json)));
+                    break;
                 case "player-input":
                     if (joinedRoomId is null) break;
                     if (!root.TryGetProperty("sequence", out var sequenceValue) || !sequenceValue.TryGetInt64(out var sequence) || sequence <= client.LastSequence) break;

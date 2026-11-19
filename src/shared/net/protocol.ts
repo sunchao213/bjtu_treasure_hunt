@@ -128,6 +128,11 @@ export type ClientMessage =
   | (ClientMessageBase & { readonly type: 'room.start' })
   | (ClientMessageBase & { readonly type: 'room.leave' })
   | (ClientMessageBase & {
+      readonly type: 'room.chat';
+      readonly messageId: string;
+      readonly text: string;
+    })
+  | (ClientMessageBase & {
       readonly type: 'session.resume';
       readonly raidId: string;
       readonly reconnectToken: string;
@@ -152,6 +157,15 @@ export type ClientMessage =
     });
 
 export type ServerMessage =
+  | {
+      readonly version: typeof REALTIME_PROTOCOL_VERSION;
+      readonly type: 'room.chat';
+      readonly roomId: string;
+      readonly messageId: string;
+      readonly playerId: string;
+      readonly displayName: string;
+      readonly text: string;
+    }
   | {
       readonly version: typeof REALTIME_PROTOCOL_VERSION;
       readonly type: 'connection.ready';

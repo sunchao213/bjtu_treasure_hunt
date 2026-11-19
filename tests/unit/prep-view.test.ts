@@ -53,8 +53,20 @@ describe('F01 准备页首屏主内容', () => {
   });
 
   it('准备页是整页结构，不再使用居中的弹窗卡片', () => {
-    expect(markup).toContain('class="prep-page"');
-    expect(markup).toContain('class="prep-main"');
+    expect(markup).toMatch(/class="prep-page(?:\s|")/);
+    expect(markup).toContain('class="prep-main v19-preparation"');
     expect(markup).not.toContain('prep-card');
+  });
+
+  it('大厅实时显示存档货币，补队友与聊天控件保留未选择的初始状态', () => {
+    expect(markup).toContain('id="lobby-wallet"');
+    expect(markup).toContain('id="lobby-currency"');
+    expect(markup).toMatch(/<input id="fill-team" type="checkbox"\s*\/><span>补齐队友-4人<\/span>/);
+    expect(markup).toContain('id="lobby-chat-input"');
+    expect(markup).toContain('placeholder="和朋友聊天..."');
+    expect(markup).not.toMatch(/id="fill-team"[^>]*checked/);
+    expect(markup.match(/data-lobby-panel="shop"/g)).toHaveLength(1);
+    expect(markup).toContain('id="v19-loadout-dialog"');
+    expect(markup).toContain('id="v19-mission-dialog"');
   });
 });

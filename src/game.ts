@@ -604,7 +604,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     };
     let roomTrigger = 'open-room';
     let gameScroll = 0;
-    for (const id of ['open-room', 'mobile-room']) {
+    for (const id of ['open-room', 'open-room-legacy', 'mobile-room']) {
       element(id).onclick = () => {
         roomTrigger = id;
         gameScroll = app.scrollTop || window.scrollY;
@@ -646,7 +646,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     };
     element('mobile-rules').onclick = () => element('open-rules').click();
     element('hud-rules').onclick = () => element('open-rules').click();
-    element('mobile-sound').onclick = () => {
+    const toggleMusic = () => {
       if (sound.getMusicState() === 'playing') {
         audibleVolume = sound.getSettings().volume;
         volume.value = '0';
@@ -660,6 +660,45 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       }
       render();
     };
+    for (const button of document.querySelectorAll<HTMLButtonElement>('#mobile-sound-game'))
+      button.onclick = toggleMusic;
+    // 大厅左下角的麦克风 / 听筒按钮：只切换状态与图标，不采集也不传输音频。
+    const voiceState = { mic: true, earpiece: true };
+    const syncVoice = (): void => {
+      const mic = element<HTMLButtonElement>('mobile-sound');
+      mic.classList.toggle('is-off', !voiceState.mic);
+      mic.setAttribute('aria-pressed', String(voiceState.mic));
+      mic.setAttribute('aria-label', voiceState.mic ? '关闭麦克风' : '开启麦克风');
+      mic.title = voiceState.mic ? '关闭麦克风' : '开启麦克风';
+      const earpiece = element<HTMLButtonElement>('v19-earpiece');
+      earpiece.classList.toggle('is-off', !voiceState.earpiece);
+      earpiece.setAttribute('aria-pressed', String(voiceState.earpiece));
+      earpiece.setAttribute('aria-label', voiceState.earpiece ? '关闭听筒' : '开启听筒');
+      earpiece.title = voiceState.earpiece ? '关闭听筒' : '开启听筒';
+    };
+    element<HTMLButtonElement>('mobile-sound').onclick = () => {
+      voiceState.mic = !voiceState.mic;
+      syncVoice();
+    };
+    element<HTMLButtonElement>('v19-earpiece').onclick = () => {
+      voiceState.earpiece = !voiceState.earpiece;
+      syncVoice();
+    };
+    syncVoice();
+    element('v19-map-open').onclick = () => element('open-campus-map').click();
+    element('v19-loadout-open').onclick = () =>
+      element<HTMLDialogElement>('v19-loadout-dialog').showModal();
+    element('v19-loadout-close').onclick = () =>
+      element<HTMLDialogElement>('v19-loadout-dialog').close();
+    element('v19-mission-open').onclick = () =>
+      element<HTMLDialogElement>('v19-mission-dialog').showModal();
+    element('v19-skin-open').onclick = () =>
+      element<HTMLDialogElement>('v19-skin-dialog').showModal();
+    element('open-ranking').onclick = () =>
+      element<HTMLDialogElement>('v19-ranking-dialog').showModal();
+    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-v19-close]')) {
+      button.onclick = () => button.closest('dialog')?.close();
+    }
     element('mobile-bag').onclick = () => {
       scene.clearInteractions();
       const target = element('mobile-bag').getAttribute('aria-controls')!;
@@ -788,16 +827,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const view = activeController.getView();
       const lighting = scene.getLightingStatus();
       const musicState = sound.getMusicState();
-      const soundButton = element('mobile-sound');
-      soundButton.textContent =
-        musicState === 'playing'
-          ? '静音'
-          : musicState === 'loading'
-            ? '加载声音'
-            : musicState === 'error'
-              ? '重试声音'
-              : '开启声音';
-      soundButton.setAttribute('aria-pressed', String(musicState === 'playing'));
+      for (const soundButton of document.querySelectorAll<HTMLButtonElement>(
+        '#mobile-sound-game',
+      )) {
+        soundButton.setAttribute('aria-pressed', String(musicState === 'playing'));
+        soundButton.title = musicState === 'playing' ? '关闭声音' : '开启声音';
+      }
       const bagButton = element('mobile-bag');
       const preparing = view.phase === 'preparing';
       const finished = ['settling', 'success', 'failed'].includes(view.phase);
@@ -943,6 +978,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         lastInventory = signature;
       }
       renderArchiveBrowser(element('lobby-archive-browser'), archive);
+      element('lobby-currency').textContent = String(archive.currency);
       const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
       const supplies = archive.warehouse.filter(
         (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',

@@ -179,6 +179,27 @@ try {
   });
   assert.equal(limited.maxPlayers, 2);
   await request(peers[1], { type: 'join-room', roomId });
+  const chat = await request(
+    peers[1],
+    { type: 'room-chat', text: '集合后出发。' },
+    (message) => message.type === 'room-chat',
+  );
+  assert.equal(chat.roomId, roomId);
+  assert.equal(chat.playerId, peers[1].id);
+  assert.equal(chat.displayName, peers[1].displayName, 'chat sender name comes from the account');
+  await waitFor(
+    () =>
+      host.messages.some((message) => message.type === 'room-chat' && message.text === chat.text),
+    'chat delivered to room members',
+  );
+  assert.equal(
+    peers[2].messages.some((message) => message.type === 'room-chat'),
+    false,
+  );
+  assert.equal(
+    (await request(peers[1], { type: 'room-chat', text: 'x'.repeat(161) })).code,
+    'INVALID_MESSAGE',
+  );
   assert.equal((await request(peers[2], { type: 'join-room', roomId })).code, 'ROOM_FULL');
   assert.equal(
     (await request(peers[1], { type: 'room-settings', maxPlayers: 10, admissionOpen: true })).code,
