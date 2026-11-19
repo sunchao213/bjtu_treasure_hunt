@@ -29,7 +29,8 @@ sealed class GameDatabase
         command.CommandText = "PRAGMA journal_mode=WAL;";
         command.ExecuteScalar();
         command.CommandText = "PRAGMA user_version;";
-        if (Convert.ToInt32(command.ExecuteScalar()) > 1) throw new InvalidDataException("Database schema is newer than this game host.");
+        // user_version=2 起包含好友、私聊与已读游标（R15）；更高版本由更新的宿主负责迁移。
+        if (Convert.ToInt32(command.ExecuteScalar()) > 2) throw new InvalidDataException("Database schema is newer than this game host.");
         using (var transaction = connection.BeginTransaction())
         {
             command.Transaction = transaction;
@@ -47,11 +48,25 @@ sealed class GameDatabase
         command.ExecuteNonQuery();
     }
 
-    private SqliteConnection Open()
+    /// <summary>好友与私聊模块共用同一条连接串，避免复制连接配置。</summary>
+    public SqliteConnection Open()
     {
         var connection = new SqliteConnection(connectionString);
         connection.Open();
         return connection;
+    }
+
+    /// <summary>按 UID 查询账号，用于好友申请与聊天对端校验。</summary>
+    public AccountUser? FindUserById(string id)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, username, display_name FROM accounts WHERE id=$id;";
+        command.Parameters.AddWithValue("$id", id);
+        using var reader = command.ExecuteReader();
+        return reader.Read()
+            ? new AccountUser(reader.GetString(0), reader.GetString(1), reader.GetString(2))
+            : null;
     }
 
     private static void ImportLegacyAccounts(SqliteConnection connection, string path)

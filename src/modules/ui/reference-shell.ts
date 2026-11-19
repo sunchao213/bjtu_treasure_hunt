@@ -7,6 +7,7 @@ import { tutorialMarkup } from './tutorial';
 import { assetUrl } from '../../app/asset-url';
 import { shopMarkup } from './shop';
 import { archiveBrowserMarkup } from './archive-browser';
+import { friendsPanelMarkup } from './friends-panel';
 
 /**
  * F01 准备页整页首屏（与助教要求一致）：
@@ -24,6 +25,7 @@ export function prepViewMarkup(): string {
             <button class="lobby-nav-item is-active" type="button" data-lobby-tab="prepare">出发准备</button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="warehouse">仓库</button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="shop">道具商店</button>
+            <button class="lobby-nav-item" type="button" data-lobby-tab="friends">好友 <span id="friends-nav-badge" class="lobby-nav-badge" hidden></span></button>
             <p class="lobby-nav-label">系统</p>
             <button class="lobby-nav-item" type="button" data-lobby-tab="settings">设置</button>
             <div class="lobby-nav-footer"><span class="status-dot"></span>账号云存档<br /><small>准备 · 探索 · 撤离</small></div>
@@ -73,6 +75,7 @@ export function prepViewMarkup(): string {
             </div>
           </section>
           ${shopMarkup()}
+          ${friendsPanelMarkup()}
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="settings" hidden aria-labelledby="lobby-settings-title">
             <div class="lobby-panel-heading"><div><p class="prep-kicker">体验选项</p><h2 id="lobby-settings-title">设置</h2></div></div>
             <div id="lobby-settings-slot" class="lobby-settings-slot"></div>

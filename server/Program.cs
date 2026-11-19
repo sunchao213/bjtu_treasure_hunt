@@ -21,6 +21,9 @@ var database = new GameDatabase(builder.Configuration["Auth:DataDirectory"] ?? P
 var accounts = new AccountStore(database);
 var sessions = new LoginSessions();
 var app = builder.Build();
+// R15 好友与私聊：关系、屏蔽、消息与已读游标都由服务端维护。
+var friends = new FriendStore(database);
+SocialApi.Map(app, sessions, friends);
 app.UseForwardedHeaders();
 app.UseRateLimiter();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });

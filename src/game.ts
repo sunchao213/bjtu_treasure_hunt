@@ -1,6 +1,7 @@
 import './style.css';
 import './mobile-layout.css';
 import './archive-browser.css';
+import './friends.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { createGame } from './app/create-game';
 import {
@@ -11,6 +12,8 @@ import {
   UTILITY_EFFECTS,
 } from './config/game-config';
 import { renderShop, SHOP_EFFECTS } from './modules/ui/shop';
+import { createFriendsPanel } from './modules/ui/friends-panel';
+import { SocialClient } from './modules/social/social-client';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
 import { FORMAL_SAVE_KEY } from './modules/save/persistent-save';
@@ -101,6 +104,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         panel.hidden = !active;
         panel.classList.toggle('is-active', active);
       }
+      // 好友面板按需拉取名册：只在切到该页签时刷新，避免每次开面板都打接口。
+      document.dispatchEvent(new CustomEvent('lobby:tab', { detail: target }));
     });
   }
 
@@ -294,6 +299,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
   const notify = (message: string) => {
     element('notice').textContent = message;
   };
+  // R15 好友与私聊：面板随大厅挂载；切到「好友」页签时刷新，可见期间每 6 秒轮询未读。
+  const friendsPanel = createFriendsPanel({
+    client: new SocialClient(),
+    self: { uid: user.id, displayName: user.displayName },
+    notify,
+  });
+  friendsPanel.mount();
   let mapToastTimer: number | undefined;
   /** F02：撤离相关的拒绝与中断原因要落在画面内，侧栏状态行只作补充。 */
   const showMapToast = (message: string, ms = 3200): void => {

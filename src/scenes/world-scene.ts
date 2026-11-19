@@ -1,4 +1,5 @@
 import { isTouchLayout } from '../modules/ui/mobile-layout';
+import { createTypingGuard, isFormFocused } from '../modules/ui/typing-guard';
 import { assetUrl } from '../app/asset-url';
 import Phaser from 'phaser';
 import { CAMPUS_FOREGROUND, foregroundOpacity } from '../modules/world/campus-foreground';
@@ -111,8 +112,30 @@ const BUILDING_PALETTES: Readonly<
   LIBRARY: { roof: 0x71878c, wall: 0xb6c5c9, facade: 0x5c7077, accent: 0xe0e8df },
 };
 
+/**
+ * 局内按键：注册时开启 capture，防止空格与方向键滚动页面；
+ * 焦点进入输入框时由 typing-guard 临时放开 capture，让聊天能正常输入。
+ */
+const GAME_KEYS = [
+  'W',
+  'A',
+  'S',
+  'D',
+  'E',
+  'Q',
+  'L',
+  'R',
+  'G',
+  'SPACE',
+  'UP',
+  'DOWN',
+  'LEFT',
+  'RIGHT',
+] as const;
+
 export class WorldScene extends Phaser.Scene {
   private position: Point = { ...WORLD.spawn };
+  private typingGuardDispose?: () => void;
   private player?: Phaser.GameObjects.Container;
   private playerSprite?: Phaser.GameObjects.Sprite;
   private playerFacing: PlayerDirection = 'down';
@@ -386,24 +409,20 @@ export class WorldScene extends Phaser.Scene {
     }
     const keyboard = this.input.keyboard;
     if (keyboard) {
-      for (const key of [
-        'W',
-        'A',
-        'S',
-        'D',
-        'E',
-        'Q',
-        'L',
-        'R',
-        'G',
-        'SPACE',
-        'UP',
-        'DOWN',
-        'LEFT',
-        'RIGHT',
-      ]) {
+      for (const key of GAME_KEYS) {
         this.keys[key] = keyboard.addKey(key);
       }
+      // 输入框获得焦点时先放开这些键的 capture，否则 W/A/S/D/E/Q/L/R/G 会被 preventDefault，
+      // 在大厅聊天框里根本打不出这些字母；失焦后再恢复，避免游戏中空格/方向键滚动页面。
+      const captures = GAME_KEYS.map((key) => Phaser.Input.Keyboard.KeyCodes[key]);
+      this.typingGuardDispose = createTypingGuard({
+        onStart: () => keyboard.clearCaptures(),
+        onEnd: () => keyboard.addCapture(captures),
+      });
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.typingGuardDispose?.();
+        this.typingGuardDispose = undefined;
+      });
     }
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
@@ -476,13 +495,8 @@ export class WorldScene extends Phaser.Scene {
     this.updateRoomPlayers(deltaMs);
     if (this.services.isOnline?.()) {
       const snapshot = this.onlineSnapshot;
-      const focused = document.activeElement;
-      const isTyping =
-        (focused instanceof HTMLInputElement &&
-          !['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file'].includes(
-            focused.type,
-          )) ||
-        focused instanceof HTMLSelectElement;
+      // 焦点在输入框/下拉框时不消费按键（typing-guard 同时会放开 capture）。
+      const isTyping = isFormFocused();
       const down = (key: string) =>
         this.services.touch.held(key) || (!isTyping && (this.keys[key]?.isDown ?? false));
       const movement = {
@@ -545,13 +559,8 @@ export class WorldScene extends Phaser.Scene {
       (view.phase === 'active' || view.phase === 'extracting');
     if (playable && this.hitStopMs <= 0) {
       this.hurtThisFrame = false;
-      const focused = document.activeElement;
-      const isTyping =
-        (focused instanceof HTMLInputElement &&
-          !['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file'].includes(
-            focused.type,
-          )) ||
-        focused instanceof HTMLSelectElement;
+      // 焦点在输入框/下拉框时不消费按键（typing-guard 同时会放开 capture）。
+      const isTyping = isFormFocused();
       const down = (key: string) =>
         this.services.touch.held(key) || (!isTyping && (this.keys[key]?.isDown ?? false));
       const movement = {
