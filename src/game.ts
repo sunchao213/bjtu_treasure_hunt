@@ -704,6 +704,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         scene.clearInteractions();
         element('game-page').hidden = true;
         element('room-page').hidden = false;
+        if (!lobby.isJoined()) {
+          element('room-entry').hidden = false;
+          element('room-lobby').hidden = true;
+        }
         app.scrollTop = 0;
         window.scrollTo(0, 0);
         element('room-title').focus();
