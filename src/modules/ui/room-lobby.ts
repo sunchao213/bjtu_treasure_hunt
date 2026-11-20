@@ -376,6 +376,9 @@ export function bindRoomLobby(options: LobbyOptions) {
   const pingTimer = setInterval(() => {
     if (network.getStatus() === 'connected') network.ping();
   }, 3000);
+  // Render the create/join entry immediately when the room page is opened.
+  // The page can be shown before the WebSocket finishes connecting.
+  render();
   return {
     render,
     leave,
