@@ -1,6 +1,7 @@
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import {
   assertKnownItemId,
+  isCarryInAllowed,
   isExplorationItem,
   ITEM_DEFINITIONS,
   RAID_RULES,
@@ -219,6 +220,9 @@ export class ReferenceSave implements SavePort {
       const item = this.data.warehouse.find((entry) => entry.instanceId === id);
       if (!item) {
         throw new Error('Missing loadout item');
+      }
+      if (!isCarryInAllowed(item.itemId)) {
+        throw new Error('Quest items cannot be brought into a raid');
       }
       const source = item.origin.kind === 'carry-in' ? item.origin.source : undefined;
       return {

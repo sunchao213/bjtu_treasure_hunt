@@ -6,6 +6,7 @@ import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/
 import { createGame } from './app/create-game';
 import {
   HEALING_AMOUNTS,
+  isCarryInAllowed,
   ITEM_DEFINITIONS,
   itemValueFor,
   RAID_RULES,
@@ -63,6 +64,7 @@ import { SoundManager } from './modules/ui/sound-manager';
 import { assetUrl } from './app/asset-url';
 
 import { NetworkSession } from './modules/network/network-session';
+import { onlineUnlockProgress } from './modules/network/online-unlock';
 import { bindRoomLobby } from './modules/ui/room-lobby';
 import { bindStage } from './modules/ui/stage';
 import type { AccountUser } from './modules/auth/auth-client';
@@ -108,7 +110,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       document.dispatchEvent(new CustomEvent('lobby:tab', { detail: target }));
     });
   }
-
   type PrologueMode = 'intro' | 'discovery' | 'clue' | 'story';
   let prologueMode: PrologueMode = 'intro';
   let prologueReturnMode: 'discovery' | 'story' = 'discovery';
@@ -463,12 +464,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     const lobby = bindRoomLobby({
       network,
       confirm: confirmDialog,
+      unlock: () => onlineUnlockProgress(save.view().unlockedChapterIds),
       canEnter: () =>
-        sceneReady &&
-        buyingItem === null &&
-        controller.getView().phase === 'preparing' &&
-        !controller.getView().isBusy,
+        onlineUnlockProgress(save.view().unlockedChapterIds).unlocked,
       canPrepare: () =>
+        onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
         sceneReady &&
         buyingItem === null &&
         controller.getView().phase === 'preparing' &&
@@ -482,7 +482,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         if (sceneReady) scene.removeRemotePlayer(id);
       },
       onStart: async () => {
-        if (controller.getView().phase !== 'preparing') {
+        if (
+          !onlineUnlockProgress(save.view().unlockedChapterIds).unlocked ||
+          controller.getView().phase !== 'preparing'
+        ) {
           lobby.finish();
           return;
         }
@@ -606,6 +609,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let gameScroll = 0;
     for (const id of ['open-room', 'open-room-legacy', 'mobile-room']) {
       element(id).onclick = () => {
+        const unlock = onlineUnlockProgress(save.view().unlockedChapterIds);
+        if (!unlock.unlocked) {
+          notify(unlock.hint);
+          return;
+        }
         roomTrigger = id;
         gameScroll = app.scrollTop || window.scrollY;
         roomOpen = true;
@@ -950,6 +958,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
             : '开始单人探索 ↗';
       element('mode-solo').setAttribute('aria-pressed', String(!lobby.isJoined()));
       element('mode-room').setAttribute('aria-pressed', String(lobby.isJoined()));
+      const onlineUnlock = onlineUnlockProgress(save.view().unlockedChapterIds);
+      for (const id of ['mode-room', 'open-room', 'mobile-room']) {
+        element<HTMLButtonElement>(id).disabled = !onlineUnlock.unlocked;
+        element(id).title = onlineUnlock.unlocked ? '创建或加入联机房间' : onlineUnlock.hint;
+      }
       // F02：按钮不再因为「不在区域 / 价值不足」直接禁用，否则点了没有任何反馈。
       element<HTMLButtonElement>('extract').disabled = !playable || view.phase === 'extracting';
       element('extract').textContent =
@@ -989,6 +1002,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const supplies = archive.warehouse.filter(
         (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
       );
+      const carryableSupplies = supplies.filter((item) => isCarryInAllowed(item.itemId));
       element('warehouse-count').textContent = `${supplies.length} 件功能道具`;
       element('warehouse-item-count').textContent = `${archive.warehouse.length} 件物品`;
       element('warehouse-currency').textContent = String(archive.currency);
@@ -1013,13 +1027,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           ),
         );
         loadout.replaceChildren();
-        if (!supplies.length) {
+        if (!carryableSupplies.length) {
           const empty = document.createElement('p');
           empty.className = 'loadout-empty';
           empty.textContent = '仓库中暂无可带入的功能物品。';
           loadout.append(empty);
         }
-        for (const item of supplies) {
+        for (const item of carryableSupplies) {
           const definition = ITEM_DEFINITIONS[item.itemId];
           const row = document.createElement('label');
           row.className = 'loadout-item';
@@ -1056,7 +1070,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         lastWarehouse = warehouseSignature;
       }
       const settlement = view.result ?? (view.phase === 'preparing' ? archive.lastResult : null);
-      const endingReady = settlement !== null && chapterUnlockGranted(settlement, activeChapter.id);
+      const endingReady =
+        !archive.unlockedChapterIds.includes(activeChapter.id) &&
+        settlement !== null &&
+        chapterUnlockGranted(settlement, activeChapter.id);
       renderChapterUnlock(element('quest-unlock'), endingReady, activeChapter.id);
       // R07：成功撤离但证据不齐时，说明本章为什么还没解锁。
       renderChapterLock(element('quest-lock'), settlement, activeChapter.id);

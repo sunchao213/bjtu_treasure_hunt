@@ -38,6 +38,18 @@ static class CampusWorld
         return result;
     }
 
+    public static bool LineOfSight(Point a, Point b)
+    {
+        var steps = Math.Max(1, (int)Math.Ceiling(Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y)) / 4));
+        for (var i = 0; i <= steps; i++)
+        {
+            var x = a.X + (b.X - a.X) * i / steps;
+            var y = a.Y + (b.Y - a.Y) * i / steps;
+            if (Geometry.Obstacles.Any(w => x > w.X && x < w.X + w.Width && y > w.Y && y < w.Y + w.Height)) return false;
+        }
+        return true;
+    }
+
     private static bool Clear(Point point) =>
         !Geometry.Obstacles.Any(wall =>
             point.X + Geometry.PlayerRadius > wall.X && point.X - Geometry.PlayerRadius < wall.X + wall.Width &&

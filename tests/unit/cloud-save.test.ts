@@ -95,6 +95,25 @@ describe('cloud progress transactions', () => {
     expect(api.write).toHaveBeenCalledTimes(1);
     save.close();
   });
+
+  it('does not consume a quest notebook when a caller tries to bring it into a raid', async () => {
+    const notebook = {
+      instanceId: 'notebook-1',
+      itemId: 'torn-notebook',
+      origin: { kind: 'carry-in' as const },
+    };
+    const api = endpoint({ ...empty(), warehouse: [notebook] });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+
+    await expect(save.beginRaid('notebook-raid', [notebook.instanceId])).rejects.toThrow(
+      'Quest items cannot be brought into a raid',
+    );
+    expect(save.view().warehouse).toEqual([notebook]);
+    expect(save.view().activeRaid).toBeNull();
+    expect(api.write).not.toHaveBeenCalled();
+    save.close();
+  });
+
   it('loads cloud progress instead of overwriting it with an older browser copy', async () => {
     const remote = { ...empty(), codexIds: ['school-badge'] };
     const cache = storage(JSON.stringify(empty()));

@@ -20,6 +20,13 @@ export interface PlayerSnapshot {
   readonly finished: boolean;
 }
 
+export interface RoomChestSnapshot extends NetworkPoint {
+  readonly id: string;
+  readonly zoneId: string;
+  readonly itemId: string;
+  readonly claimedBy: string | null;
+}
+
 export type ClientMessage =
   | {
       readonly type: 'hello';
@@ -36,6 +43,19 @@ export type ClientMessage =
   | { readonly type: 'finish-game'; readonly roundId: string }
   | { readonly type: 'leave-room' }
   | { readonly type: 'room-chat'; readonly text: string }
+  | {
+      readonly type: 'loot-search';
+      readonly roundId: string;
+      readonly requestId: string;
+      readonly chestId: string;
+      readonly stage: 'hold' | 'claim' | 'cancel';
+    }
+  | {
+      readonly type: 'loot-ack';
+      readonly roundId: string;
+      readonly requestId: string;
+      readonly accepted: boolean;
+    }
   | {
       readonly type: 'player-input';
       readonly sequence: number;
@@ -63,6 +83,16 @@ export type ServerMessage =
       readonly started: boolean;
       readonly roundId: string | null;
       readonly players: readonly PlayerSnapshot[];
+      readonly chests?: readonly RoomChestSnapshot[];
+    }
+  | {
+      readonly type: 'loot-result';
+      readonly roundId: string;
+      readonly requestId: string;
+      readonly chestId: string;
+      readonly status: 'offered' | 'rejected';
+      readonly itemId?: string | null;
+      readonly reason?: string | null;
     }
   | { readonly type: 'player-left'; readonly playerId: string }
   | {
@@ -101,6 +131,18 @@ export function isClientMessage(value: unknown): value is ClientMessage {
       typeof value.admissionOpen === 'boolean'
     );
   if (value.type === 'transfer-host') return nonEmpty(value.playerId);
+  if (value.type === 'loot-search' || value.type === 'loot-ack') {
+    return (
+      nonEmpty(value.roundId) &&
+      nonEmpty(value.requestId) &&
+      value.requestId.length <= 64 &&
+      (value.type === 'loot-ack'
+        ? typeof value.accepted === 'boolean'
+        : nonEmpty(value.chestId) &&
+          value.chestId.length <= 64 &&
+          ['hold', 'claim', 'cancel'].includes(String(value.stage)))
+    );
+  }
   if (value.type === 'finish-game') return nonEmpty(value.roundId);
   if (value.type === 'leave-room') return true;
   if (value.type === 'room-chat')
@@ -134,6 +176,16 @@ export function isServerMessage(value: unknown): value is ServerMessage {
       Number.isFinite(value.serverTime)
     );
   }
+  if (value.type === 'loot-result') {
+    return (
+      nonEmpty(value.roundId) &&
+      nonEmpty(value.requestId) &&
+      nonEmpty(value.chestId) &&
+      (value.status === 'offered'
+        ? nonEmpty(value.itemId)
+        : value.status === 'rejected' && nonEmpty(value.reason))
+    );
+  }
   if (value.type === 'player-left') return nonEmpty(value.playerId);
   if (value.type === 'room-chat')
     return (
@@ -158,6 +210,20 @@ export function isServerMessage(value: unknown): value is ServerMessage {
     (value.admissionOpen === undefined || typeof value.admissionOpen === 'boolean') &&
     typeof value.started === 'boolean' &&
     (value.started ? nonEmpty(value.roundId) : value.roundId === null) &&
+    (value.chests === undefined ||
+      (Array.isArray(value.chests) &&
+        value.chests.length <= 128 &&
+        new Set(value.chests.map((chest) => (isRecord(chest) ? chest.id : null))).size ===
+          value.chests.length &&
+        value.chests.every(
+          (chest) =>
+            isPoint(chest) &&
+            isRecord(chest) &&
+            nonEmpty(chest.id) &&
+            nonEmpty(chest.zoneId) &&
+            nonEmpty(chest.itemId) &&
+            (chest.claimedBy === null || nonEmpty(chest.claimedBy)),
+        ))) &&
     Array.isArray(value.players) &&
     value.players.length <= Number(value.maxPlayers) &&
     value.players.every(

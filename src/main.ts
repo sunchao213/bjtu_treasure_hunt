@@ -41,7 +41,7 @@ function frame(content: string): void {
           <div><dt>校园探索</dt><dd>寻找线索，搜集至少 100 价值的物资。</dd></div>
           <div><dt>平安归来</dt><dd>前往南门撤离，保存仓库与图鉴进度。</dd></div>
         </dl>
-        <p class="muted">登录后可单人探索，也可在联机房间页与同伴集合。</p>
+        <p class="muted">登录后开启单人探索，通关全部三个章节后解锁联机。</p>
       </section>
       <section class="auth-card side-card" aria-label="账号登录">${content}</section>
     </main></div>`;

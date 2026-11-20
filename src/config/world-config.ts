@@ -1,4 +1,5 @@
 import type { Rect } from '../shared/types/game';
+import roomLoot from './room-loot.json';
 
 const buildings = [
   { x: 62, y: 224, width: 360, height: 348, name: '北京交通大学', sub: 'SIYUAN', color: 0xa4b3bc },
@@ -172,12 +173,5 @@ export const WORLD = {
     { id: 'garden-hug', kind: 'hug' as const, route: [{ x: 1000, y: 760 }] },
     { id: 'statue-hug', kind: 'hug' as const, route: [{ x: 746, y: 1120 }] },
   ],
-  lootZones: [
-    { id: 'west-lawn', x: 82, y: 680, width: 310, height: 500 },
-    { id: 'flag-lawn', x: 82, y: 1300, width: 310, height: 280 },
-    { id: 'library', x: 478, y: 530, width: 360, height: 130 },
-    { id: 'lake', x: 930, y: 560, width: 280, height: 80 },
-    { id: 'central-lawn', x: 478, y: 880, width: 360, height: 350 },
-    { id: 'east-garden', x: 930, y: 620, width: 280, height: 550 },
-  ],
+  lootZones: roomLoot.zones,
 };

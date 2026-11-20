@@ -109,6 +109,15 @@ describe('B reference inventory contract', () => {
     expect(inventory.getCarriedItems()).toContainEqual(carry);
     expect(value(inventory.getCarriedItems())).toBe(25);
   });
+  it('rejects quest evidence in the raid loadout', () => {
+    const inventory = new ReferenceInventory(new EventBus(), 6, ITEM_DEFINITIONS);
+    expect(() =>
+      inventory.begin('current', [
+        { instanceId: 'notebook', itemId: 'torn-notebook', origin: { kind: 'carry-in' } },
+      ]),
+    ).toThrow('Loadout exceeds capacity');
+    expect(inventory.getCarriedItems()).toEqual([]);
+  });
   it('rejects forged carry-ins and changes to a dropped carry-in identity or origin', () => {
     const inventory = new ReferenceInventory(new EventBus(), 6, ITEM_DEFINITIONS);
     const carry: ItemInstance = {
