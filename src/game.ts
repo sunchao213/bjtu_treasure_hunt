@@ -684,14 +684,20 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     };
     let roomTrigger = 'open-room';
     let gameScroll = 0;
-    for (const id of ['open-room', 'open-room-legacy', 'mobile-room']) {
-      element(id).onclick = () => {
+    const roomEntrypoints = [
+      ...['open-room', 'open-room-legacy', 'mobile-room'].map((id) =>
+        element<HTMLButtonElement>(id),
+      ),
+      ...Array.from(document.querySelectorAll<HTMLButtonElement>('[data-open-room]')),
+    ];
+    for (const button of roomEntrypoints) {
+      button.onclick = () => {
         const unlock = onlineUnlockProgress(save.view().unlockedChapterIds);
         if (!unlock.unlocked) {
           notify(unlock.hint);
           return;
         }
-        roomTrigger = id;
+        roomTrigger = button.id || 'open-room';
         gameScroll = app.scrollTop || window.scrollY;
         roomOpen = true;
         controller.pause();
