@@ -546,12 +546,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       unlock: () => onlineUnlockProgress(save.view().unlockedChapterIds),
       canEnter: () => onlineUnlockProgress(save.view().unlockedChapterIds).unlocked,
       canPrepare: () =>
-        onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
-        sceneReady &&
-        buyingItem === null &&
-        controller.getView().phase === 'preparing' &&
-        !controller.getView().isBusy &&
-        element<HTMLInputElement>('risk-consent').checked,
+        (onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
+          sceneReady &&
+          buyingItem === null &&
+          controller.getView().phase === 'preparing' &&
+          !controller.getView().isBusy &&
+          element<HTMLInputElement>('risk-consent').checked) ||
+        element<HTMLInputElement>('v19-room-risk-consent').checked,
       onChange: () => {
         render();
         refreshV19Room();
@@ -720,7 +721,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       );
       const self = state.players.find((player) => player.playerId === network.getPlayerId());
       ready.textContent = self?.ready ? '取消准备' : '准备';
-      ready.disabled = state.started;
+      ready.disabled =
+        state.started ||
+        (!element<HTMLInputElement>('risk-consent').checked &&
+          !element<HTMLInputElement>('v19-room-risk-consent').checked);
       start.disabled = state.hostId !== network.getPlayerId() || state.started;
     };
     refreshV19Room = renderV19Room;
@@ -731,6 +735,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     element('v19-room-ready').onclick = () => lobby.setReady();
     element('v19-room-start').onclick = () => lobby.startRoom();
     element('v19-room-leave').onclick = () => lobby.leave();
+    element<HTMLInputElement>('v19-room-risk-consent').onchange = () => refreshV19Room();
     v19RoomDialog.addEventListener('close', () => {
       roomOpen = false;
       controller.resume();

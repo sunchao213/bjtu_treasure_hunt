@@ -86,6 +86,7 @@ export function prepViewMarkup(): string {
               <input id="v19-room-code" class="room-input" inputmode="numeric" maxlength="6" placeholder="创建后分享给队友" />
               <div class="v19-room-actions"><button id="v19-room-create" class="secondary" type="button">创建房间</button><button id="v19-room-join" class="primary" type="button">加入房间</button></div>
               <div id="v19-room-members" class="v19-room-members" hidden></div>
+              <label class="consent v19-room-consent"><input id="v19-room-risk-consent" type="checkbox" />我已了解本局风险，准备进入探索。</label>
               <div id="v19-room-controls" class="v19-room-actions" hidden><button id="v19-room-ready" class="secondary" type="button">准备</button><button id="v19-room-start" class="primary" type="button">开始游戏</button><button id="v19-room-leave" class="text-button" type="button">离开房间</button></div>
             </dialog>
             <dialog id="v19-loadout-dialog" class="v19-dialog v19-loadout-dialog" aria-labelledby="v19-loadout-title">

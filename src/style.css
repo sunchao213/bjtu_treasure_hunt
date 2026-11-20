@@ -94,6 +94,9 @@ dialog {
   min-height: 24px;
   color: #c4d9c3;
 }
+.v19-room-consent {
+  margin-top: 16px;
+}
 .v19-room-actions {
   display: flex;
   flex-wrap: wrap;
