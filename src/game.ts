@@ -465,8 +465,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       network,
       confirm: confirmDialog,
       unlock: () => onlineUnlockProgress(save.view().unlockedChapterIds),
-      canEnter: () =>
-        onlineUnlockProgress(save.view().unlockedChapterIds).unlocked,
+      canEnter: () => onlineUnlockProgress(save.view().unlockedChapterIds).unlocked,
       canPrepare: () =>
         onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
         sceneReady &&

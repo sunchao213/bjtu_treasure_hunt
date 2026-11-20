@@ -459,13 +459,11 @@ try {
   for (const id of ['mode-room', 'open-room', 'mobile-room']) {
     assert.equal(
       await evaluate(host, `document.querySelector('#${id}').disabled`),
-      true,
-      'online entry is locked for a new account',
+      false,
+      'online entry is available for a new account',
     );
   }
-  assert(
-    await evaluate(host, 'document.querySelector("#mode-room").title.includes("0/3")'),
-  );
+  assert(await evaluate(host, 'document.querySelector("#mode-room").title.includes("联机已开放")'));
   assert.equal(await evaluate(host, 'document.querySelector("#start").disabled'), true);
   assert.equal(await evaluate(host, '!!document.querySelector("#room-panel")'), false);
   await screenshot(host, '01-lobby');
@@ -581,8 +579,8 @@ try {
     );
     assert.equal(
       await evaluate(storyPage, 'document.querySelector("#mode-room").disabled'),
-      true,
-      'online remains locked until the final ending is saved',
+      false,
+      'online remains available before the final ending is saved',
     );
     await click(storyPage, '#story-skip');
     await until(storyPage, `!!document.querySelector('[data-chapter-story="${expectedChapter}"]')`);
@@ -622,8 +620,8 @@ try {
   await screenshot(storyPage, '11-chapter-three-unlocked');
   assert.equal(
     await evaluate(storyPage, 'document.querySelector("#mode-room").disabled'),
-    true,
-    'two completed chapters do not unlock online',
+    false,
+    'online remains available with two completed chapters',
   );
   await click(storyPage, '#start');
   await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
@@ -633,11 +631,9 @@ try {
   assert.equal(
     await evaluate(storyPage, 'document.querySelector("#mode-room").disabled'),
     false,
-    'all three saved endings unlock online without reloading',
+    'online remains available after all three saved endings',
   );
-  pass(
-    'All three chapters: real evidence searches → extraction → saved endings → online unlock; one/two chapters and pending final ending remain locked',
-  );
+  pass('All three chapters: real evidence searches, extraction and saved endings');
 
   await click(storyPage, '[data-lobby-tab="shop"]');
   const initialBalance = await evaluate(

@@ -93,7 +93,7 @@ sealed class RoomDirectory
         }
     }
 
-    public RoomAction Start(Client client, Func<string, bool> canPlayOnline)
+    public RoomAction Start(Client client)
     {
         lock (Gate)
         {
@@ -101,8 +101,7 @@ sealed class RoomDirectory
             if (room.HostId != client.Id) return new("HOST_ONLY", "只有房主可以开始游戏。");
             if (room.Started) return new("ROOM_STARTED", "游戏已经开始。");
             if (room.Clients.Count < 2) return new("ROOM_NEEDS_PARTNER", "合作探索至少需要两名成员。");
-            var locked = room.Clients.Values.Where(peer => !canPlayOnline(peer.AccountId)).Select(peer => peer.DisplayName).ToArray();
-            if (locked.Length > 0) return new("ONLINE_LOCKED", $"以下成员尚未通关全部三个章节并保存进度：{string.Join("、", locked)}。未开局，未扣除带入物品。");
+            // 暂时允许未完成剧情的成员进入联机房间。
             if (room.Clients.Values.Any(peer => peer.Id != room.HostId && !peer.Ready))
                 return new("NOT_ALL_READY", "还有队友未准备，请等待所有成员准备。");
             room.Started = true;

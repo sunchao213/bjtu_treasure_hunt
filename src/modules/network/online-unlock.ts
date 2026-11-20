@@ -5,9 +5,10 @@ export function onlineUnlockProgress(completedChapterIds: readonly string[]) {
     completedChapterIds.includes(id),
   ).length;
   return {
-    unlocked: completed === rules.requiredChapterIds.length,
+    // 联机暂时开放给所有已登录玩家，章节完成度只用于展示进度。
+    unlocked: true,
     completed,
     total: rules.requiredChapterIds.length,
-    hint: `通关全部三个章节后解锁联机（${completed}/${rules.requiredChapterIds.length}）`,
+    hint: '联机已开放。',
   };
 }

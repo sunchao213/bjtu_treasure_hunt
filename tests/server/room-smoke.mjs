@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -126,11 +125,6 @@ async function connect(index) {
       body: JSON.stringify(data),
     });
   // Independent fixture accounts: no production save is modified.
-  assert.equal((await request(peer, { type: 'create-room' })).code, 'ONLINE_LOCKED');
-  assert.equal(
-    (await request(peer, { type: 'join-room', roomId: '123456' })).code,
-    'ONLINE_LOCKED',
-  );
   const opened = await (await cloudPost('/open', { clientId: randomUUID() })).json();
   const data = {
     schemaVersion: 3,
@@ -143,24 +137,6 @@ async function connect(index) {
     lastResult: null,
   };
   let revision = opened.revision;
-  if (index === 0) {
-    for (const chapters of [
-      ['siyuan-code'],
-      ['siyuan-code', 'siyuan-key'],
-      ['siyuan-code', 'siyuan-key', 'unknown'],
-    ]) {
-      const saved = await cloudPost('', {
-        leaseToken: opened.leaseToken,
-        revision,
-        data: { ...data, unlockedChapterIds: chapters },
-      });
-      assert.equal(saved.status, 200);
-      revision = (await saved.json()).revision;
-      assert.equal((await request(peer, { type: 'create-room' })).code, 'ONLINE_LOCKED');
-      assert.equal((await request(peer, { type: 'set-ready', ready: true })).code, 'ONLINE_LOCKED');
-      assert.equal((await request(peer, { type: 'start-game' })).code, 'ONLINE_LOCKED');
-    }
-  }
   const completed = await cloudPost('', {
     leaseToken: opened.leaseToken,
     revision,
@@ -336,30 +312,6 @@ try {
     { type: 'set-ready', ready: true },
     (m) => m.type === 'room-state' && m.players.find((p) => p.playerId === members[1].id)?.ready,
   );
-  const fixtureDb = new DatabaseSync(join(directory, 'game.db'));
-  const memberSave = JSON.parse(
-    fixtureDb.prepare('SELECT data FROM player_saves WHERE user_id=?').get(members[1].accountId)
-      .data,
-  );
-  fixtureDb
-    .prepare('UPDATE player_saves SET data=? WHERE user_id=?')
-    .run(
-      JSON.stringify({ ...memberSave, unlockedChapterIds: ['siyuan-code', 'siyuan-key'] }),
-      members[1].accountId,
-    );
-  fixtureDb.close();
-  const revokedMember = await request(host, { type: 'start-game' });
-  assert.equal(revokedMember.code, 'ONLINE_LOCKED', 'start rechecks every account in the room');
-  assert(
-    revokedMember.message.includes(members[1].displayName),
-    'denial identifies the ineligible member',
-  );
-  assert.equal(lastState(host).started, false, 'a failed gate does not start the room');
-  const restoreDb = new DatabaseSync(join(directory, 'game.db'));
-  restoreDb
-    .prepare('UPDATE player_saves SET data=? WHERE user_id=?')
-    .run(JSON.stringify(memberSave), members[1].accountId);
-  restoreDb.close();
   const started = await request(
     host,
     { type: 'start-game' },

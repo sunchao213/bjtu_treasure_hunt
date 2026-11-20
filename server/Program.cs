@@ -218,22 +218,7 @@ app.Map("/ws", async context =>
                 case "finish-game":
                 case "room-settings":
                 case "transfer-host":
-                    if (type is "create-room" or "join-room" or "set-ready" or "start-game")
-                    {
-                        try
-                        {
-                            if (!database.CanPlayOnline(session.User.Id))
-                            {
-                                await SendError(client, "ONLINE_LOCKED", "通关全部三个章节并保存进度后，才能解锁联机。", json);
-                                break;
-                            }
-                        }
-                        catch (SqliteException)
-                        {
-                            await SendError(client, "SAVE_UNAVAILABLE", "暂时无法读取通关进度，请稍后重试。", json);
-                            break;
-                        }
-                    }
+                    // 章节完成度暂不作为联机入口门槛，保留存档校验供后续重新启用。
                     RoomAction action;
                     if (type == "set-ready" && (!root.TryGetProperty("ready", out var readyValue)
                         || readyValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False)))
@@ -255,7 +240,7 @@ app.Map("/ws", async context =>
                             "create-room" => rooms.Create(client),
                             "join-room" => rooms.Join(client, ReadString(root, "roomId", "")),
                             "set-ready" => rooms.Ready(client, root.GetProperty("ready").GetBoolean()),
-                            "start-game" => rooms.Start(client, database.CanPlayOnline),
+                            "start-game" => rooms.Start(client),
                             "room-settings" => rooms.Settings(client, root.GetProperty("maxPlayers").GetInt32(), root.GetProperty("admissionOpen").GetBoolean()),
                             "transfer-host" => rooms.TransferHost(client, ReadString(root, "playerId", "")),
                             _ => rooms.Finish(client, ReadString(root, "roundId", "")),

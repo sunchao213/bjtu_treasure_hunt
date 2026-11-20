@@ -78,18 +78,12 @@ function setup(accept = true) {
   };
 }
 
-describe('online chapter gate', () => {
-  it('requires each actual chapter, regardless of order, duplicates or unknown IDs', () => {
+describe('online access', () => {
+  it('is available regardless of chapter progress', () => {
     const ids = QUEST_CHAPTERS.map((chapter) => chapter.id);
-    expect(onlineUnlockProgress([]).unlocked).toBe(false);
-    for (const omitted of ids)
-      expect(onlineUnlockProgress(ids.filter((id) => id !== omitted)).unlocked).toBe(false);
-    expect(onlineUnlockProgress([ids[0]!, ids[0]!, 'unknown']).unlocked).toBe(false);
-    expect(onlineUnlockProgress([...ids].reverse())).toMatchObject({
-      unlocked: true,
-      completed: 3,
-      total: 3,
-    });
+    expect(onlineUnlockProgress([]).unlocked).toBe(true);
+    expect(onlineUnlockProgress(ids.slice(0, 2)).unlocked).toBe(true);
+    expect(onlineUnlockProgress([...ids].reverse()).unlocked).toBe(true);
   });
 });
 
