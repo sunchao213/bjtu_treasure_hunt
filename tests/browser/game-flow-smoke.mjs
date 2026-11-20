@@ -594,6 +594,32 @@ try {
   };
   await finishChapter('siyuan-code', 'siyuan-key');
   await click(storyPage, '[data-lobby-tab="warehouse"]');
+  assert.match(
+    await evaluate(storyPage, 'document.querySelector("#exploration-warehouse").textContent'),
+    /残缺手记 · 任务线索（不可带入）/,
+    'the extracted notebook remains in the warehouse and is marked non-carryable',
+  );
+  await evaluate(
+    storyPage,
+    'document.querySelector("#exploration-warehouse").scrollIntoView({ block: "center", behavior: "instant" })',
+  );
+  await screenshot(storyPage, '14a-notebook-stays-in-warehouse');
+  await click(storyPage, '[data-lobby-tab="prepare"]');
+  assert.equal(
+    await evaluate(
+      storyPage,
+      'Array.from(document.querySelectorAll("#loadout label")).some(label => label.textContent.includes("残缺手记"))',
+    ),
+    false,
+    'quest notebook is absent from the raid loadout choices',
+  );
+  await evaluate(
+    storyPage,
+    'document.querySelector("#loadout").scrollIntoView({ block: "center", behavior: "instant" })',
+  );
+  await screenshot(storyPage, '14-notebook-not-carryable');
+  pass('Quest evidence: torn notebook remains stored and cannot be selected for carry-in');
+  await click(storyPage, '[data-lobby-tab="warehouse"]');
   await click(storyPage, '[data-chapter-story="siyuan-code"]');
   await until(storyPage, 'document.querySelector("#story-dialog").open');
   await click(storyPage, '#story-skip');
@@ -945,7 +971,44 @@ try {
     1,
     'two real browsers search the same chest but receive exactly one item',
   );
-  await screenshot(host, '14-shared-chest');
+  assert.deepEqual([...awardedCounts].sort(), [0, 1]);
+  const playerShots = await Promise.all(
+    [host, guest].map((page) => command('Page.captureScreenshot', { format: 'png' }, page.id)),
+  );
+  await Promise.all(
+    playerShots.map((shot, index) =>
+      writeFile(
+        join(directory, `14-shared-chest-player-${index + 1}.png`),
+        Buffer.from(shot.data, 'base64'),
+      ),
+    ),
+  );
+  const { targetId: evidenceTarget } = await command('Target.createTarget', { url: 'about:blank' });
+  const { sessionId: evidenceSession } = await command('Target.attachToTarget', {
+    targetId: evidenceTarget,
+    flatten: true,
+  });
+  const evidencePage = { id: evidenceSession, name: 'pickup-evidence', errors: [], frames: [] };
+  pages.set(evidenceSession, evidencePage);
+  await command('Runtime.enable', {}, evidenceSession);
+  await command('Page.enable', {}, evidenceSession);
+  const pickupPanels = [host, guest]
+    .map((page, index) => {
+      const player = index === 0 ? '房主 · 测试story（你）' : '队友 · 测试guest';
+      const outcome = awardedCounts[index] === 1 ? '拿到物品' : '未拿到物品';
+      return `<section><h2>${player}：${outcome}</h2><img src="data:image/png;base64,${playerShots[index].data}"></section>`;
+    })
+    .join('');
+  await command(
+    'Emulation.setDeviceMetricsOverride',
+    { width: 1680, height: 1100, deviceScaleFactor: 1, mobile: false },
+    evidenceSession,
+  );
+  await evaluate(
+    evidencePage,
+    `(() => { document.open(); document.write(${JSON.stringify(`<!doctype html><meta charset="utf-8"><style>body{margin:0;padding:24px;background:#101619;color:#edf3ee;font:16px system-ui}h1{font-size:24px;margin:0 0 6px}p{margin:0 0 16px;color:#bfd0c6}main{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{min-width:0}h2{font-size:18px;margin:0 0 8px}img{display:block;width:100%;height:auto;border:1px solid #52635a}</style><h1>同一宝箱同时拾取 · 双客户端实测</h1><p>两端均显示宝箱已开启；服务端只将该物品发给一名玩家。</p><main>${pickupPanels}</main>`)}); document.close(); })()`,
+  );
+  await screenshot(evidencePage, '14-concurrent-pickup-both-players');
   pass(
     'Shared chest: real server movement → concurrent E search → one inventory grant → opened state in both browsers',
   );

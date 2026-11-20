@@ -127,7 +127,15 @@ export function bindSocialPanels(): void {
       const messages = Array.isArray(response.messages) ? (response.messages as ApiRecord[]) : [];
       for (const message of messages) {
         const row = document.createElement('li');
-        row.textContent = `${message.senderId === activeFriend.uid ? activeFriend.displayName : '我'}：${String(message.text ?? '')}`;
+        const outgoing = message.senderId !== activeFriend.uid;
+        row.className = `chat-message${outgoing ? ' is-outgoing' : ''}`;
+        const author = document.createElement('span');
+        author.className = 'chat-message-author';
+        author.textContent = outgoing ? '我' : activeFriend.displayName;
+        const body = document.createElement('p');
+        body.className = 'chat-message-body';
+        body.textContent = String(message.text ?? '');
+        row.append(author, body);
         list.append(row);
         cursor = Math.max(cursor, Number(message.sequence) || 0);
       }

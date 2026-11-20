@@ -1,0 +1,438 @@
+
+--- PAGE 1 ---
+交大摸金录详细设计文档
+版本 V2.0 基线日期 2026年11月12日 编制 交大摸金录项目组
+本文件承接R01—R20，保留原F1—F6核心模块编号，并用D01—D12标识本轮详细设计章节。图
+表、字段、接口、事务和异常处理共同构成本版开发与验收标准。
+D01 领域对象接口与状态所有权
+D01.1 核心对象
+图1核心控制器端口和新增领域服务关系
+RaidController拥有个人阶段、生命、时钟和撤离进度；InventoryPort拥有唯一物品集合及位置；
+QuestService只从快照与真实事件派生条件；SavePort或在线事务拥有永久资产。WorldScene负
+责输入、位置与表现接线，在线模式负责输入发送与服务端快照渲染，不在客户端另算可信结算。
+D01.2 类型和约束
+对象 必需字段 关键约束
+itemIdkindraritybagSlotseffect ID全局唯一；bagSlots为正整数；武器专用栏不计物品
+ItemDefinition
+weaponSpec 容量
+instanceIditemIdacquisition acquisition永久保留
+ItemInstance originupgradeLevel exploration/purchase/starter/mail；origin只描述当
+remainingUses 前局关系
+交大摸金录 V2.0 1
+--- PAGE 2 ---
+对象 必需字段 关键约束
+raidIdplayerIdphasehealth
+RaidView remainingMsvaluethreshold 只读；数值来自控制器或服务器；不接受UI自报V
+extractionProgress
+raidIdchapterIdevidenceIds 第一章事件minghu-stele单独记录；本局事件不可从旧
+QuestRun
+investigationEvents 档继承
+raidIdplayerIdoutcomereason
+RaidResult carriedItemsvaluechapterProof 成功/失败互斥；失败无入仓物；凭据由权威状态产生
+orderProof
+okvalue或errorcodemessage
+ActionResult 重复和满包有不同错误码，不能统称满包
+retryable
+D01.3 单局状态
+preparing→starting→active↔ extracting→settling→success/failed。starting期间禁止第二次开
+局；settling冻结输入和结果，只有查询、重试与查看详情；success/failed后有待完成章节时先完
+成或跳过结尾，再允许下一局。死亡优先于超时，超时优先于撤离；服务器处理中使用统一顺序。
+公开方法包括：InventoryPort.validateLoadout、equipWeapon、consume；
+SavePort.getSettlement、acknowledgeChapter；EconomyPort.quote/transact；
+ProfilePort.listRaids；SocialPort申请与消息；MailPort.list/read/claim/getClaim；RoomPort加
+入准备开局重连。实现可拆文件，但方法语义与错误需保持一致。
+D02 F1 搜索调查和剧情前置
+D02.1 输入输出与正常路径
+入口为active阶段，搜索对象在范围内、无遮挡、手电开启且有电并直接照亮，玩家静止。普通搜索
+距离与光束以世界坐标配置，直射范围310、半角36度；环境灯与照明棒不替代手电。先检查容量
+与章节前置，再SearchInteraction.begin(pointId)，累计连续2000ms，完成时再次复核。
+交大摸金录 V2.0 2
+--- PAGE 3 ---
+图2搜索调查活动流程
+完成时先保存completedTarget局部变量，调用inventory.addLoot；库存成功后
+opened.add(completedTarget)，再发LocationInteracted与任务变化；这样ItemPicked同步弹
+剧情并cancel搜索也不会把null记入opened。此操作顺序用于保证同步回调下的搜索结果一致。
+失败不标已打开、不移除地面物、不发成功事件。
+D02.2 时序与重试
+图3搜索计时库存提交与事件时序
+begin(id):boolean，同目标重复调用不重置起点，已打开返回false；progress():number；
+cancel():void；finish(item,insert):ActionResult。接口统一以上签名，废除旧合稿中begin既写
+void又写boolean的矛盾。
+松E、移动、受伤、光束移开、手电没电、隐藏页面或阶段切换均cancel；恢复后重计完整2秒。满
+包不开始；完成时容量变化造成拒绝也保留搜索点。未知实例、冲突实例、已打开点、前置不足分别
+返回INVALID_ITEM、INSTANCE_CONFLICT、ALREADY_SEARCHED、
+PREREQUISITE_MISSING。
+交大摸金录 V2.0 3
+--- PAGE 4 ---
+D02.3 剧情调查
+第一章固定宝箱siyuan-notebook-chest位于(240,620)，明湖石碑位于(990,230)；固定点由世界配
+置统一定义。必须持有本局torn-notebook才接受investigateStele，重复调查返回已完成；事件不
+生成物品。第二章固定campus-map-point(800,940)和siyuan-key-point(467,370)，第二点依赖
+本局地图。第三章沿芳华园与中心广场配置。非当前章节目标不得被错误纳入进度。
+在线时服务端从位置、已打开集合、照明状态和输入连续性验证，不接受客户端“已搜索完成”布尔
+值。物品ID取raidId+pointId+spawnVersion等稳定标识；跨人同时完成只允许一个领取者，失败
+者收到已被拾取。
+D03 F2 背包价值与开局装载
+D03.1 容量和来源
+本人携带集合按instanceId唯一，位置为weaponSlot或bag(index)。武器仅1栏，不占6格物品
+容量，不允许第二把武器藏在物品包中；替换确认后旧武器掉地。非武器占用
+sum(definition.bagSlots??1)，小黄车2格，其余既有物品1格，UI和业务使用同一函数。
+V=ΣbaseValue(itemId)，求和对象为当前仍携带、origin.kind=raid-loot且obtainedInRaidId=当
+前raidId的本人实例。相同ID相同内容只计一次；同ID冲突内容拒绝，不静默取更高价值。carry-
+in、starter和其他局来源不计V，装备位置不改变合法本局loot的计值资格。
+图4物品变更价值重算与撤离资格活动流程
+D03.2 开局事务
+start(loadoutIds,weaponId)先从最新仓库快照构建最终装载方案，校验实例归属、重复、bagSlots
+总和、单武器及赠送规则。未选武器时直接装备本局starter训练棍；不要把赠送武器塞进6格包。
+预检通过才调用beginRaid，原子保存仓库扣减、activeRaid.loadout、模式、目标章节和
+orderRunId。
+交大摸金录 V2.0 4
+--- PAGE 5 ---
+Inventory.begin使用已经预检的装载计划；若仍异常，执行同startRequestId的abortStart补偿，
+恢复扣除清单并清activeRaid，不得把“从未进入可操作局”判作损失失败。服务器在同一事务登记
+装载和运行局；提交前失败全部回滚。
+D03.3 使用丢弃与重拾
+consume(instanceId,effect)验证归属、类型、有效阶段；持续使用完成且效果可接受才移除实例。
+满血/满电、使用取消、效果错误不消耗；有效受伤或移动中断使用。丢弃原实例落地，重拾ID、永
+久来源、等级和剩余次数不变；不把购买物洗成探索物。
+D03.4 不变量与验证
+不变量 验证场景
+物品容量≤6，武器≤1 5/6/7容量；2格小黄车加4个1格物恰好6，再加1件拒绝
+失败操作无资产变化 非法实例、满包、未知itemId、满血使用均比较前后快照
+价值按当前状态派生 110丢25变85；拾回回110；再次请求不变135
+开局扣档与进入可操作
+预检失败不扣仓；注入装载异常补偿后原物恢复
+一致
+D04 F3 玩家攻击普通怪与掉落
+D04.1 命中算法
+输入attackId、playerId、方向、武器实例与权威时刻；检查active阶段、冷却、剩余次数、距离、
+扇区或弹道、墙体。每个attackId维护hitTargetIds，目标已命中过不再次扣血；有效射击消耗一次
+弹药或次数，未满足发射条件不消耗。
+训练棍伤害35、范围82、冷却450ms；电击器15、范围75、冷却1200ms、15次，眩晕普通
+1200ms、变异600ms；其余4类配置见产品目录。普通巡逻怪生命70，两次合法训练棍命中即死
+亡，验收应断言两次有效命中即击败。
+交大摸金录 V2.0 5
+--- PAGE 6 ---
+图5攻击判定普通怪状态和掉落流程
+D04.2 怪物状态
+patrol→chase→windup→attack→recovery→chase；目标丢失保留5秒记忆后patrol；电击进入
+stunned；生命0进入dead。巡逻怪前摇450ms、命中距离60、伤害14、恢复1100ms；受击有
+效后玩家无敌800ms。扩展疾跑、守卫、远袭、潜伏分别加入冲刺锁方向、慢速高血、受遮挡弹道、
+显露预警，禁止共用同一贴图却不改变行为来算种类增加。
+D04.3 伤害和掉落时序
+图6权威命中伤害和地面掉落时序
+有效玩家受伤只通过RaidController.applyDamage一次；DamageTaken订阅者仅取消交互和播放
+反馈，不再次扣血。敌人死亡只发一次EnemyDefeated，掉落先进入地面，拾取成功才进入本人背
+包并计V。
+巡逻怪仅进行一次40%校训徽章判定；抱抱怪安抚与击败均无物品，其余普通怪各50%指定掉落。
+随机数r∈[0,1)，r<p掉落，测试验证0、p-epsilon、p与接近1的边界。killId去重，随机重放不能
+重掷提高收益。
+交大摸金录 V2.0 6
+--- PAGE 7 ---
+D05 F4 安抚变异与交互互斥
+D05.1 安抚状态
+图7抱抱交互及变异触发规则
+抱抱怪在请求范围300且视线可达时进入request，计时6秒；玩家距≤110、静止、持续按Q满
+1500ms后calmed，持续30000ms，无物品奖励。松键、移动或离开安抚距离仅清零进度，在请求
+剩余时限内可重试；失去目标超出追踪范围或视线时按配置回巡逻。
+D05.2 触发优先级
+事件 处理 后置状态
+本次主动命
+先扣生命并确认dead dead，不变异不复活
+中已致死
+首次有效非
+致死主动命 立即清安抚进度并锁定预警起点 mutation-warning，不等第二次
+中
+安抚期间有
+伤害优先于同帧安抚完成 mutation-warning
+效受伤
+请求超时 清进度并进入预警 mutation-warning
+松键或移动 仅清进度，不直接激怒 request，保留请求剩余时间
+预警满
+若仍存活才进入变异追击 mutatedchase
+1000ms
+交大摸金录 V2.0 7
+--- PAGE 8 ---
+预警期间不进行变异攻击，不重复刷新预警起点。变异转入时生命重置100，但dead是吸收状态，
+绝不能在致死后被计时器复活。请求状态与已平静状态中的首次主动攻击均受同一规则控制。
+D05.3 互斥和清理
+InteractionCoordinator为搜索、安抚、恢复物使用、撤离维护单一activeAction。新动作需取消旧
+动作或返回BUSY。页面隐藏和失焦清输入，结束或销毁清计时与订阅；在线world不因客户端弹层
+暂停，离线与在线均按统一时钟规则验收。
+D06 F5 与 F6 撤离结算和章节完成
+D06.1 撤离复核
+startExtraction不接收客户端价值；从权威库存算V。先tick处理死亡和超时，再检查阶段、区域、
+V≥100；成功记录extractStartTime。每次更新按死亡、超时、区域/V、读条时长顺序处理，连续满
+5000ms才冻结成功。4999ms不结束；600000ms时即使读满也超时失败。
+图8开局撤离冻结结果与持久化流程
+D06.2 原子个人结算
+finalizeRaid(result)只接受本局可信结果。离线按raidId幂等，在线按raidId+playerId幂等；已处
+理请求返回原结果。事务中先读取冻结快照，生成章节候选凭据并验证委托，再扣交付物，返还带入
+物，处理可信探索同型物的收藏和转换，排除mail、purchase及未知来源实例，更新图鉴、余额、
+委托、历史、结果、settled标记并清activeRaid。
+交大摸金录 V2.0 8
+--- PAGE 9 ---
+图9冻结结果持久化和结果展示时序
+失败原因death/timeout/abandoned/interrupted/disconnect/serverInterrupted，入仓items为
+空，不返还本局带入物；未带入的仓库、已有图鉴和完成章节保留。写入失败不显示success，结果
+冻结在settling，以相同ID重试；响应丢失先查getSettlement。重试不能重新计算随机掉落或换一
+批物资。
+D06.3 结尾剧情的可靠完成
+成功结算产生
+pendingChapterCompletion{chapterId,raidId,proofDigest,endingAcknowledged:false}，同事
+务保存。acknowledgeChapter(chapterId,raidId,requestId)只能使用已有可信凭据且满足前章完成
+顺序；关闭或跳过结尾剧情后调用，保存完成才开放下一章。重复调用幂等，跨章节/伪造raidId拒
+绝。刷新后重现待完成结尾，不能靠内存弹窗标志或lastResult长期承担未处理状态。
+三章目标：siyuan-code为本局手记+steleInvestigated；siyuan-key为本局campus-
+map+siyuan-key；soothe-monster为本局soothe-charm+complete-record。只检查同局且仍
+带出的证据，不接受历史带入物。allStoryCompleted只由三章完成集合派生，单独的客户端
+canOnline布尔值不作为权限。
+D07 接单商城与时装
+D07.1 委托状态和提交
+OrderRun为accepted→inRaid→completed，失败回accepted，未开局可cancelled。接受前检
+查三章完成、无其他活动委托、模板版本；一人一份，合作成员必须同模板。目标从本局实例或本人
+killId推导，不共享队友进度。合格成功结算自动提交，交付物消耗和奖励同事务；物品入仓前先扣交
+付，避免既领奖又出售。
+交大摸金录 V2.0 9
+--- PAGE 10 ---
+图10委托轮次及结算提交活动流程
+D07.2 交易服务
+quote(type,target,quantity)返回quoteId、configVersion、expiresAt、价格和效果；报价有效60
+秒。transact带transactionId、quoteId、expectedRevision及目标，不带可信价格。服务端从配
+置查价，校验局外、所有权、余额、上限、来源和接收条件，BEGIN IMMEDIATE后一次提交。
+图11商城交易与响应丢失重试时序
+同transactionId相同requestHash返回原结果；不同摘要冲突。购买生成新instanceId及
+purchase来源；升级保持实例ID、等级最高3；出售移除合法在仓探索藏品并增加基础价值；展示
+物出售需二次确认并清槽；购买服装写ownedSkinIds，重复拥有不扣款。客户端超时只显示结果确
+认中，通过GET原交易查询后再决定恢复按钮。
+D07.3 时装装备
+equipSkin(skinId,revision)检查ownedSkinIds与无活动局，保存equippedSkinId。默认校服始终
+可用；局内固定开局时skinId，其他客户端只加载资源清单内的外观。皮肤不改变速度、伤害、碰
+撞、可见范围和攻击距离，模型尺寸变化不改变判定半径。
+交大摸金录 V2.0 10
+--- PAGE 11 ---
+D08 联机房间权威世界与恢复
+D08.1 房间合同
+使用六位房间码与10人上限，合作至少2人。房间消息为create-room、join-room、set-ready、
+room-settings、transfer-host、start-game及leave-room，统一使用协议版本2。create、
+join、ready、start均在服务端读取已验证三章完成；房主本人也不能豁免。更换委托、装载或成员
+离开清相关准备状态。房间控制规则为：room-settings仅候场房主可调用，2≤maxPlayers≤10且
+不小于当前人数；admissionOpen=false拒绝新加入，现有成员不被踢出；transfer-host仅候场房
+主可转交给不同的在线成员。容量、加入规则或房主改变后全员清准备，同值规则不重置。上述操作
+与join/start在同一Gate内检查，局中拒绝规则与房主修改。
+图12房间成员准备与开局活动流程
+start在同一Gate内检查房主、2≤人数≤10、全员在线已准备、三章完成、相同委托模板和版本、装
+载合法；然后事务预留全部成员资产并创建raidId。任一预留失败整批回滚，所有成员留候场；服务
+器提交后广播started。
+图13房间到权威对局及个人结算时序
+交大摸金录 V2.0 11
+--- PAGE 12 ---
+D08.2 输入与世界同步
+目标协议版本2，输入含sequence、roomId、raidId、move、aim、actions、clientSentAt；不接
+受health/value/currency/lootCount等结果字段。服务器20Hz固定步推进，快照10Hz，客户端
+插值显示；过期/重复sequence丢弃。坐标、动作频率、速度和射线由服务器重算，客户端时间仅诊
+断。
+每个搜索点、地面物、怪物、攻击和任务事件有稳定ID；竞争拾取在同一世界队列串行校验，至多1
+人成功。个人V不包含队友物资；个人成功后从活动世界退出，队友继续。无复活、友伤和中途补
+位；结束成员输入无效。
+D08.3 重连和异常
+同账号同活动raidId持有效短期恢复凭据可在30秒内重连，凭据绑定playerId和session，服务端
+重新鉴权。断线角色仍在场，继续受伤和计时；若已经死亡则只返回失败结果；超过30秒产生一次
+disconnect结算。重连不创建新raidId、不补发物品；主动离局需确认并按abandoned结算。
+服务进程周期写入活动局恢复日志和待提交结果；重启先重放已提交Outbox，再恢复待结算。无法
+恢复的活动局记serverInterrupted个人失败，不猜测成功收益。已落账的结果查询仍可用。重连边
+界按29999ms、30000ms及断线期间死亡分别验证。
+D09 数据字典与迁移
+D09.1 版本与兼容范围
+数据库结构版本为user_version=2，游戏JSON为schemaVersion=4；稳定本地键名中的v2仅为
+存储键标识。系统支持schema1/2/3历史档校验迁移，资产、章节、目录和来源不得因名称变化而
+错误重建。在线快照的结构校验、revision和写租约须与权威业务校验共同生效。
+D09.2 目标字段
+实体 主字段 约束与写入时机
+playerIdschemaVersionrevision
+warehousecurrencycodexIds
+PlayerSave schemaVersion=4；本人唯一；事务后revision+1
+completedChapterIds
+pendingChapterCompletion
+交大摸金录 V2.0 12
+--- PAGE 13 ---
+实体 主字段 约束与写入时机
+instanceIditemIdownerId
+ID唯一；来源持久；等级1至3；次数非负；结算和交
+ItemInstance acquisitionoriginupgradeLevel
+易写入
+remainingUsesplacement
+playerIdchapterIdraidId
+ChapterProof proofDigestacknowledgedAt 章及玩家唯一；凭据由权威结果生成；确认后开放模式
+trustLevel
+raidIdplayerIdmodechapterId
+RaidParticipant orderRunIdoutcomereasonvalue raidId+playerId唯一；已提交不可重复更改
+resultJson
+orderRunIdplayerIdtemplateId
+OrderRun 每人最多1个活动状态；成功结果只关联一次
+versionstatuscompletedRaidId
+playerIdtransactionId
+Transaction requestHashtypeamount 复合唯一；金额整数；结果查回保幂等
+resultJsoncreatedAt
+SkinOwnership与 playerIdskinId；playerIdslot
+拥有唯一；展示slot1至6；必须本人在仓实物
+DisplaySlot instanceId
+Friendship与 pairKeyrequesterIdstatus；
+pairKey唯一；自加拒绝；屏蔽优先
+Block blockerIdblockedId
+messageIdconversationId
+Message与
+senderIdtextsentAt；playerId messageId唯一；文本1至200字符；双方权限
+ReadCursor
+conversationIdlastReadId
+noticeIdtitlebodypublishedAt
+Notice与
+attachmentVersion；playerId 仅官方发布；收件人复合唯一；已读独立
+NoticeRecipient
+noticeIdreadAt
+noticeIdattachmentVersion
+MailAttachment 发布后奖励快照不可变；金额数量非负；仅合法定义
+currencyitemIdcount
+playerIdnoticeIdclaimId
+playerId+noticeId唯一；claimId唯一；资产与领取
+MailClaim requestHashrewardSnapshot
+同事务
+resultJsonclaimedAt
+playerIdscorereachedAt；
+Ranking与
+eventIdaggregateIdpayload 结算事件去重；稳定排名；事件同事务入库
+Outbox
+deliveredAt
+交大摸金录 V2.0 13
+--- PAGE 14 ---
+SQLite表及索引由user_version=2迁移脚本创建；completedChapterIds逻辑上仍映射原
+unlockedChapterIds，避免两字段出现两个权威集合。schema4若保留原字段名，API文档须同
+步；本文不要求同时存两个集合。
+D09.3 迁移与回滚
+先备份原DB/JSON→校验旧档→创建新结构→逐ID保留原仓库、currency、codexIds、章节与
+lastResult→新增历史从迁移时开始，不伪造过去对局。武器保留training-bat/stun-baton，地图等
+使用稳定ID；新增4探索ID，不按中文名强制改ID。
+schema2无可信loadout活动局按interrupted一次结算；schema3有效清单正常校验，迁移不返
+还已损失物。来源不明旧实例标legacyUnknown，不凭名称获得出售资格。数据库和JSON升级均
+事务/原子替换，失败保留原文；未知更高版本拒绝回写。
+在线旧云档和本地首次导入标legacyUnverified，保留历史可见性；可信资产和三章验证通过在线复
+核建立。不得继续接受任意客户端整档覆盖权威余额、章节和排行。回滚代码前先核对其支持的DB
+版本，不能把schema4直接交给只识别schema3的旧构建。
+D10 好友聊天通知与排行
+D10.1 好友关系
+apply(targetUID,requestId)拒绝本人、未知UID和屏蔽关系；同一对申请幂等。accept仅目标用户
+可调用，在事务中改accepted并让双方可见；拒绝改rejected；删除结束关系，不删除对方私有历
+史；屏蔽立即禁止新的申请、邀请和消息。双方同时申请时合并为同一pending关系并提示待处理，
+不自动成为好友。
+D10.2 消息
+sendMessage(messageId,toUID,text)验证已接受好友、双方未屏蔽，Unicode字符数1至200、
+每10秒最多5条；原样文本编码，禁止执行HTML。持久化成功才确认delivered；WebSocket仅
+推送已保存消息，离线接收人下次按游标拉取。重复ID相同载荷返回原消息，异载荷冲突。已读游标
+单调递增，未读数不接受客户端自报。
+交大摸金录 V2.0 14
+--- PAGE 15 ---
+D10.3 官方邮件与奖励附件
+邮件只由受保护的官方入口发布，绑定收件人范围；玩家仅能读取及领取本人可见邮件。发布时冻结
+附件版本、交子金额和物品定义及数量，禁止普通玩家自报奖励。正文按纯文本显示。附件可为空，
+也可包含交子、物品或二者组合。
+GET /api/inbox返回标题、正文、发布时间、附件预览、readAt和claimedAt。打开调用POST
+/api/inbox/{id}/read，按playerId+noticeId幂等保存已读；打开不领取，领取不自动改变
+readAt。未读数和未领取奖励数分别派生。
+图14邮件奖励领取与资产原子提交时序
+POST /api/inbox/{id}/claim输入requestId、expectedRevision及attachmentVersion。身份从
+会话读取，先检查收件人权限，再查同人同邮件领取记录；已领取且合法重试直接返回原结果，不因
+旧revision而重复发奖。相同requestId不同载荷返回IDEMPOTENCY_CONFLICT。
+首次领取须在线、局外且无activeRaid或settling。事务内重新检查权限、局外状态、revision和不
+可变附件版本；以playerId+noticeId唯一键锁定领取，增加钱包、生成唯一物品实例、记录
+MailClaim结果并令revision+1，然后一次提交。实例ID由claimId及附件序号派生，附件整包领
+取，不允许部分提交。并发竞争者返回已提交的同一结果；数据库忙或任一写入失败回滚全部变更。
+附件物品进入仓库，acquisition=mail并记录claimId来源，不占局内背包。邮件物品不按重复藏品
+自动转换交子、不点亮探索图鉴、不计本局V、委托证据或排行，不能出售；以后带入使用carry-in
+语义。仓库允许独立实例，邮件重复同型物不触发探索结算去重规则。默认附件物品等级1、剩余次
+数取冻结配置，发布端只允许已定义且可入仓的物品。
+超时显示“结果确认中”，调用GET /api/inbox/{id}/claim查询本人原结果；pending或无结果时
+保留原请求号安全重试。刷新或服务重启后从持久领取记录恢复，不能仅凭客户端按钮状态防重。无
+交大摸金录 V2.0 15
+--- PAGE 16 ---
+附件返回NO_ATTACHMENT；非收件人拒绝且不泄漏奖励详情；活动局返回RAID_ACTIVE；版本
+失效提示刷新；存储失败返回可重试错误。离线仅显示带缓存时间的邮件，禁止领取。
+D10.4 排行及档案
+合格事件为已验证在线档、三章已完成、mode为soloOrder或coopOrder、outcome成功的个人
+结算；scoreDelta=冻结个人V。使用settlementEventId去重；事务记录计分，Outbox更新排
+名。排序score DESC、reachedAt ASC、playerId ASC；好友榜是accepted好友加本人子集；每
+页20，固定snapshotId与游标，避免分页重复。
+GET profile/self返回本人全部历史与资产，GET profile/{uid}/public只含允许公开字段及最近20
+局摘要。public展示关掉后不泄漏藏品；排名仍可显示UID昵称分数，不返回余额、库存明细或私
+聊。
+D11 API 事件与错误合同
+认证、存档与领域命令使用/api路径，实时输入使用/ws；路由合同如下。身份取服务器会话，不采
+信body中的ownerId。写请求校验同源和X-Game-Request，使用Cookie及登录限流机制，生产
+全程HTTPS。
+入口 关键输入 输出与校验
+requestIdmodechapterId
+POST/api/raids/start orderRunIdloadoutIds raidId及权威初始快照；预检和扣物同事务
+weaponIdrevision
+GET/api/raids/{id}/result 路径raidId 本人保存结果或pending；不读他人详情
+POST
+raidIdrequestIdrevision 已完成章节与模式权限；需可信pending凭据
+/api/chapters/{id}/ack
+POST/api/orders/accept templateId或orderRunId
+活动委托；一人一份；三章全通
+或cancel requestIdrevision
+targetquantity；
+POST/api/shop/quote或
+transactionIdquoteId 可信报价或已提交结果；不接受自报金额
+transactions
+revision
+GET/api/transactions/{id} transactionId 本人原交易结果，响应丢失可恢复
+POST/api/skins/equip skinIdrevisionrequestId 装备外观；仅自有且局外
+交大摸金录 V2.0 16
+--- PAGE 17 ---
+入口 关键输入 输出与校验
+GET/api/profile/self或
+cursor或UID 本人详细/好友公开数据，严格字段白名单
+/{uid}/public
+POST/api/friends/request
+targetUIDactionrequestId 唯一关系与权限状态
+或respond
+POST/api/messages messageIdtoUIDtext 保存消息与投递状态；限长限速
+GET/api/inbox；POST
+cursor；noticeIdrequestId 本人邮件及已读；读取与领取独立
+/api/inbox/{id}/read
+POST requestIdexpectedRevision
+局外在线、本人收件权限；唯一领取与资产同事务
+/api/inbox/{id}/claim attachmentVersion
+GET/api/inbox/{id}/claim noticeId 本人已提交领取结果或pending；超时查回
+GET/api/rankings scopecursorsnapshotId 每页20；score和更新时间
+WebSocket协议2：room操作、player.input、world.snapshot、world.event、
+session.resume、settlement.confirmed；所有输入带raidId及sequence，快照带serverTick和
+lastProcessedInput。事件载荷至少含eventId、raidId、playerId、serverTime，防跨局与重复消
+费。具体JSON字段在共享协议文件中唯一声明。
+公共错误包括UNAUTHENTICATED、FORBIDDEN、STORY_LOCKED、ROOM_FULL、
+ROOM_LOCKED、HOST_ONLY、INVALID_CAPACITY、INVALID_MEMBER、
+ROOM_STARTED、NOT_ALL_READY、ALREADY_SEARCHED、INVENTORY_FULL、
+INSTANCE_CONFLICT、VALUE_TOO_LOW、QUOTE_EXPIRED、INSUFFICIENT_FUNDS、
+MAX_LEVEL、REVISION_CONFLICT、IDEMPOTENCY_CONFLICT、SAVE_FAILED、
+NO_ATTACHMENT、MAIL_NOT_FOUND、ATTACHMENT_VERSION_CONFLICT、
+RAID_ACTIVE和RECONNECT_EXPIRED。客户端按码映射原因和下一步，不用字符串模糊匹配推断
+业务。
+交大摸金录 V2.0 17
+--- PAGE 18 ---
+D12 核心验证与实现出口
+D12.1 设计落点
+需求 设计章节 重点验收
+R01/R02/R03 D01—D03 开局预检、搜索2秒、bagSlots、来源和价值
+R04/R05/R06 D04—D06 命中去重、变异优先级、5秒撤离、结果可靠保存
+R07/R09/R10/R11 D02/D06—D08 三章规定路径、结尾凭据、接单门槛、全员在线验证
+R08/R12/R13/R14 D03/D07/D09—D11 入口、个人档案、交易原子性和时装无属性
+R15/R16/R17/R18/R19/ D04/D08—D11及产
+真实社交、稳定排行、邮件奖励、扩展内容和恢复
+R20 品目录
+D12.2 必须闭环的异常
+搜索成功事件同步打开剧情仍要标已开；start保存后装载异常要补偿；成功结果保存和结尾剧情之间
+刷新要恢复；重复collectible替换要维护展示；交付物不能又入库；同物竞争拾取至多1人；未通关
+成员不能借邀请或直接协议进入；断线重连不能重复结算；客户端整档写入不能制造线上币或分数；
+邮件领取失败不能部分发奖，重试和多设备不能重复发奖。
+发布准入 团队安排执行人员按验收版本保存自动化与人工证据，P0/P1适用项全过，阻塞及严重缺陷
+为0；公开服务、目标设备、真实多人、迁移、故障恢复和回滚均须实测。
+交大摸金录 V2.0 18

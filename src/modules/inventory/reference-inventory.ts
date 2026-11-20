@@ -33,7 +33,12 @@ export class ReferenceInventory implements InventoryClientPort {
       !raidId ||
       this.loadoutSlots(loadout) > this.capacity ||
       new Set(allItems.map((item) => item.instanceId)).size !== allItems.length ||
-      allItems.some((item) => !this.isValidItem(item, true) || item.origin.kind !== 'carry-in') ||
+      allItems.some(
+        (item) =>
+          !this.isValidItem(item, true) ||
+          item.origin.kind !== 'carry-in' ||
+          this.definitions[item.itemId]?.kind === 'quest',
+      ) ||
       equipped.some((item) => this.definitions[item.itemId]?.kind !== 'weapon')
     ) {
       throw new Error('Loadout exceeds capacity');

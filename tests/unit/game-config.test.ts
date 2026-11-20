@@ -4,6 +4,7 @@ import {
   ITEM_CATALOG_IDS,
   ITEM_DEFINITIONS,
   assertKnownItemId,
+  isCarryInAllowed,
   isCatalogItemId,
   isKnownItemId,
 } from '../../src/config/game-config';
@@ -25,6 +26,13 @@ describe('product item catalog configuration', () => {
     expect(isCatalogItemId('training-bat')).toBe(false);
     expect(isKnownItemId('morning-coffee')).toBe(true);
     expect(isKnownItemId('training-bat')).toBe(true);
+  });
+
+  it('keeps quest evidence in the warehouse but forbids bringing it into a raid', () => {
+    expect(isCarryInAllowed('torn-notebook')).toBe(false);
+    expect(isCarryInAllowed('complete-record')).toBe(false);
+    expect(isCarryInAllowed('morning-coffee')).toBe(true);
+    expect(isCarryInAllowed('missing-item')).toBe(false);
   });
 
   it('rejects unknown definitions and accepts every configured search-point item', () => {

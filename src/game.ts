@@ -4,6 +4,7 @@ import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/
 import { createGame } from './app/create-game';
 import {
   HEALING_AMOUNTS,
+  isCarryInAllowed,
   isPurchasedItem,
   ITEM_DEFINITIONS,
   RAID_RULES,
@@ -985,6 +986,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const supplies = archive.warehouse.filter(
         (item) => ITEM_DEFINITIONS[item.itemId]?.kind !== 'collectible',
       );
+      const carryableSupplies = supplies.filter((item) => isCarryInAllowed(item.itemId));
       element('warehouse-count').textContent = `${supplies.length} 件功能道具`;
       element('warehouse-count-label').textContent =
         `${supplies.length} 件功能道具 · ${archive.currency} 交子`;
@@ -1017,20 +1019,24 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           list.replaceChildren(
             ...entries.map((item) => {
               const row = document.createElement('li');
-              row.textContent = `${ITEM_DEFINITIONS[item.itemId]?.name ?? item.itemId} · 占 ${ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1} 格`;
+              const definition = ITEM_DEFINITIONS[item.itemId];
+              row.textContent =
+                definition?.kind === 'quest'
+                  ? `${definition.name} · 任务线索（不可带入）`
+                  : `${definition?.name ?? item.itemId} · 占 ${definition?.bagSlots ?? 1} 格`;
               return row;
             }),
           );
           element(`${id}-warehouse-empty`).hidden = entries.length > 0;
         }
         loadout.replaceChildren();
-        if (!supplies.length) {
+        if (!carryableSupplies.length) {
           const empty = document.createElement('p');
           empty.className = 'loadout-empty';
           empty.textContent = '仓库中暂无可带入的功能物品。';
           loadout.append(empty);
         }
-        for (const item of supplies) {
+        for (const item of carryableSupplies) {
           const definition = ITEM_DEFINITIONS[item.itemId];
           const row = document.createElement('label');
           row.className = 'loadout-item';

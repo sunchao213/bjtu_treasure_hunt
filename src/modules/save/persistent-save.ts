@@ -1,4 +1,9 @@
-import { isExplorationItem, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
+import {
+  isCarryInAllowed,
+  isExplorationItem,
+  ITEM_DEFINITIONS,
+  RAID_RULES,
+} from '../../config/game-config';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
 import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
@@ -135,7 +140,10 @@ function validData(value: unknown, version: 1 | 2 | 3): value is FormalSaveData 
     if (
       !Array.isArray(loadout) ||
       loadout.length > RAID_RULES.bagCapacity ||
-      !loadout.every((item) => validItem(item) && item.origin.kind === 'carry-in') ||
+      !loadout.every(
+        (item) =>
+          validItem(item) && item.origin.kind === 'carry-in' && isCarryInAllowed(item.itemId),
+      ) ||
       new Set(loadout.map((item) => item.instanceId)).size !== loadout.length ||
       loadout.some((item) => warehouseIds.has(item.instanceId))
     ) {
@@ -325,6 +333,9 @@ export class PersistentSave implements SavePort {
       const item = this.data.warehouse.find((entry) => entry.instanceId === id);
       if (!item) {
         throw new Error('Missing loadout item');
+      }
+      if (!isCarryInAllowed(item.itemId)) {
+        throw new Error('Quest items cannot be brought into a raid');
       }
       const source = item.origin.kind === 'carry-in' ? item.origin.source : undefined;
       return {

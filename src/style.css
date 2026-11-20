@@ -3244,3 +3244,403 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   width: 900px;
   max-height: 704px;
 }
+
+/* Social and room panels share the archive UI's restrained paper-and-brass treatment. */
+.lobby-panel[data-lobby-panel='social'] {
+  background: #211e1a;
+}
+.lobby-panel[data-lobby-panel='social'] .lobby-panel-heading {
+  border-bottom-color: #65533a;
+}
+.lobby-panel[data-lobby-panel='social'] .lobby-panel-heading h2 {
+  color: #f0dfbd;
+}
+.lobby-panel[data-lobby-panel='social'] .lobby-panel-intro {
+  min-height: 20px;
+  margin: 10px 0 14px;
+  color: #bfae8d;
+}
+.lobby-panel[data-lobby-panel='social'] .secondary,
+.lobby-panel[data-lobby-panel='social'] .primary {
+  width: auto;
+  min-height: 36px;
+  margin: 0;
+  padding: 7px 12px;
+  border: 1px solid #94784e;
+  border-radius: 0;
+  background: #3a3024;
+  color: #f0dfbd;
+  white-space: nowrap;
+}
+.social-workspace {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.82fr) minmax(0, 1.8fr);
+  min-height: 400px;
+  border: 1px solid #796142;
+  background: #191714;
+}
+.social-roster,
+.chat-panel {
+  min-width: 0;
+  padding: 12px;
+}
+.social-roster {
+  border-right: 1px solid #796142;
+  background: #242019;
+}
+.social-subheading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid #55452f;
+}
+.social-subheading h3,
+.friend-profile h3 {
+  margin: 0;
+  color: #e8d4ae;
+  font-size: 14px;
+  font-weight: 600;
+}
+.social-subheading > span {
+  overflow: hidden;
+  color: #bca67e;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-request {
+  margin: 10px 0 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #40372a;
+}
+.social-request .field-label,
+.chat-composer .field-label {
+  margin: 0 0 6px;
+  color: #b9a37c;
+}
+.social-request-row,
+.chat-composer-row {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+}
+.social-request-row input,
+.chat-composer textarea {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #68563b;
+  border-radius: 0;
+  background: #171512;
+  color: #eee1c4;
+}
+.social-request-row input {
+  min-height: 36px;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+.friend-list,
+.profile-history {
+  display: grid;
+  gap: 5px;
+  max-height: 208px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.friend-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #4d4231;
+  background: #2b261f;
+  color: #ddcfb1;
+  font-size: 11px;
+}
+.friend-list li > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.friend-list li .secondary {
+  min-height: 28px;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+.friend-profile {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #55452f;
+}
+.friend-profile .muted {
+  overflow-wrap: anywhere;
+}
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+}
+.chat-messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 220px;
+  max-height: 306px;
+  margin: 10px 0;
+  padding: 10px;
+  overflow-y: auto;
+  border: 1px solid #41382c;
+  background: #151411;
+  list-style: none;
+}
+.chat-message {
+  max-width: min(78%, 520px);
+  padding: 7px 10px;
+  border: 1px solid #574833;
+  background: #2b261f;
+  color: #e5d8bb;
+  overflow-wrap: anywhere;
+}
+.chat-message.is-outgoing {
+  align-self: flex-end;
+  border-color: #826b45;
+  background: #3b3224;
+}
+.chat-message-author {
+  color: #bd9c63;
+  font-size: 10px;
+}
+.chat-message-body {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.chat-composer {
+  padding-top: 9px;
+  border-top: 1px solid #55452f;
+}
+.chat-composer textarea {
+  min-height: 54px;
+  padding: 8px;
+  resize: vertical;
+  font: inherit;
+  font-size: 12px;
+}
+.chat-composer .primary {
+  align-self: flex-end;
+  min-width: 64px;
+}
+
+.room-page {
+  color: #e5d7b8;
+  background: #211e1a;
+}
+.room-page .room-header {
+  min-height: 66px;
+  padding: 10px 20px;
+  border-bottom-color: #705a3c;
+  background: #111311;
+}
+.room-page .room-header .rules-eyebrow {
+  margin: 0 0 4px;
+  color: #b9975d;
+  font-size: 10px;
+}
+.room-page .room-header h1 {
+  color: #f0dfbd;
+  font-size: 20px;
+}
+.room-page > .room-content {
+  max-width: none;
+  padding: 0 18px 12px;
+  gap: 10px;
+  background: #211e1a;
+}
+.room-page .room-connection {
+  min-height: 38px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #574832;
+}
+.room-page #network-status {
+  margin: 0;
+  color: #dac597;
+  font-size: 11px;
+}
+.room-page .network-quality {
+  color: #bca67e;
+  font-size: 10px;
+}
+.room-page .room-entry,
+.room-page .room-lobby-layout {
+  gap: 10px;
+}
+.room-page .side-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #725a3b;
+  background: #29241e;
+}
+.room-page .section-kicker {
+  min-height: 28px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #856a43;
+  background: #3a3024;
+  color: #decba5;
+  font-size: 11px;
+}
+.room-page .section-kicker span {
+  padding: 0;
+  background: transparent;
+  color: #cbb384;
+}
+.room-page h2 {
+  margin: 12px 0 8px;
+  color: #f0dfbd;
+  font-size: 17px;
+}
+.room-page .muted,
+.room-page .room-note {
+  color: #b8aa8d;
+}
+.room-page input,
+.room-page .room-settings select {
+  border-color: #68563b;
+  border-radius: 0;
+  background: #171512;
+  color: #eee1c4;
+}
+.room-page .primary,
+.room-page .rules-button {
+  border: 1px solid #a0804d;
+  border-radius: 0;
+  background: #493a26;
+  color: #f3e4c4;
+}
+.room-page .primary:hover:enabled,
+.room-page .rules-button:hover:enabled {
+  background: #604a2e;
+}
+.room-page .room-summary {
+  padding: 8px 10px;
+  border: 1px solid #725a3b;
+  background: #29241e;
+}
+.room-page .room-code {
+  color: #e4c78f;
+  font-size: 27px;
+  letter-spacing: 0.12em;
+}
+.room-page .room-players {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin: 10px 0;
+}
+.room-page .room-players li {
+  min-height: 42px;
+  padding: 8px;
+  border-color: #4d4231;
+  background: #211e1a;
+  color: #e1d2b2;
+  font-size: 11px;
+}
+.room-page .room-players .room-seat-empty {
+  border-color: #514633;
+  background: transparent;
+  color: #8d8067;
+}
+.room-page .room-settings {
+  margin-top: 10px;
+  padding: 10px;
+  border-color: #665239;
+}
+.room-page .room-settings legend,
+.room-page .room-rules-summary dd {
+  color: #d9bd87;
+}
+.room-page .room-rules-summary {
+  margin: 10px 0;
+}
+.room-page .room-rules-summary div {
+  padding-bottom: 5px;
+  border-bottom: 1px solid #40372a;
+  color: #b8aa8d;
+}
+.room-page .room-note {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top-color: #514633;
+  font-size: 10px;
+}
+.room-page .room-launchbar {
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid #725a3b;
+  background: #171512;
+}
+.room-page .room-launchbar .primary {
+  min-height: 40px;
+}
+
+@media (max-width: 760px) {
+  .social-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .social-roster {
+    border-right: 0;
+    border-bottom: 1px solid #796142;
+  }
+  .friend-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .friend-list li .secondary {
+    grid-column: 2;
+  }
+  .chat-panel,
+  .social-workspace {
+    min-height: 0;
+  }
+  .chat-messages {
+    min-height: 180px;
+  }
+}
+@media (max-width: 600px) {
+  .room-page > .room-content {
+    padding: 0 10px 10px;
+  }
+  .room-page .room-entry,
+  .room-page .room-lobby-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .room-page .room-players {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .room-page .room-launchbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .room-page .room-launchbar p {
+    flex-basis: 100%;
+  }
+  .room-page .room-launchbar .primary {
+    flex: 1;
+    width: auto;
+  }
+  .social-request-row,
+  .chat-composer-row {
+    align-items: stretch;
+  }
+  .lobby-panel[data-lobby-panel='social'] {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+}

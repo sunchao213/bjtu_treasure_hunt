@@ -69,6 +69,12 @@ export const ALL_ITEM_IDS = Object.keys(ITEM_DEFINITIONS) as readonly string[];
 /** Items created by the shop are functional supplies, not exploration discoveries. */
 export const PURCHASE_ITEM_IDS = ['bandage', 'yellow-bike', 'thick-down-jacket'] as const;
 
+/** Quest evidence belongs to its chapter's current raid and cannot be brought in. */
+export function isCarryInAllowed(itemId: string): boolean {
+  const kind = ITEM_DEFINITIONS[itemId]?.kind;
+  return kind !== undefined && kind !== 'collectible' && kind !== 'quest';
+}
+
 /** The production gallery contains discoveries; shop supplies stay in the warehouse only. */
 export const EXPLORATION_CATALOG_IDS = ITEM_CATALOG_IDS.filter(
   (itemId) => !(PURCHASE_ITEM_IDS as readonly string[]).includes(itemId),

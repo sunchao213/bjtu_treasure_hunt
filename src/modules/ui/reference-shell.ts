@@ -74,12 +74,17 @@ export function prepViewMarkup(): string {
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="social" hidden aria-labelledby="lobby-social-title">
             <div class="lobby-panel-heading"><div><p class="prep-kicker">好友关系与私信</p><h2 id="lobby-social-title">好友与聊天</h2></div><button id="social-refresh" class="secondary" type="button">刷新</button></div>
             <p id="social-status" class="lobby-panel-intro" role="status">好友为空。</p>
-            <form id="friend-request-form" class="social-request"><label class="field-label" for="friend-uid">对方账号 UID</label><input id="friend-uid" inputmode="text" maxlength="32" autocomplete="off" required pattern="[a-f0-9]{32}" /><button class="secondary" type="submit">发送好友申请</button></form>
-            <ul id="friend-list" class="friend-list"></ul>
-            <section id="friend-profile" hidden aria-labelledby="friend-profile-title"><h3 id="friend-profile-title">好友公开档案</h3><p id="friend-profile-status" class="muted"></p><ul id="friend-profile-history" class="profile-history"></ul></section>
-            <section class="chat-panel" aria-labelledby="chat-title"><h3 id="chat-title">私聊</h3><p id="chat-with" class="muted">选择一位已接受的好友。</p><ol id="chat-messages" class="chat-messages" aria-live="polite"></ol>
-              <form id="chat-form"><label class="field-label" for="chat-text">消息</label><textarea id="chat-text" maxlength="200" rows="3" disabled required></textarea><button id="chat-send" class="primary" type="submit" disabled>发送</button></form>
-            </section>
+            <div class="social-workspace">
+              <aside class="social-roster" aria-label="好友与申请">
+                <div class="social-subheading"><h3>联系人</h3><span>好友 / 申请</span></div>
+                <form id="friend-request-form" class="social-request"><label class="field-label" for="friend-uid">对方账号 UID</label><div class="social-request-row"><input id="friend-uid" inputmode="text" maxlength="32" autocomplete="off" required pattern="[a-f0-9]{32}" placeholder="输入 32 位 UID" /><button class="secondary" type="submit">添加</button></div></form>
+                <ul id="friend-list" class="friend-list"></ul>
+                <section id="friend-profile" class="friend-profile" hidden aria-labelledby="friend-profile-title"><h3 id="friend-profile-title">好友公开档案</h3><p id="friend-profile-status" class="muted"></p><ul id="friend-profile-history" class="profile-history"></ul></section>
+              </aside>
+              <section class="chat-panel" aria-labelledby="chat-title"><div class="social-subheading"><h3 id="chat-title">私聊记录</h3><span id="chat-with">选择好友</span></div><ol id="chat-messages" class="chat-messages" aria-live="polite"></ol>
+                <form id="chat-form" class="chat-composer"><label class="field-label" for="chat-text">消息内容</label><div class="chat-composer-row"><textarea id="chat-text" maxlength="200" rows="2" placeholder="输入消息，最多 200 字" disabled required></textarea><button id="chat-send" class="primary" type="submit" disabled>发送</button></div></form>
+              </section>
+            </div>
           </section>
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
             <div class="lobby-panel-heading"><div><p class="prep-kicker">永久保存</p><h2 id="lobby-warehouse-title">仓库与剧情档案</h2></div><span class="lobby-panel-meta" id="warehouse-count-label">0 件物品 · <b id="currency-count">0 交子</b></span></div>
