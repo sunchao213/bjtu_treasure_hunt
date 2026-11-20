@@ -99,8 +99,9 @@ export function bindRoomLobby(options: LobbyOptions) {
         (player) => player.connected && (player.playerId === state?.hostId || player.ready),
       );
     const canPrepare = options.canPrepare();
-    get('room-entry').hidden = !!state;
-    get('room-lobby').hidden = !state;
+    const hasActiveRoom = Boolean(activeRoomId);
+    get('room-entry').hidden = hasActiveRoom;
+    get('room-lobby').hidden = !hasActiveRoom;
     get('network-status').textContent = options.unlock().unlocked ? message : options.unlock().hint;
     button('network-connect').hidden = connected;
     button('network-connect').disabled =
