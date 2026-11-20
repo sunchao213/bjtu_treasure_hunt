@@ -728,6 +728,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       start.disabled = state.hostId !== network.getPlayerId() || state.started;
     };
     refreshV19Room = renderV19Room;
+    network.onMessage((message) => {
+      if (message.type === 'room-state' && v19RoomDialog.open) refreshV19Room();
+    });
     element('v19-room-close').onclick = () => v19RoomDialog.close();
     element('v19-room-create').onclick = () => lobby.createRoom();
     element('v19-room-join').onclick = () =>
