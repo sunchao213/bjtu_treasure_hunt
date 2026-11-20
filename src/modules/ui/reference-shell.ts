@@ -79,6 +79,15 @@ export function prepViewMarkup(): string {
               <header><h2 id="v19-ranking-title">排行榜</h2><button type="button" data-v19-close>关闭</button></header>
               <p>排行榜暂未接入。</p>
             </dialog>
+            <dialog id="v19-room-dialog" class="v19-dialog v19-room-dialog" aria-labelledby="v19-room-title">
+              <header><h2 id="v19-room-title">联机大厅</h2><button id="v19-room-close" type="button">返回大厅</button></header>
+              <p id="v19-room-status" class="v19-room-status" role="status">正在连接联机服务…</p>
+              <label class="field-label" for="v19-room-code">房间号</label>
+              <input id="v19-room-code" class="room-input" inputmode="numeric" maxlength="6" placeholder="创建后分享给队友" />
+              <div class="v19-room-actions"><button id="v19-room-create" class="secondary" type="button">创建房间</button><button id="v19-room-join" class="primary" type="button">加入房间</button></div>
+              <div id="v19-room-members" class="v19-room-members" hidden></div>
+              <div id="v19-room-controls" class="v19-room-actions" hidden><button id="v19-room-ready" class="secondary" type="button">准备</button><button id="v19-room-start" class="primary" type="button">开始游戏</button><button id="v19-room-leave" class="text-button" type="button">离开房间</button></div>
+            </dialog>
             <dialog id="v19-loadout-dialog" class="v19-dialog v19-loadout-dialog" aria-labelledby="v19-loadout-title">
               <header><h2 id="v19-loadout-title">背包与出发装备</h2><button id="v19-loadout-close" type="button">返回大厅</button></header>
               <p class="prep-warning">失败、超时或刷新页面会损失本局全部携带物（包括带入装备）；未带入的仓库物品会保留。</p>

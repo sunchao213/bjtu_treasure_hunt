@@ -387,6 +387,33 @@ export function bindRoomLobby(options: LobbyOptions) {
       if (!options.unlock().unlocked) return;
       if (network.getStatus() === 'offline') network.connect();
     },
+    createRoom: () => {
+      if (!options.canEnter()) return;
+      request('create', () => network.createRoom(), '正在创建房间…');
+    },
+    joinRoom: (roomId: string) => {
+      if (!options.canEnter()) return;
+      const value = roomId.trim();
+      if (!/^\d{6}$/.test(value)) {
+        message = '请输入 6 位数字房间号。';
+        options.onChange();
+        return;
+      }
+      request('join', () => network.join(value), '正在加入房间…');
+    },
+    setReady: () => {
+      const ready =
+        state?.players.find((player) => player.playerId === network.getPlayerId())?.ready ?? false;
+      if (!ready && !options.canPrepare()) return;
+      request('ready', () => network.setReady(!ready), ready ? '正在取消准备…' : '正在准备…');
+    },
+    startRoom: () => {
+      if (!options.canPrepare()) return;
+      request('start', () => network.startGame(), '正在通知队友进入校园…');
+    },
+    connectionStatus: () => network.getStatus(),
+    roomState: () => state,
+    roomMessage: () => message,
     isJoined: () => !!state,
     isLocked: () =>
       !!state?.started ||

@@ -539,6 +539,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     });
     let sceneReady = false;
     let sceneError = '';
+    let refreshV19Room = (): void => {};
     const lobby = bindRoomLobby({
       network,
       confirm: confirmDialog,
@@ -551,7 +552,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         controller.getView().phase === 'preparing' &&
         !controller.getView().isBusy &&
         element<HTMLInputElement>('risk-consent').checked,
-      onChange: () => render(),
+      onChange: () => {
+        render();
+        refreshV19Room();
+      },
       onPlayers: (players) =>
         sceneReady &&
         (players.length ? scene.syncRemotePlayers(players) : scene.clearRemotePlayers()),
@@ -566,7 +570,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           lobby.finish();
           return;
         }
-        element('close-room').click();
+        const roomDialog = document.querySelector<HTMLDialogElement>('#v19-room-dialog');
+        if (roomDialog?.open) roomDialog.close();
+        else element('close-room').click();
         if (!(await startExploration())) lobby.finish();
       },
     });
@@ -684,6 +690,54 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     };
     let roomTrigger = 'open-room';
     let gameScroll = 0;
+    const v19RoomDialog = element<HTMLDialogElement>('v19-room-dialog');
+    const renderV19Room = (): void => {
+      const state = lobby.roomState();
+      const connected = lobby.connectionStatus() === 'connected';
+      const status = element('v19-room-status');
+      const code = element<HTMLInputElement>('v19-room-code');
+      const create = element<HTMLButtonElement>('v19-room-create');
+      const join = element<HTMLButtonElement>('v19-room-join');
+      const members = element('v19-room-members');
+      const controls = element('v19-room-controls');
+      const ready = element<HTMLButtonElement>('v19-room-ready');
+      const start = element<HTMLButtonElement>('v19-room-start');
+      status.textContent = lobby.roomMessage();
+      create.disabled = !connected || !!state;
+      join.disabled = !connected || !!state;
+      code.disabled = !!state;
+      controls.hidden = !state;
+      members.hidden = !state;
+      if (!state) return;
+      if (document.activeElement !== code) code.value = state.roomId;
+      members.replaceChildren(
+        ...state.players.map((player) => {
+          const row = document.createElement('p');
+          row.className = 'v19-room-member';
+          row.textContent = `${player.displayName}${player.playerId === network.getPlayerId() ? '（你）' : ''} · ${player.playerId === state.hostId ? '房主' : player.ready ? '已准备' : '未准备'}`;
+          return row;
+        }),
+      );
+      const self = state.players.find((player) => player.playerId === network.getPlayerId());
+      ready.textContent = self?.ready ? '取消准备' : '准备';
+      ready.disabled = state.started;
+      start.disabled = state.hostId !== network.getPlayerId() || state.started;
+    };
+    refreshV19Room = renderV19Room;
+    element('v19-room-close').onclick = () => v19RoomDialog.close();
+    element('v19-room-create').onclick = () => lobby.createRoom();
+    element('v19-room-join').onclick = () =>
+      lobby.joinRoom(element<HTMLInputElement>('v19-room-code').value);
+    element('v19-room-ready').onclick = () => lobby.setReady();
+    element('v19-room-start').onclick = () => lobby.startRoom();
+    element('v19-room-leave').onclick = () => lobby.leave();
+    v19RoomDialog.addEventListener('close', () => {
+      roomOpen = false;
+      controller.resume();
+      scene.clearInteractions();
+      render();
+    });
+    renderV19Room();
     const roomEntrypoints = [
       ...['open-room', 'open-room-legacy', 'mobile-room'].map((id) =>
         element<HTMLButtonElement>(id),
@@ -695,6 +749,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         const unlock = onlineUnlockProgress(save.view().unlockedChapterIds);
         if (!unlock.unlocked) {
           notify(unlock.hint);
+          return;
+        }
+        if (button.dataset.openRoom !== undefined) {
+          roomOpen = true;
+          controller.pause();
+          scene.clearInteractions();
+          renderV19Room();
+          v19RoomDialog.showModal();
+          lobby.connect();
           return;
         }
         roomTrigger = button.id || 'open-room';
