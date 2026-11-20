@@ -17,6 +17,70 @@ dialog {
 .settings input {
   width: 100%;
 }
+.player-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.player-profile-card,
+.player-profile-history {
+  padding: 16px;
+}
+.player-profile-card h3,
+.player-profile-history h3 {
+  margin: 0 0 12px;
+  color: #f0dfbd;
+  font-size: 15px;
+}
+.player-profile-facts,
+.player-profile-stats {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.player-profile-facts div,
+.player-profile-stats div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #40372a;
+}
+.player-profile-facts dt,
+.player-profile-stats dt {
+  color: #bca67e;
+  font-size: 12px;
+}
+.player-profile-facts dd,
+.player-profile-stats dd {
+  margin: 0;
+  color: #ead8b5;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.player-profile-facts dd {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+.player-profile-history .profile-history {
+  max-height: 240px;
+}
+.player-profile-history .profile-history li {
+  padding: 9px 10px;
+  border: 1px solid #4d4231;
+  background: #2b261f;
+  color: #ddcfb1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+@media (max-width: 600px) {
+  .player-profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .room-page {
   min-height: 100%;
   height: var(--game-height, 100dvh);

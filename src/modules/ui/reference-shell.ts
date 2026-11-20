@@ -25,9 +25,9 @@ export function prepViewMarkup(): string {
               <span id="lobby-player-name" class="v19-player-name"></span>
 
               <button class="v19-hotspot v19-nav-shop" type="button" data-lobby-tab="mall" aria-label="商城"></button>
-              <button class="v19-hotspot v19-nav-archive" type="button" data-lobby-tab="warehouse" aria-label="档案与仓库"></button>
+              <button class="v19-hotspot v19-nav-archive" type="button" data-lobby-tab="profile" aria-label="玩家档案"></button>
               <button class="v19-hotspot v19-nav-friends" type="button" data-lobby-tab="friends" aria-label="好友"></button>
-              <button class="v19-hotspot v19-nav-codex" type="button" data-lobby-tab="warehouse" aria-label="图鉴"></button>
+              <button class="v19-hotspot v19-nav-codex" type="button" data-lobby-tab="warehouse" aria-label="图鉴与仓库"></button>
               <button id="open-ranking" class="v19-hotspot v19-nav-ranking" type="button" aria-label="排行榜"></button>
               <button class="v19-hotspot v19-nav-settings" type="button" data-lobby-tab="settings" aria-label="设置"></button>
               <button class="v19-hotspot v19-nav-mail" type="button" data-lobby-tab="mail" aria-label="邮件">
@@ -97,9 +97,27 @@ export function prepViewMarkup(): string {
             </dialog>
           </section>
 
+          <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="profile" hidden aria-labelledby="lobby-profile-title">
+            <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
+            <div class="lobby-panel-heading"><div><p class="prep-kicker">玩家资料</p><h2 id="lobby-profile-title">玩家档案</h2></div><button id="profile-refresh" class="secondary" type="button">刷新档案</button></div>
+            <p id="profile-status" class="lobby-panel-intro" role="status">正在读取玩家档案…</p>
+            <div class="player-profile-grid">
+              <section class="side-card player-profile-card" aria-labelledby="profile-identity-title">
+                <h3 id="profile-identity-title">身份信息</h3>
+                <dl class="player-profile-facts"><div><dt>昵称</dt><dd id="profile-display-name">—</dd></div><div><dt>账号 UID</dt><dd id="profile-uid">—</dd></div></dl>
+                <label class="consent"><input id="profile-public" type="checkbox" />允许好友查看展示藏品与最近对局摘要</label>
+              </section>
+              <section class="side-card player-profile-card" aria-labelledby="profile-progress-title">
+                <h3 id="profile-progress-title">行动统计</h3>
+                <dl class="player-profile-stats"><div><dt>完成章节</dt><dd id="profile-chapters">0</dd></div><div><dt>图鉴数量</dt><dd id="profile-codex">0</dd></div><div><dt>仓库物品</dt><dd id="profile-warehouse">0</dd></div><div><dt>历史对局</dt><dd id="profile-raids">0</dd></div></dl>
+              </section>
+            </div>
+            <section class="side-card player-profile-history" aria-labelledby="profile-history-title"><h3 id="profile-history-title">最近对局</h3><ol id="profile-history" class="profile-history"></ol><p id="profile-history-empty" class="muted">暂无已保存的对局记录。</p></section>
+          </section>
+
           <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
             <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
-            <div class="lobby-panel-heading archive-panel-heading"><div><p class="prep-kicker">思源记录册</p><h2 id="lobby-warehouse-title">收藏与仓库</h2></div><span class="lobby-panel-meta" id="warehouse-count-label"><span id="warehouse-item-count">0 件物品</span><span class="currency-display"><img src="${assetUrl('assets/ui/jiaozi.png')}" alt="" /><b id="warehouse-currency">0</b></span></span></div>
+            <div class="lobby-panel-heading archive-panel-heading"><div><p class="prep-kicker">物品记录</p><h2 id="lobby-warehouse-title">图鉴与仓库</h2></div><span class="lobby-panel-meta" id="warehouse-count-label"><span id="warehouse-item-count">0 件物品</span><span class="currency-display"><img src="${assetUrl('assets/ui/jiaozi.png')}" alt="" /><b id="warehouse-currency">0</b></span></span></div>
             ${archiveBrowserMarkup('lobby-archive-browser')}
             <div class="archive-panel-tools"><span id="warehouse-count" hidden></span><p id="archive-detail" hidden></p>
               <ul id="codex-list" hidden></ul><details class="archive-story"><summary>剧情档案</summary><div id="story-archive"></div></details>

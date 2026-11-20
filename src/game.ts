@@ -300,6 +300,84 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
   const notify = (message: string) => {
     element('notice').textContent = message;
   };
+  const profileStatus = element('profile-status');
+  const profileHistory = element<HTMLOListElement>('profile-history');
+  const renderProfile = async (): Promise<void> => {
+    profileStatus.textContent = '正在读取玩家档案…';
+    try {
+      const response = await fetch('/api/profile/self', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      const profile = (await response.json()) as {
+        uid?: string;
+        displayName?: string;
+        publicCollections?: boolean;
+        save?: {
+          codexIds?: unknown[];
+          warehouse?: unknown[];
+          unlockedChapterIds?: unknown[];
+        } | null;
+        raids?: Array<{
+          recordedAt?: string;
+          result?: {
+            outcome?: string;
+            reason?: string;
+            value?: number;
+            raidId?: string;
+            items?: unknown[];
+          };
+        }>;
+      };
+      if (!response.ok) throw new Error('玩家档案读取失败。');
+      const save = profile.save ?? {};
+      const raids = Array.isArray(profile.raids) ? profile.raids : [];
+      element('profile-display-name').textContent = profile.displayName ?? user.displayName;
+      element('profile-uid').textContent = profile.uid ?? user.id;
+      element('profile-chapters').textContent = String(save.unlockedChapterIds?.length ?? 0);
+      element('profile-codex').textContent = String(save.codexIds?.length ?? 0);
+      element('profile-warehouse').textContent = String(save.warehouse?.length ?? 0);
+      element('profile-raids').textContent = String(raids.length);
+      element<HTMLInputElement>('profile-public').checked = profile.publicCollections === true;
+      profileHistory.replaceChildren();
+      for (const entry of raids) {
+        const result = entry.result;
+        if (!result) continue;
+        const row = document.createElement('li');
+        const outcome =
+          result.outcome === 'success' ? '撤离成功' : `行动失败（${result.reason ?? '未知原因'}）`;
+        row.textContent = `${new Date(entry.recordedAt ?? '').toLocaleString()} · ${outcome} · 带出价值 ${result.value ?? 0} · ${result.items?.length ?? 0} 件物品`;
+        profileHistory.append(row);
+      }
+      element('profile-history-empty').hidden = raids.length > 0;
+      profileStatus.textContent = '档案已更新。';
+    } catch (error) {
+      profileStatus.textContent = error instanceof Error ? error.message : '玩家档案读取失败。';
+    }
+  };
+  element<HTMLButtonElement>('profile-refresh').onclick = () => void renderProfile();
+  element<HTMLInputElement>('profile-public').onchange = async (event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    try {
+      const response = await fetch('/api/profile/privacy', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Game-Request': '1' },
+        body: JSON.stringify({ publicCollections: input.checked }),
+      });
+      if (!response.ok) throw new Error('档案公开设置保存失败。');
+      profileStatus.textContent = input.checked
+        ? '好友可以查看你的展示藏品和对局摘要。'
+        : '档案公开展示已关闭。';
+    } catch (error) {
+      input.checked = !input.checked;
+      profileStatus.textContent = error instanceof Error ? error.message : '档案公开设置保存失败。';
+    }
+  };
+  document.addEventListener('lobby:tab', (event) => {
+    if ((event as CustomEvent<string>).detail === 'profile') void renderProfile();
+  });
+  void renderProfile();
   // R15 好友与私聊：面板随大厅挂载；切到「好友」页签时刷新，可见期间每 6 秒轮询未读。
   const friendsPanel = createFriendsPanel({
     client: new SocialClient(),
