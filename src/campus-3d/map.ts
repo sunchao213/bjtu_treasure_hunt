@@ -56,10 +56,12 @@ export interface TrialMap {
   playerRadius: number;
   playerSpeed: number;
   obstacles: readonly Rect[];
+  trees?: readonly Point[];
   chests: readonly (Point & { id: string; itemId: string })[];
 }
 export const SOUTH_GATE_MAP = {
   id: 'south-gate-trial',
+  trees: SOUTH_GATE_TREES,
   width: 1024,
   height: 768,
   bounds: { x: 16, y: 16, width: 992, height: 736 },
@@ -96,6 +98,7 @@ export const SOUTH_GATE_MAP = {
 
 export const SIYUAN_MAP: TrialMap = {
   id: 'siyuan-reference-trial',
+  trees: siyuan.trees,
   width: siyuan.width,
   height: siyuan.height,
   bounds: { x: 16, y: 16, width: siyuan.width - 32, height: siyuan.height - 32 },
@@ -116,6 +119,7 @@ export const SIYUAN_MAP: TrialMap = {
 
 export const DISTRICT_MAP: TrialMap = {
   id: district.id,
+  trees: district.trees,
   width: district.width,
   height: district.height,
   bounds: { x: 16, y: 16, width: district.width - 32, height: district.height - 32 },

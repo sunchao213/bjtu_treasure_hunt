@@ -199,6 +199,13 @@ export class RaidController implements RaidControllerPort {
     if (activeShield > 0) {
       const absorbed = Math.min(activeShield, amount);
       this.shield -= absorbed;
+      if (this.raidId) {
+        this.bus.emit('ShieldAbsorbed', {
+          raidId: this.raidId,
+          amount: absorbed,
+          remaining: this.shield,
+        });
+      }
       amount -= absorbed;
       if (amount <= 0) return;
     }

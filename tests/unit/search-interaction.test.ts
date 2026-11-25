@@ -9,6 +9,31 @@ const item: ItemInstance = {
 };
 
 describe('SearchInteraction', () => {
+  it('uses each chest duration, restarts after interruption and resets when switching targets', () => {
+    let now = 0;
+    const search = new SearchInteraction(2_000, () => now);
+    search.begin('medium', 4_000);
+    now = 2_000;
+    expect(search.progress()).toBe(0.5);
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(false);
+    search.begin('medium', 4_000);
+    expect(search.progress()).toBe(0.5);
+    search.begin('high', 6_000);
+    expect(search.progress()).toBe(0);
+    now += 3_000;
+    expect(search.progress()).toBe(0.5);
+    search.cancel();
+    search.begin('high', 6_000);
+    now += 5_999;
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(false);
+    now += 1;
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(true);
+    search.reset();
+    search.begin('normal');
+    now += 2_000;
+    expect(search.progress()).toBe(1);
+  });
+
   it('requires the full duration and marks a point only after insertion succeeds', () => {
     let now = 0;
     const search = new SearchInteraction(2_000, () => now);

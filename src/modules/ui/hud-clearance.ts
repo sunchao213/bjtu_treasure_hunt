@@ -9,6 +9,7 @@ export interface ScreenBox {
 
 export interface RaidHudLayout {
   readonly interaction: ScreenBox;
+  readonly hotbar: ScreenBox;
   readonly searchPrompt: ScreenBox | null;
   readonly dangerToast: ScreenBox;
   readonly minimap: ScreenBox;
@@ -18,7 +19,7 @@ export interface RaidHudLayout {
 const PROMPT_WIDTH = 96;
 /** 圆键 84 + 间距 6 + 文案，再留出呼吸缩放。 */
 const PROMPT_HEIGHT = 118;
-const PROMPT_BOTTOM = 72;
+const PROMPT_BOTTOM = 182;
 const TOAST_HEIGHT = 44;
 const TOAST_GAP = 12;
 const CONTROL_INSET = 10;
@@ -76,16 +77,25 @@ export function raidHudLayout(options: {
   const interactionWidth = touch ? canvasWidth - 540 : Math.min(640, canvasWidth - 200);
   const interaction = {
     x: (canvasWidth - interactionWidth) / 2,
-    y: canvasHeight - (touch ? 112 : 12) - (touch ? 52 : 44),
+    y: canvasHeight - (touch ? 112 : 128) - (touch ? 52 : 44),
     width: interactionWidth,
     height: touch ? 52 : 44,
   };
-  return { interaction, searchPrompt, dangerToast, minimap, touchSearch };
+  const hotbarWidth = touch ? 194 : 280;
+  const hotbarHeight = touch ? 68 : 94;
+  const hotbar = {
+    x: (canvasWidth - hotbarWidth) / 2,
+    y: canvasHeight - (touch ? 12 : 20) - hotbarHeight,
+    width: hotbarWidth,
+    height: hotbarHeight,
+  };
+  return { interaction, hotbar, searchPrompt, dangerToast, minimap, touchSearch };
 }
 
 export function hudLeavesSearchAndWarningsClear(layout: RaidHudLayout): boolean {
   const boxes = [
     layout.interaction,
+    layout.hotbar,
     layout.dangerToast,
     layout.minimap,
     layout.searchPrompt,
@@ -108,6 +118,7 @@ export function hudFitsCanvas(
 ): boolean {
   const boxes = [
     layout.interaction,
+    layout.hotbar,
     layout.dangerToast,
     layout.minimap,
     layout.searchPrompt,

@@ -4,7 +4,6 @@ import type { TrialInput } from './session';
 export interface CameraInput {
   enabled(): boolean;
   orbit(dx: number, dy: number): void;
-  zoom(delta: number): void;
   reset(): void;
   move(point: Point): Point;
   aim?(): Point;
@@ -172,18 +171,6 @@ export class TrialControls {
       options,
     );
     canvas.addEventListener('contextmenu', (event) => event.preventDefault(), options);
-    canvas.addEventListener(
-      'wheel',
-      (event) => {
-        if (!camera?.enabled()) return;
-        event.preventDefault();
-        camera.zoom(
-          event.deltaY *
-            (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1),
-        );
-      },
-      { ...options, passive: false },
-    );
   }
 
   read(): TrialInput {

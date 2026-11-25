@@ -66,6 +66,7 @@ export class FormalWorldScene extends FormalWorld {
         this.sceneServices.touch,
         () => this.inputEnabled(),
         () => document.getElementById('open-raid-settings')?.click(),
+        () => document.getElementById('app')?.dataset.bagOpen === 'true',
       );
       const canvas = this.view.renderer.domElement;
       canvas.addEventListener(
@@ -157,13 +158,11 @@ export class FormalWorldScene extends FormalWorld {
     }
   }
   private inputEnabled(): boolean {
-    const app = document.getElementById('app');
     return (
       this.canResume() &&
       !this.services.controller.isPaused() &&
       ['active', 'extracting'].includes(this.services.controller.getView().phase) &&
       !document.querySelector('dialog[open]') &&
-      app?.dataset.bagOpen !== 'true' &&
       !document.getElementById('game-page')?.hidden
     );
   }

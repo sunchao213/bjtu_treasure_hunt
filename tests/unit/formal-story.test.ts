@@ -83,6 +83,27 @@ async function setup(chapter: string | null = 'siyuan-code') {
 }
 
 describe('authored story triggers in the production campus', () => {
+  it.each([
+    ['normal', 2_000],
+    ['intermediate', 4_000],
+    ['advanced', 6_000],
+  ] as const)(
+    'searches a %s chest for its full duration in the production world',
+    async (tier, duration) => {
+      const s = await setup(null);
+      const point = s.world.searchPoints.find((point) => point.tier === tier)!;
+      s.stand(point);
+      s.tick({ interact: true });
+      expect(s.world.frame().prompt).toContain(`${duration / 1000} 秒`);
+      s.tick({ interact: true }, duration - 1);
+      expect(s.world.search.isOpened(point.id)).toBe(false);
+      s.tick({ interact: true }, 1);
+      expect(s.world.search.isOpened(point.id)).toBe(true);
+      expect(s.inventory.getCarriedItems().some((item) => item.itemId === point.itemId)).toBe(true);
+      s.controller.dispose();
+    },
+  );
+
   it('keeps completed saves in free exploration without story sites or evidence on subsequent starts', async () => {
     const s = await setup(null);
     const evidenceIds = [

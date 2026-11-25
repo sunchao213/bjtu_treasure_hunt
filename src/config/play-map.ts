@@ -1,5 +1,6 @@
 import type { Point, Rect } from '../shared/types/game';
 import formal from './formal-campus.json';
+import district from '../../assets-source/campus-3d/district/layout.json';
 import { reachableGround } from '../modules/world/reachable-ground';
 import { WORLD } from './world-config';
 
@@ -21,6 +22,7 @@ export interface PlayMap {
   readonly extraction: MapZone;
   readonly extractions: readonly MapZone[];
   readonly obstacles: readonly Rect[];
+  readonly trees?: readonly Point[];
   readonly lamps: readonly { x: number; y: number; radius: number }[];
   readonly gates: readonly {
     x: number;
@@ -64,6 +66,7 @@ const CAMPUS_MAP: PlayMap = {
   ...formal,
   id: 'campus',
   title: '南部校园夜巡',
+  trees: district.trees,
   imageKey: 'campus-3d-overview',
   hasStory: true,
   extractions: [formal.extraction],

@@ -1,4 +1,6 @@
 import { bindRaidInventory } from './modules/ui/raid-inventory';
+import { bindRaidHotbar } from './modules/ui/raid-hotbar';
+import { isHotbarItem } from './modules/inventory/raid-hotbar';
 import { RAID_INVENTORY_CAPACITIES } from './modules/inventory/inventory-sections';
 import './raid-hud.css';
 import './style.css';
@@ -6,7 +8,8 @@ import './mobile-layout.css';
 import './archive-browser.css';
 import './friends.css';
 import './immersive.css';
-import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
+import { bindMobileLayout, isTouchLayout } from './modules/ui/mobile-layout';
+import { GameFullscreen } from './modules/ui/game-fullscreen';
 import { createGame } from './app/create-game';
 import {
   HEALING_AMOUNTS,
@@ -59,7 +62,7 @@ import { renderArchiveBrowser } from './modules/ui/archive-browser';
 import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
 import { FormalWorldScene as WorldScene } from './scenes/formal-world-scene';
 import { contains } from './modules/world/movement';
-import { activeMap, upcomingMap } from './config/play-map';
+import { activeMap } from './config/play-map';
 import { EventBus } from './shared/events/game-events';
 import type { InventoryClientPort, ItemInstance, RaidControllerPort } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
@@ -523,6 +526,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       controller: activeController,
       inventory: activeInventory,
       inventoryCapacities: RAID_INVENTORY_CAPACITIES,
+      useItem: (instanceId) => useRaidItem(instanceId),
       questChapter: () => activeQuestChapter(save.view().unlockedChapterIds)?.id ?? null,
       events,
       notify,
@@ -562,6 +566,32 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let storyOpen = false;
     const raidSettings = element<HTMLDialogElement>('raid-settings');
     const raidInventory = bindRaidInventory();
+    let assigningHotbarItem: string | null = null;
+    const finishHotbarAssignment = (index: number) => {
+      const instanceId = assigningHotbarItem;
+      if (!instanceId || !raidInventory.isOpen()) return;
+      const item = activeInventory
+        .getCarriedItems()
+        .find((entry) => entry.instanceId === instanceId);
+      const assigned = scene.assignQuickSlot(index, instanceId);
+      assigningHotbarItem = null;
+      notify(
+        assigned
+          ? '已将' + ITEM_DEFINITIONS[item!.itemId]!.name + '放入 ' + (index + 1) + ' 号快捷格。'
+          : '该道具已不在背包中，快捷栏没有变更。',
+      );
+      render();
+    };
+    const raidHotbar = bindRaidHotbar((index) => {
+      if (document.querySelector('dialog[open]') || roomOpen) return;
+      if (raidInventory.isOpen()) {
+        if (assigningHotbarItem) finishHotbarAssignment(index);
+        return;
+      }
+      scene.selectQuickSlot(index);
+      render();
+      scene.captureMouse();
+    });
     let exitToLobby = false;
     let displayedValue = 0;
     let valueFlashTimer: number | undefined;
@@ -576,8 +606,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       )
         return;
       scene.clearInteractions();
+      assigningHotbarItem = null;
       raidInventory.setOpen(!raidInventory.isOpen());
       if (!raidInventory.isOpen()) scene.captureMouse();
+      render();
     };
     element('toggle-inventory').onclick = toggleInventory;
     element('open-raid-settings').onclick = () => {
@@ -590,11 +622,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       raidSettings.showModal();
       render();
     };
-    element('resume-raid').onclick = () => {
+    const resumeRaid = () => {
       raidSettings.close();
       render();
       scene.captureMouse();
     };
+    element('resume-raid').onclick = resumeRaid;
+    raidSettings.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      resumeRaid();
+    });
     raidSettings.addEventListener('close', () => {
       element('lobby-settings-slot').append(settings);
       queueMicrotask(render);
@@ -607,6 +644,20 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           !['active', 'extracting'].includes(activeController.getView().phase)
         )
           return;
+        const mapShortcut = event.code === 'KeyM' || event.key.toLowerCase() === 'm';
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (mapShortcut) {
+          if (event.ctrlKey || event.altKey || event.metaKey) return;
+          // Allow M to close its own dialog while other modal surfaces retain input.
+          if (roomOpen || document.querySelector('dialog[open]:not(#campus-map-dialog)')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.repeat) return;
+          if (campusMap.open) campusMap.close();
+          else element('open-campus-map').click();
+          return;
+        }
         if (event.repeat && (event.key === 'Tab' || event.key === 'Escape')) {
           event.preventDefault();
           event.stopPropagation();
@@ -614,8 +665,26 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         }
         // Native dialog cancellation owns Esc; never open a second surface on the same event.
         if (document.querySelector('dialog[open]') || roomOpen) return;
-        const target = event.target as HTMLElement | null;
-        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (assigningHotbarItem && raidInventory.isOpen()) {
+          const digit = /^(Digit|Numpad)[1-4]$/.test(event.code ?? '')
+            ? event.code.slice(-1)
+            : /^[1-4]$/.test(event.key)
+              ? event.key
+              : null;
+          if (digit && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!event.repeat) finishHotbarAssignment(Number(digit) - 1);
+            return;
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            assigningHotbarItem = null;
+            render();
+            return;
+          }
+        }
         if (event.key !== 'Tab' && event.key !== 'Escape') return;
         event.preventDefault();
         event.stopPropagation();
@@ -630,13 +699,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       { capture: true, signal: inputLifetime.signal },
     );
     const releaseInventoryRender = events.on('InventoryChanged', () => queueMicrotask(render));
-    const raidCodex = element<HTMLDialogElement>('raid-codex');
-    element('hud-codex').onclick = () => {
-      renderArchiveBrowser(element('raid-archive-browser'), save.view());
-      raidCodex.showModal();
-    };
-    element('close-raid-codex').onclick = () => raidCodex.close();
-    raidCodex.addEventListener('close', () => queueMicrotask(render));
     let pendingEnding: { raidId: string; chapterId: string } | null = null;
     let roomOpen = false;
     // F04：新手引导。只读局内状态与玩家位置，不写任何玩法数据。
@@ -744,8 +806,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     const riskConsentLabel = element('risk-consent').closest('label')!;
     const riskConsentAnchor = document.createComment('risk consent home');
     riskConsentLabel.before(riskConsentAnchor);
-    const onResize = () => {
+    const fullscreen = new GameFullscreen(() => {
       scene.clearInteractions();
+      if (['active', 'extracting'].includes(activeController.getView().phase))
+        element('open-raid-settings').click();
+    });
+    const onResize = () => {
+      scene.clearInteractions(true);
       render();
     };
     const disposeLayout = bindMobileLayout(app, () => queueMicrotask(onResize));
@@ -753,7 +820,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     // Establish the logical landscape box before the renderer measures its canvas.
     const game = createGame(scene);
     element('mobile-fullscreen').onclick = () => {
-      void requestLandscape();
+      void fullscreen.enter();
     };
     element('mobile-rules').onclick = () => element('open-rules').click();
     element('hud-rules').onclick = () => element('open-rules').click();
@@ -814,6 +881,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     const campusMap = element<HTMLDialogElement>('campus-map-dialog');
     element('open-campus-map').onclick = () => {
       if (campusMap.open) return;
+      raidInventory.setOpen(false);
       mapOpen = true;
       activeController.pause();
       scene.clearInteractions();
@@ -825,6 +893,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       mapOpen = false;
       scene.clearInteractions();
       render();
+      if (['active', 'extracting'].includes(activeController.getView().phase)) scene.captureMouse();
     });
     for (const button of document.querySelectorAll<HTMLButtonElement>('[data-archive-export]')) {
       button.onclick = async () => {
@@ -957,7 +1026,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       if (!inRaid) {
         raidInventory.setOpen(false);
         if (raidSettings.open) raidSettings.close();
-        if (raidCodex.open) raidCodex.close();
       }
       const lighting = scene.getLightingStatus();
       const musicState = sound.getMusicState();
@@ -981,7 +1049,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       app.dataset.phase = view.phase;
       const immersive = view.phase !== 'preparing' && !roomOpen && element('prologue').hidden;
       document.documentElement.classList.toggle('raid-immersive', immersive);
-      if (!inRaid && !explorationStarting) scene.releaseMouse();
+      if (!inRaid && !explorationStarting) {
+        scene.releaseMouse();
+        fullscreen.release();
+      }
       document.documentElement.classList.toggle(
         'lobby-open',
         view.phase === 'preparing' && !roomOpen,
@@ -1061,6 +1132,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       }
       element('battery-compact').textContent =
         `电量 ${lighting.battery}%${lighting.enabled ? '' : ' · 关'}`;
+      element<HTMLProgressElement>('value-progress').max = view.threshold;
       element<HTMLProgressElement>('value-progress').value = view.value;
       element('battery').textContent =
         `${lighting.battery}% · ${lighting.enabled ? '开启' : '关闭'}`;
@@ -1069,10 +1141,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element<HTMLProgressElement>('battery-progress').value = lighting.battery;
       app.dataset.valueReady = String(view.value >= view.threshold);
       element('gate-label').textContent = view.value >= view.threshold ? '可以撤离' : '继续搜集';
-      const nextMap = upcomingMap();
-      element('next-map').textContent = nextMap.hasStory
-        ? `本局地图：${nextMap.title}`
-        : `本局地图：${nextMap.title}（无剧情线索）`;
       element('value-hint').textContent =
         view.value >= view.threshold
           ? activeMap().hasStory
@@ -1136,6 +1204,32 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         renderInventory(carried, activeInventory.getEquipment());
         lastInventory = signature;
       }
+      if (
+        assigningHotbarItem &&
+        (!raidInventory.isOpen() ||
+          !inRaid ||
+          document.querySelector('dialog[open]') ||
+          !carried.some((item) => item.instanceId === assigningHotbarItem))
+      )
+        assigningHotbarItem = null;
+      for (const button of element('inventory').querySelectorAll<HTMLButtonElement>(
+        '[data-hotbar-assign]',
+      )) {
+        const assigning = button.dataset.hotbarAssign === assigningHotbarItem;
+        button.textContent = assigning ? '取消放入 · Esc' : '放入快捷栏';
+        button.setAttribute('aria-pressed', String(assigning));
+      }
+      scene.syncHotbar();
+      raidHotbar.render(
+        scene.hotbar,
+        ['active', 'extracting'].includes(activeController.getView().phase),
+        activeController.isPaused() ||
+          (raidInventory.isOpen() && !assigningHotbarItem) ||
+          !!document.querySelector('dialog[open]') ||
+          roomOpen,
+        carried.find((item) => item.instanceId === assigningHotbarItem) ?? null,
+        scene.combat.getWeaponUsesRemaining('stun-baton'),
+      );
       renderArchiveBrowser(element('lobby-archive-browser'), archive);
       element('lobby-currency').textContent = String(archive.currency);
       const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
@@ -1222,6 +1316,55 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       }
     }
 
+    function useRaidItem(instanceId: string): void {
+      const state = activeController.getView();
+      if (
+        activeController.isPaused() ||
+        !['active', 'extracting'].includes(state.phase) ||
+        document.querySelector('dialog[open]') ||
+        roomOpen
+      )
+        return;
+      const item = activeInventory
+        .getCarriedItems()
+        .find((candidate) => candidate.instanceId === instanceId);
+      if (!item) return;
+      const definition = ITEM_DEFINITIONS[item.itemId];
+      if (definition?.kind === 'healing') {
+        const amount = HEALING_AMOUNTS[item.itemId];
+        if (amount === undefined) {
+          notify('该恢复物尚未配置效果，物品没有消耗。');
+          return;
+        }
+        const result = activeInventory.consumeHealing(instanceId, () =>
+          activeController.heal(amount),
+        );
+        notify(
+          result.ok
+            ? '已使用' + definition.name + '。'
+            : state.health >= RAID_RULES.maxHealth
+              ? '当前生命已满，恢复物没有消耗。'
+              : '当前无法使用恢复物，物品没有消耗。',
+        );
+      } else if (definition?.kind === 'utility') {
+        const result = activeInventory.consumeUtility(instanceId, () => {
+          const effect = UTILITY_EFFECTS[item.itemId];
+          if (!effect) return false;
+          if (effect.speedMultiplier !== undefined)
+            return activeController.activateSpeedBoost(effect.speedMultiplier, effect.durationMs);
+          return effect.shield !== undefined
+            ? activeController.activateShield(effect.shield, effect.durationMs)
+            : false;
+        });
+        notify(
+          result.ok
+            ? '已使用' + definition.name + '：' + (SHOP_EFFECTS[item.itemId] ?? '')
+            : '当前无法使用或效果已生效，道具没有消耗。',
+        );
+      }
+      render();
+    }
+
     function renderInventory(
       items: readonly ItemInstance[],
       equipment: ReturnType<typeof inventory.getEquipment>,
@@ -1261,7 +1404,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           (definition.kind === 'healing'
             ? `恢复 ${HEALING_AMOUNTS[item.itemId] ?? 0} 点生命`
             : definition.kind === 'weapon'
-              ? '携带时按空格攻击'
+              ? '放入快捷栏后，按数字选择，左键或空格攻击'
               : definition.kind === 'quest'
                 ? '章节任务证据'
                 : '探索藏品');
@@ -1271,33 +1414,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           const use = document.createElement('button');
           use.className = 'mini';
           use.textContent = '使用';
-          use.onclick = () => {
-            const state = activeController.getView();
-            if (
-              activeController.isPaused() ||
-              (state.phase !== 'active' && state.phase !== 'extracting')
-            ) {
-              return;
-            }
-            const amount = HEALING_AMOUNTS[item.itemId];
-            if (amount === undefined) {
-              notify('该恢复物尚未配置效果，物品没有消耗。');
-              return;
-            }
-            const consumed = activeInventory.consumeHealing(item.instanceId, () =>
-              activeController.heal(amount),
-            );
-            if (consumed.ok) {
-              notify('恢复物已消耗，当前携带价值已重算。');
-            } else if (consumed.error === 'INVALID_STATE') {
-              notify(
-                state.health >= RAID_RULES.maxHealth
-                  ? '当前生命已满，恢复物没有消耗。'
-                  : '当前无法使用恢复物，物品没有消耗。',
-              );
-            }
-            render();
-          };
+          use.onclick = () => useRaidItem(item.instanceId);
           li.append(use);
         }
         if (definition.kind === 'utility' && SHOP_EFFECTS[item.itemId]) {
@@ -1305,28 +1422,26 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           use.className = 'mini';
           use.textContent = '使用';
           use.title = SHOP_EFFECTS[item.itemId]!;
-          use.onclick = () => {
-            const consumed = activeInventory.consumeUtility(item.instanceId, () => {
-              const effect = UTILITY_EFFECTS[item.itemId];
-              if (!effect) return false;
-              if (effect.speedMultiplier !== undefined) {
-                return activeController.activateSpeedBoost(
-                  effect.speedMultiplier,
-                  effect.durationMs,
-                );
-              }
-              return effect.shield !== undefined
-                ? activeController.activateShield(effect.shield, effect.durationMs)
-                : false;
-            });
-            notify(
-              consumed.ok
-                ? `已使用${definition.name}：${SHOP_EFFECTS[item.itemId]}`
-                : '当前无法使用或效果已生效，道具没有消耗。',
-            );
+          use.onclick = () => useRaidItem(item.instanceId);
+          li.append(use);
+        }
+        if (isHotbarItem(item.itemId)) {
+          const assign = document.createElement('button');
+          assign.className = 'mini';
+          assign.dataset.hotbarAssign = item.instanceId;
+          assign.textContent = '放入快捷栏';
+          assign.title = '点击后选择底部格子；Esc 取消，不会消耗或丢弃道具。';
+          assign.onclick = () => {
+            if (
+              !raidInventory.isOpen() ||
+              activeController.isPaused() ||
+              document.querySelector('dialog[open]')
+            )
+              return;
+            assigningHotbarItem = assigningHotbarItem === item.instanceId ? null : item.instanceId;
             render();
           };
-          li.append(use);
+          li.append(assign);
         }
         const drop = document.createElement('button');
         drop.className = 'mini';
@@ -1422,7 +1537,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         return false;
       // Start playback within the click gesture, before fullscreen or save awaits.
       sound.setMusic(true);
-      void requestLandscape();
       const selected = Array.from(
         element<HTMLDivElement>('loadout').querySelectorAll<HTMLInputElement>(
           'input[type="checkbox"]:checked',
@@ -1433,11 +1547,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const starting = activeController.start(selected, starterWeapon || undefined);
       render();
       scene.captureMouse();
+      void fullscreen.enter();
       const result = await starting.catch(() => ({ ok: false }));
       explorationStarting = false;
       notify(
         result.ok
-          ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
+          ? `探索开始。当前物资价值达到 ${RAID_RULES.threshold} 后，回到南侧撤离点。`
           : '开局未成功：请检查网络和云存档状态后重试，当前装备仍保留。',
       );
       render();
@@ -1698,6 +1813,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       network.close();
       sound.dispose();
       disposeLayout();
+      fullscreen.dispose();
       controller.dispose();
       touch.dispose();
       game.destroy();

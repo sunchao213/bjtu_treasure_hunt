@@ -16,12 +16,14 @@ export class FormalControls {
   private drag?: { id: number; x: number; y: number };
   private mouse?: Point;
   private captureRequested = false;
+  private captureDenied = false;
   private captureGeneration = 0;
   constructor(
     private readonly view: CampusView,
     private readonly touch: TouchControls,
     private readonly enabled: () => boolean,
     private readonly unlocked: () => void,
+    private readonly inventoryOpen: () => boolean = () => false,
   ) {
     const canvas = view.renderer.domElement;
     const options = { signal: this.abort.signal };
@@ -30,6 +32,17 @@ export class FormalControls {
       (event) => {
         if (!this.enabled() || this.formFocused()) return;
         const key = event.key.toLowerCase();
+        const digit = /^(Digit|Numpad)[1-4]$/.test(event.code ?? '')
+          ? event.code.slice(-1)
+          : /^[1-4]$/.test(key)
+            ? key
+            : null;
+        if (digit && !this.inventoryOpen() && !event.ctrlKey && !event.altKey && !event.metaKey) {
+          event.preventDefault();
+          if (!event.repeat) this.pressed.add(digit);
+          return;
+        }
+        if (this.inventoryOpen() && !['w', 'a', 's', 'd'].includes(key)) return;
         if (
           ![
             'w',
@@ -73,11 +86,11 @@ export class FormalControls {
         this.mouse = undefined;
         // Browser Esc may release the lock before delivering keydown. Let the
         // shell finish that key's panel action before opening settings.
-        if (this.wasLocked && !locked && !this.suppressUnlock && this.enabled()) {
+        if (this.wasLocked && !locked && !this.suppressUnlock && this.worldInputEnabled()) {
           clearTimeout(this.unlockTimer);
           this.unlockTimer = setTimeout(() => {
             this.unlockTimer = undefined;
-            if (this.enabled()) this.unlocked();
+            if (this.worldInputEnabled()) this.unlocked();
           }, 0);
         }
         this.wasLocked = locked;
@@ -88,20 +101,31 @@ export class FormalControls {
     canvas.addEventListener(
       'pointerdown',
       (event) => {
-        if (!this.enabled()) return;
+        if (!this.worldInputEnabled()) return;
         canvas.focus();
         if (event.pointerType === 'touch') {
           this.drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
           event.preventDefault();
           canvas.setPointerCapture(event.pointerId);
-        } else this.captureMouse();
+        } else {
+          const ready =
+            document.pointerLockElement === canvas ||
+            !canvas.requestPointerLock ||
+            this.captureDenied;
+          if (event.button === 0 && ready && !this.formFocused()) {
+            event.preventDefault();
+            this.keys.add('mouse-primary');
+            this.pressed.add('mouse-primary');
+          }
+          this.captureMouse();
+        }
       },
       options,
     );
     canvas.addEventListener(
       'pointermove',
       (event) => {
-        if (!this.enabled() || !view.canOrbit() || this.formFocused()) {
+        if (!this.worldInputEnabled() || !view.canOrbit() || this.formFocused()) {
           this.mouse = undefined;
           return;
         }
@@ -132,6 +156,7 @@ export class FormalControls {
       options,
     );
     const stop = () => {
+      this.keys.delete('mouse-primary');
       this.drag = undefined;
     };
     canvas.addEventListener('pointerup', stop, options);
@@ -139,15 +164,6 @@ export class FormalControls {
     canvas.addEventListener('lostpointercapture', stop, options);
     document.addEventListener('pointerup', stop, options);
     canvas.addEventListener('pointerleave', () => (this.mouse = undefined), options);
-    canvas.addEventListener(
-      'wheel',
-      (event) => {
-        if (!this.enabled() || !view.canOrbit()) return;
-        event.preventDefault();
-        view.zoomCamera(event.deltaY);
-      },
-      { ...options, passive: false },
-    );
     window.addEventListener('blur', () => this.clear(), options);
     document.addEventListener(
       'focusin',
@@ -157,32 +173,40 @@ export class FormalControls {
       options,
     );
   }
+  private worldInputEnabled(): boolean {
+    return this.enabled() && !this.inventoryOpen();
+  }
   private formFocused() {
     return !!document.activeElement?.closest('input,textarea,select,[contenteditable="true"]');
   }
   read(position: Point, lastAim: number): WorldInput {
     const allowed = this.enabled() && !this.formFocused();
+    const inventoryOpen = this.inventoryOpen();
     const down = (key: string, touchKey = key.toUpperCase()) =>
-      allowed && (this.keys.has(key) || this.pressed.has(key) || this.touch.held(touchKey));
+      allowed &&
+      (!inventoryOpen || ['w', 'a', 's', 'd'].includes(key)) &&
+      (this.keys.has(key) ||
+        this.pressed.has(key) ||
+        (!inventoryOpen && this.touch.held(touchKey)));
     const raw = allowed
       ? {
           x:
             Number(down('d') || down('arrowright', 'RIGHT')) -
             Number(down('a') || down('arrowleft', 'LEFT')) +
-            this.touch.movement.x,
+            (inventoryOpen ? 0 : this.touch.movement.x),
           y:
             Number(down('s') || down('arrowdown', 'DOWN')) -
             Number(down('w') || down('arrowup', 'UP')) +
-            this.touch.movement.y,
+            (inventoryOpen ? 0 : this.touch.movement.y),
         }
       : { x: 0, y: 0 };
     const move = this.view.movementDirection(raw);
     let aim = lastAim;
-    if (allowed && isTouchLayout()) {
+    if (allowed && !inventoryOpen && isTouchLayout()) {
       const direction = this.touch.aim ?? this.touch.aimDirection;
       const world = direction ? this.view.movementDirection(direction) : move;
       if (world.x || world.y) aim = Math.atan2(world.y, world.x);
-    } else if (allowed) {
+    } else if (allowed && !inventoryOpen) {
       const target = this.view.cameraAim();
       if (target && Math.hypot(target.x - position.x, target.y - position.y) > 8)
         aim = Math.atan2(target.y - position.y, target.x - position.x);
@@ -191,14 +215,21 @@ export class FormalControls {
       move,
       aim,
       interact: down('e'),
-      attack: down(' ', 'SPACE'),
+      attack: down(' ', 'SPACE') || down('mouse-primary', 'SPACE'),
+      usePressed:
+        allowed &&
+        !inventoryOpen &&
+        (this.pressed.has(' ') ||
+          this.pressed.has('mouse-primary') ||
+          (this.touch.justPressed?.('SPACE') ?? false)),
       hug: down('q'),
       flashlight: down('l'),
       refill: down('r'),
       flare: down('g'),
     };
+    const slot = [...this.pressed].reverse().find((key) => /^[1-4]$/.test(key));
     this.pressed.clear();
-    return input;
+    return slot && allowed && !inventoryOpen ? { ...input, quickSlot: Number(slot) - 1 } : input;
   }
   clear(preserveMouse = false): void {
     clearTimeout(this.unlockTimer);
@@ -216,7 +247,13 @@ export class FormalControls {
   /** Call in a start/resume user gesture, before awaiting saves or networking. */
   captureMouse(): void {
     const canvas = this.view.renderer.domElement;
-    if (isTouchLayout() || !this.view.canOrbit() || !canvas.requestPointerLock) return;
+    if (
+      this.inventoryOpen() ||
+      isTouchLayout() ||
+      !this.view.canOrbit() ||
+      !canvas.requestPointerLock
+    )
+      return;
     this.captureRequested = true;
     if (document.pointerLockElement === canvas) return;
     const generation = ++this.captureGeneration;
@@ -226,9 +263,13 @@ export class FormalControls {
           if (!this.captureRequested && document.pointerLockElement === canvas) this.releaseMouse();
         })
         .catch(() => {
-          if (generation === this.captureGeneration) this.captureRequested = false;
+          if (generation === this.captureGeneration) {
+            this.captureRequested = false;
+            this.captureDenied = true;
+          }
         });
     } catch {
+      this.captureDenied = true;
       this.captureRequested = false;
       // Hover look remains available without another click.
     }

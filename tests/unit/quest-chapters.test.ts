@@ -1,3 +1,4 @@
+import { RAID_RULES } from '../../src/config/game-config';
 import { describe, expect, it } from 'vitest';
 import {
   activeQuestChapter,
@@ -66,7 +67,9 @@ describe('三章进度推进', () => {
     const chapter = activeQuestChapter(['siyuan-code', 'siyuan-key', 'soothe-monster']);
     const chapterId = chapter?.id ?? null;
     expect(questSpawnPlan(chapterId)).toEqual([]);
-    expect(prepGoalRows(chapterId)).toEqual([{ name: '携带价值 ≥ 100', place: '南门 · 撤离点' }]);
+    expect(prepGoalRows(chapterId)).toEqual([
+      { name: `携带价值 ≥ ${RAID_RULES.threshold}`, place: '南门 · 撤离点' },
+    ]);
     expect(
       isQuestComplete([loot('soothe-charm'), loot('complete-record')], RAID_ID, chapterId),
     ).toBe(false);
@@ -137,7 +140,7 @@ describe('三章进度推进', () => {
     expect(prepGoalRows('siyuan-key')).toEqual([
       { name: '被涂改的校园地图', place: '中央教学楼公告栏' },
       { name: '思源楼金钥匙', place: '思源楼东侧道路' },
-      { name: '携带价值 ≥ 100', place: '南门 · 撤离点' },
+      { name: `携带价值 ≥ ${RAID_RULES.threshold}`, place: '南门 · 撤离点' },
     ]);
     expect(prepGoalRows('soothe-monster')[0]).toEqual({ name: '安抚护符', place: '芳华园' });
   });

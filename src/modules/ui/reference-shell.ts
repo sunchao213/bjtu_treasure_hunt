@@ -1,4 +1,6 @@
+import { RAID_RULES } from '../../config/game-config';
 import { raidInventoryMarkup } from './raid-inventory';
+import { raidHotbarMarkup } from './raid-hotbar';
 import { gameRulesMarkup } from './game-rules';
 import { roomPageMarkup } from './room-page';
 import { iconSvg } from './icons';
@@ -61,7 +63,6 @@ export function prepViewMarkup(): string {
 
               <label class="v19-risk-consent"><input id="risk-consent" type="checkbox" /><span>出发风险我已知悉</span></label>
               <button id="start" class="v19-hotspot v19-start" type="button" disabled aria-label="开始探索"></button>
-              <p id="next-map" class="v19-load-status">本局地图：海淀夜巡</p>
               <p id="game-load-status" class="v19-load-status" role="status">正在加载校园与角色资源…</p>
               <button id="reload-game" type="button" hidden>重新加载校园</button>
               <p class="v19-sr-only" id="lobby-prepare-title">行前准备</p>
@@ -146,7 +147,7 @@ export function prepViewMarkup(): string {
 /** D's replaceable DOM shell. No business data is written by this module. */
 export function mountShell(root: HTMLElement): void {
   const valueCard = `<section class="side-card value-card"><div class="section-kicker">本局物资价值 <span id="gate-label">尚未出发</span></div>
-            <progress id="value-progress" max="100" value="0" aria-label="撤离价值达成"></progress>
+            <progress id="value-progress" max="${RAID_RULES.threshold}" value="0" aria-label="撤离价值达成"></progress>
             <p id="value-hint">只有本局搜到并仍携带的物品计入。</p>
           </section>`;
   const nightCard = `<section class="side-card night-card"><div class="section-kicker">夜间装备</div>
@@ -200,23 +201,23 @@ export function mountShell(root: HTMLElement): void {
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
           <div class="raid-hud-left"><div class="raid-location"><span><i class="status-dot"></i><b id="phase-label">准备出发</b><em class="map-scene">海淀校区 · 夜巡</em></span></div>
           ${tutorialMarkup()}<div id="team-status" class="team-status" aria-label="队伍状态" hidden><span id="team-connection" class="network-quality"></span><ul id="team-players"></ul></div></div>
-          <span id="raid-value" class="raid-value" role="status" aria-live="polite">本局价值：<b id="loot-value">0</b> / 100</span><span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span id="battery-compact" class="battery-compact">电量 100%</span><button id="open-raid-settings" class="hud-button" aria-haspopup="dialog">${iconSvg('settings', { size: 16 })} 设置 <kbd>Esc</kbd></button></span>
+          <span id="raid-value" class="raid-value" role="status" aria-live="polite">本局价值：<b id="loot-value">0</b> / ${RAID_RULES.threshold}</span><span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span id="battery-compact" class="battery-compact">电量 100%</span><button id="open-raid-settings" class="hud-button" aria-haspopup="dialog">${iconSvg('settings', { size: 16 })} 设置 <kbd>Esc</kbd></button></span>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
           <div id="key-prompt" class="key-prompt" hidden role="status">
             <div class="key-prompt-ring" aria-hidden="true"><span id="key-prompt-key" class="key-prompt-key">E</span></div>
             <span id="key-prompt-label" class="key-prompt-label">搜索</span>
           </div>
-          ${raidInventoryMarkup()}${resultCard}
-          <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-label="放大校园地图">
+          ${raidInventoryMarkup()}${raidHotbarMarkup()}${resultCard}
+          <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-controls="campus-map-dialog" aria-keyshortcuts="M" aria-label="放大校园地图（M）">
         <canvas id="campus-overview" class="campus-overview" width="180" height="180" aria-hidden="true"></canvas>
-            <span>校园图 · 点击放大</span>
+            <span>校园图 · M / 点击放大</span>
           </button>
           <div id="touch-controls" class="touch-controls" aria-label="触屏操作">
             <div class="touch-stick" role="group" aria-label="移动摇杆"><span class="stick-arrows" aria-hidden="true">↑<br>← &rarr;<br>↓</span><span class="stick-knob"></span></div>
             <div class="touch-aim touch-stick" role="group" aria-label="手电瞄准摇杆"><span class="aim-label">瞄准</span><span class="stick-knob"></span></div>
             <div class="touch-actions">
               <button data-touch-action="E" class="touch-interact" disabled>交互</button>
-              <button data-touch-action="SPACE" disabled>攻击</button>
+              <button data-touch-action="SPACE" disabled>使用</button>
               <button data-touch-action="Q" disabled>抱抱</button>
               <button data-touch-action="L" aria-pressed="true" disabled>手电</button>
               <button data-touch-action="R" disabled>换电池</button>
@@ -232,14 +233,14 @@ export function mountShell(root: HTMLElement): void {
       <dialog id="campus-map-dialog" class="campus-map-dialog" aria-labelledby="campus-map-title" aria-describedby="campus-map-note">
         <header><h2 id="campus-map-title">海淀主校区 · 校园图</h2><button id="close-campus-map" aria-label="关闭校园图">${iconSvg('close', { size: 20 })}</button></header>
         <div class="campus-map-scroll" tabindex="0" aria-label="校园图，可滚动查看各区域"><canvas id="campus-map-expanded" width="700" height="998" role="img" aria-label="海淀主校区地图，绿色圆点为撤离点，金色圆点为玩家当前位置"></canvas></div>
-        <p id="campus-map-note">金色圆点：当前位置 · 金色菱形：当前剧情线索 · 绿色：已调查／撤离点 · 查看时暂停<br>校园夜景底图用于游戏导航，不能用于现实导航。</p>
+        <p id="campus-map-note">金色圆点：当前位置 · 金色菱形：当前剧情线索 · 绿色：已调查／撤离点 · 查看时暂停 · M / Esc 关闭<br>校园夜景底图用于游戏导航，不能用于现实导航。</p>
       </dialog>
       <dialog id="raid-settings" class="rules-dialog raid-settings" aria-labelledby="raid-settings-title">
         <header class="rules-header"><h1 id="raid-settings-title">探索已暂停</h1><button id="resume-raid" class="secondary" type="button">继续游戏 · Esc</button></header>
         <div class="rules-content"><div id="raid-settings-slot" class="settings"></div>
-          <div class="settings-links"><button id="hud-rules" class="secondary" type="button">游戏规则</button><button id="hud-codex" class="secondary" type="button">物品图鉴</button><button id="mobile-fullscreen" class="secondary" type="button" aria-label="全屏横屏显示">全屏</button></div>
+          <div class="settings-links"><button id="hud-rules" class="secondary" type="button">游戏规则</button><button id="mobile-fullscreen" class="secondary" type="button" aria-label="全屏游戏">全屏</button></div>
           <div id="raid-details-slot">${valueCard}${nightCard}${questCard}${debugCard}</div>
         </div>
         <footer class="rules-footer"><button id="abandon" class="secondary abandon-button" type="button">放弃并返回大厅</button></footer>
-      </dialog><dialog id="raid-codex" class="rules-dialog raid-settings" aria-label="物品图鉴"><header class="rules-header"><h1>物品图鉴</h1><button id="close-raid-codex" type="button">关闭</button></header><div class="rules-content">${archiveBrowserMarkup('raid-archive-browser')}</div></dialog>${storyDialogMarkup()}${confirmMarkup()}${roomPageMarkup()}`;
+      </dialog>${storyDialogMarkup()}${confirmMarkup()}${roomPageMarkup()}`;
 }

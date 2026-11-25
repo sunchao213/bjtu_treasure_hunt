@@ -55,9 +55,14 @@ const pending = new Map();
 const pages = new Map();
 const passed = [];
 const stamp = Date.now().toString(36);
+const chestsOnly = process.argv.includes('--chests-only');
 const roomsOnly = process.argv.includes('--rooms-only');
 const immersiveOnly = process.argv.includes('--immersive-only');
 const steleOnly = process.argv.includes('--stele-only');
+const healingOnly = process.argv.includes('--healing-only');
+const hotbarOnly = process.argv.includes('--hotbar-only');
+const durabilityOnly = process.argv.includes('--durability-only');
+const utilityEffectsOnly = process.argv.includes('--utility-effects-only');
 
 function command(method, params = {}, sessionId) {
   const id = ++nextId;
@@ -98,15 +103,14 @@ async function until(page, expression) {
   );
 }
 async function click(page, selector) {
-  // A player releases captured look through Esc before clicking HUD controls.
+  // Release capture for HUD clicks in the harness; closing settings with Esc now recaptures it.
   if (
     selector !== '#game-canvas canvas' &&
     (await evaluate(page, '!!document.pointerLockElement'))
   ) {
-    await press(page, 'Escape', 'Escape', 27);
-    await until(page, 'document.querySelector("#raid-settings").open');
-    await press(page, 'Escape', 'Escape', 27);
-    await until(page, '!document.querySelector("#raid-settings").open');
+    await attachScene(page);
+    await evaluate(page, 'testScene.releaseMouse()');
+    await until(page, '!document.pointerLockElement');
   }
   if (selector === '#mode-room') selector = '.v19-teammate-one';
   if (selector === '#mode-solo' && (await evaluate(page, '!testScene.services.network.isInRoom()')))
@@ -127,7 +131,7 @@ async function click(page, selector) {
   if (selector.startsWith('#inventory ')) {
     if (await evaluate(page, 'document.querySelector("#inventory-panel").hidden'))
       await click(page, '#toggle-inventory');
-    const liSelector = selector.replace(/ button.*$/, '');
+    const liSelector = selector.replace(/ (?:button|\[data-hotbar-assign\]).*$/, '');
     const id = await evaluate(
       page,
       `document.querySelector(${JSON.stringify(liSelector)})?.dataset.instanceId`,
@@ -496,7 +500,7 @@ async function verifyImmersiveLayout(page, width, height, mobile = false) {
     const canvas = document.querySelector('#game-canvas canvas').getBoundingClientRect();
     const selectors = ['.raid-location', '.formal-story-objective', '#tutorial', '#team-status',
       '#raid-value', '.map-hud-right', '#open-campus-map', '.formal-camera-controls',
-      '.interaction', '#toggle-inventory', '#key-prompt', '#map-toast',
+      '.interaction', '#raid-hotbar', '#toggle-inventory', '#key-prompt', '#map-toast',
       '.touch-controls .touch-stick', '.touch-aim', '.touch-actions'];
     const boxes = selectors.flatMap(selector => {
       const el = document.querySelector(selector);
@@ -548,11 +552,34 @@ async function verifyImmersiveLayout(page, width, height, mobile = false) {
 
 async function verifyImmersiveFlow() {
   const page = await newPage('immersive');
+  await command('Browser.setPermission', {
+    permission: { name: 'keyboard-lock' },
+    setting: 'granted',
+    browserContextId: page.browserContextId,
+  });
+  await evaluate(
+    page,
+    `(() => {
+      const keyboard = navigator.keyboard;
+      const lock = keyboard.lock.bind(keyboard), unlock = keyboard.unlock.bind(keyboard);
+      globalThis.testKeyboardLocked = false;
+      keyboard.lock = async (keys) => {
+        await lock(keys);
+        globalThis.testKeyboardLocked = keys.length === 1 && keys[0] === 'Escape';
+      };
+      keyboard.unlock = () => { unlock(); globalThis.testKeyboardLocked = false; };
+    })()`,
+  );
   await consent(page);
   await click(page, '#start');
   await until(page, 'document.querySelector("#app").dataset.phase === "active"');
   await attachScene(page);
+  await until(
+    page,
+    'document.fullscreenElement === document.documentElement && testKeyboardLocked',
+  );
   await until(page, 'document.pointerLockElement === testScene.view.renderer.domElement');
+  await screenshot(page, 'immersive-fullscreen-entry');
   assert.equal(
     await evaluate(page, 'testScene.view.cameraInfo().includes("俯角 18° · 缩放 5.0")'),
     true,
@@ -571,8 +598,49 @@ async function verifyImmersiveFlow() {
     page,
     'document.querySelector("#raid-settings").open && !document.pointerLockElement',
   );
-  // Browser-native Esc recapture cooldown must not break hover fallback.
-  await delay(1500);
+  assert.equal(await evaluate(page, '!!document.fullscreenElement && testKeyboardLocked'), true);
+  await click(page, '#resume-raid');
+  await until(page, 'document.pointerLockElement === testScene.view.renderer.domElement');
+  for (const [key, code, keyCode] of [
+    ['Escape', 'Escape', 27],
+    ['m', 'KeyM', 77],
+  ]) {
+    await press(page, 'm', 'KeyM', 77);
+    await until(
+      page,
+      'document.querySelector("#campus-map-dialog").open && !document.pointerLockElement',
+    );
+    await press(page, key, code, keyCode);
+    await until(
+      page,
+      '!document.querySelector("#campus-map-dialog").open && document.pointerLockElement === testScene.view.renderer.domElement',
+    );
+  }
+  await press(page, 'Escape', 'Escape', 27);
+  await until(page, 'document.querySelector("#raid-settings").open');
+  await press(page, 'Escape', 'Escape', 27);
+  await until(
+    page,
+    '!document.querySelector("#raid-settings").open && document.pointerLockElement === testScene.view.renderer.domElement',
+  );
+  const resumedYaw = await evaluate(page, 'testScene.view.cameraRig.yaw');
+  for (const x of [610, 630, 650])
+    await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: 450 }, page.id);
+  await delay(150);
+  assert.notEqual(
+    await evaluate(page, 'testScene.view.cameraRig.yaw'),
+    resumedYaw,
+    'M/Escape transitions restore continuous mouse look without a canvas click',
+  );
+  await screenshot(page, 'immersive-keyboard-resume');
+  assert.equal(await evaluate(page, '!!document.fullscreenElement && testKeyboardLocked'), true);
+  await evaluate(page, 'document.exitFullscreen()');
+  await until(
+    page,
+    '!document.fullscreenElement && !testKeyboardLocked && !document.pointerLockElement && document.querySelector("#raid-settings").open',
+  );
+  await click(page, '#mobile-fullscreen');
+  await until(page, '!!document.fullscreenElement && testKeyboardLocked');
   await click(page, '#resume-raid');
   await until(page, 'document.pointerLockElement === testScene.view.renderer.domElement');
   await press(page, 'Tab', 'Tab', 9);
@@ -599,7 +667,16 @@ async function verifyImmersiveFlow() {
   );
   await screenshot(page, 'immersive-expanded-map');
   await click(page, '#close-campus-map');
+  await until(
+    page,
+    '!document.querySelector("#campus-map-dialog").open && document.pointerLockElement === testScene.view.renderer.domElement',
+  );
   await abandon(page);
+  assert.equal(
+    await evaluate(page, 'testKeyboardLocked'),
+    false,
+    'lobby returns Escape to browser',
+  );
   assert.equal(
     await evaluate(page, 'document.documentElement.classList.contains("raid-immersive")'),
     false,
@@ -643,6 +720,770 @@ async function verifyImmersiveFlow() {
   pass(
     'Immersive entry, automatic capture/resume, hover fallback, full viewport, HUD clearance and lobby restoration',
   );
+}
+
+async function verifyWeaponDurabilityFlow() {
+  for (const mobile of [false, true]) {
+    const device = mobile ? 'touch' : 'desktop';
+    const page = await newPage(mobile ? 'durt' : 'durd', { mobile });
+    await consent(page);
+    await evaluate(page, 'document.querySelector("#starter-weapon").value = "stun-baton"');
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    await evaluate(
+      page,
+      `(() => {
+      testScene.combat.enemies = [];
+      testScene.combat.updateSpawns = () => [];
+      globalThis.durabilityInput = {
+        move: {x:0, y:0}, aim:0, interact:false, attack:false,
+        hug:false, flashlight:false, refill:false, flare:false
+      };
+    })()`,
+    );
+    await until(
+      page,
+      '!document.querySelector("#hotbar-weapon-durability").hidden && document.querySelector("#hotbar-weapon-durability progress").value === 15',
+    );
+    await screenshot(page, 'durability-full-' + device);
+    await evaluate(
+      page,
+      `(() => {
+      for (let i=0; i<12; i++) {
+        testScene.combat.tick(1200);
+        testScene.tick(16, {...durabilityInput, attack:true});
+      }
+    })()`,
+    );
+    await until(
+      page,
+      'document.querySelector("#hotbar-weapon-durability").dataset.state === "low" && document.querySelector("#hotbar-weapon-durability progress").value === 3',
+    );
+    await screenshot(page, 'durability-low-' + device);
+    await evaluate(
+      page,
+      `(() => {
+      for (let i=0; i<3; i++) {
+        testScene.combat.tick(1200);
+        testScene.tick(16, {...durabilityInput, attack:true});
+      }
+    })()`,
+    );
+    await until(
+      page,
+      'document.querySelector("#hotbar-weapon-durability").dataset.state === "empty" && document.querySelector("#hotbar-weapon-durability progress").value === 0 && document.querySelector("#hotbar-hint").textContent.includes("次数已耗尽")',
+    );
+    assert(
+      (await evaluate(page, 'document.querySelector("#map-toast").textContent')).includes(
+        '次数已耗尽',
+      ),
+    );
+    await screenshot(page, 'durability-empty-' + device);
+    await evaluate(
+      page,
+      `(() => {
+      testScene.tick(16, {...durabilityInput, quickSlot:3});
+      testScene.tick(16, {...durabilityInput, quickSlot:0});
+      testScene.combat.tick(1200);
+      testScene.tick(16, {...durabilityInput, attack:true});
+    })()`,
+    );
+    assert.equal(await evaluate(page, 'testScene.combat.getWeaponUsesRemaining("stun-baton")'), 0);
+    assert.equal(await evaluate(page, 'testScene.combat.swingMs'), 0);
+    const rect = await evaluate(
+      page,
+      `(() => {
+      const r = document.querySelector('#hotbar-weapon-durability').getBoundingClientRect();
+      return {left:r.left, top:r.top, right:r.right, bottom:r.bottom, width:innerWidth, height:innerHeight};
+    })()`,
+    );
+    assert(
+      rect.left >= 0 && rect.top >= 0 && rect.right <= rect.width && rect.bottom <= rect.height,
+      'durability stays inside the viewport',
+    );
+    assert(
+      await evaluate(
+        page,
+        `(() => {
+      const bar = document.querySelector('#hotbar-weapon-durability').getBoundingClientRect();
+      const selectors = ['.interaction', '.hotbar-slots', '.touch-stick', '.touch-aim', '#toggle-inventory'];
+      return selectors.every(selector => {
+        const node = document.querySelector(selector);
+        if (!node || !node.getClientRects().length) return true;
+        const other = node.getBoundingClientRect();
+        return bar.right <= other.left || other.right <= bar.left || bar.bottom <= other.top || other.bottom <= bar.top;
+      });
+    })()`,
+      ),
+      'durability does not overlap interactions, shortcuts or touch sticks',
+    );
+    await abandon(page);
+    await until(page, 'document.querySelector("#raid-hotbar").hidden');
+    await consent(page);
+    await click(page, '#start');
+    await until(
+      page,
+      'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#hotbar-weapon-durability progress").value === 15',
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+    pass(
+      'Baton durability on ' +
+        device +
+        ': 15 uses, low warning, exhausted text/toast, no attack at zero, new raid resets',
+    );
+  }
+}
+
+async function verifyHotbarFlow() {
+  const page = await newPage('hotbar');
+  await consent(page);
+  await click(page, '#start');
+  await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+  await click(page, '#tutorial-skip');
+  await attachScene(page);
+  await evaluate(
+    page,
+    `(() => {
+      testScene.combat.enemies = [];
+      testScene.combat.updateSpawns = () => [];
+      const inventory = testScene.services.inventory;
+      const origin = {kind:'raid-loot', obtainedInRaidId:testScene.services.controller.getView().raidId};
+      if (!inventory.getCarriedItems().some(item => item.itemId === 'training-bat'))
+        inventory.addLoot({instanceId:'hotbar-bat',itemId:'training-bat',origin});
+      for (let i=0;i<2;i++) inventory.addLoot({instanceId:'hotbar-bandage-'+i,itemId:'bandage',origin});
+    })()`,
+  );
+  await until(
+    page,
+    'document.querySelectorAll("[data-hotbar-slot]").length === 4 && document.querySelectorAll("[data-hotbar-slot]")[1].dataset.instanceId === "hotbar-bandage-0" && document.querySelectorAll("[data-hotbar-slot]")[2].dataset.instanceId === "hotbar-bandage-1"',
+  );
+  assert.equal(
+    await evaluate(page, 'document.querySelectorAll(".hotbar-count").length'),
+    0,
+    'no quantity badges, including ×1',
+  );
+  await screenshot(page, 'hotbar-individual-items');
+  await press(page, '4', 'Digit4', 52);
+  await until(
+    page,
+    'document.querySelectorAll("[data-hotbar-slot]")[3].getAttribute("aria-pressed") === "true"',
+  );
+  assert.equal(await evaluate(page, 'testScene.hotbar.selected().item'), null);
+  await screenshot(page, 'hotbar-empty-selected');
+  if (!(await evaluate(page, '!!document.pointerLockElement')))
+    await click(page, '#game-canvas canvas');
+  await click(page, '#game-canvas canvas');
+  assert.equal(
+    await evaluate(page, 'testScene.combat.swingMs'),
+    0,
+    'empty hands never swing a carried weapon',
+  );
+  assert.equal(
+    await evaluate(
+      page,
+      'testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==="bandage").length',
+    ),
+    2,
+  );
+  await press(page, '2', 'Digit2', 50);
+  await until(
+    page,
+    'document.querySelectorAll("[data-hotbar-slot]")[1].getAttribute("aria-pressed") === "true"',
+  );
+  await click(page, '#game-canvas canvas');
+  assert.equal(
+    await evaluate(
+      page,
+      'testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==="bandage").length',
+    ),
+    2,
+    'full health keeps stock',
+  );
+  await evaluate(page, 'testScene.services.controller.applyDamage(30)');
+  await command(
+    'Input.dispatchMouseEvent',
+    { type: 'mousePressed', x: 450, y: 350, button: 'left', clickCount: 1 },
+    page.id,
+  );
+  await delay(250);
+  await command(
+    'Input.dispatchMouseEvent',
+    { type: 'mouseReleased', x: 450, y: 350, button: 'left', clickCount: 1 },
+    page.id,
+  );
+  await until(
+    page,
+    'document.querySelectorAll("[data-hotbar-slot]")[1].dataset.itemId === "" && !document.querySelectorAll("[data-hotbar-slot]")[1].querySelector(".hotbar-empty").hidden',
+  );
+  assert.equal(
+    await evaluate(page, 'testScene.services.controller.getView().health'),
+    80,
+    'holding left mouse consumes only one bandage',
+  );
+  assert.equal(await evaluate(page, 'testScene.hotbar.selectedIndex'), 1);
+  assert.equal(await evaluate(page, 'testScene.hotbar.slots()[2].instanceId'), 'hotbar-bandage-1');
+  await screenshot(page, 'hotbar-bandage-used');
+  await click(page, '#game-canvas canvas');
+  assert.equal(
+    await evaluate(
+      page,
+      'testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==="bandage").length',
+    ),
+    1,
+    'clicking the consumed slot cannot use a different bandage',
+  );
+  await press(page, '3', 'Digit3', 51);
+  await click(page, '#game-canvas canvas');
+  await until(page, 'document.querySelectorAll("[data-hotbar-slot]")[2].dataset.itemId === ""');
+  assert.equal(await evaluate(page, 'testScene.hotbar.selected().item'), null);
+  assert.equal(await evaluate(page, 'testScene.services.controller.getView().health'), 90);
+  assert.equal(
+    await evaluate(
+      page,
+      'document.querySelectorAll("[data-hotbar-slot]")[2].querySelector(".hotbar-icon").innerHTML',
+    ),
+    '',
+  );
+  await screenshot(page, 'hotbar-consumed-empty');
+  await press(page, '1', 'Digit1', 49);
+  await click(page, '#game-canvas canvas');
+  await until(page, 'testScene.combat.attackCooldown > 0');
+  await press(page, '4', 'Digit4', 52);
+  await until(page, 'testScene.hotbar.selectedIndex === 3');
+  await click(page, '#game-canvas canvas');
+  assert.equal(await evaluate(page, 'testScene.hotbar.selected().item'), null);
+  await press(page, 'Escape', 'Escape', 27);
+  await until(page, 'document.querySelector("#raid-settings").open');
+  await press(page, '1', 'Digit1', 49);
+  assert.equal(
+    await evaluate(page, 'testScene.hotbar.selectedIndex'),
+    3,
+    'settings block slot switching',
+  );
+  await press(page, 'Escape', 'Escape', 27);
+  await until(page, '!document.querySelector("#raid-settings").open');
+  await click(page, '[data-hotbar-slot="2"]');
+  await until(
+    page,
+    'document.querySelectorAll("[data-hotbar-slot]")[2].getAttribute("aria-pressed") === "true"',
+  );
+  assert.equal(
+    await evaluate(page, 'testScene.hotbar.selected().item'),
+    null,
+    'clicking an empty slot selects empty hands',
+  );
+  const layout = await evaluate(
+    page,
+    `(() => {
+    const bar=document.querySelector('#raid-hotbar').getBoundingClientRect();
+    const interaction=document.querySelector('.interaction').getBoundingClientRect();
+    return {bar:bar.toJSON(),interaction:interaction.toJSON(),width:innerWidth,height:innerHeight};
+  })()`,
+  );
+  assert(
+    layout.bar.x >= 0 && layout.bar.right <= layout.width && layout.bar.bottom <= layout.height,
+  );
+  assert(layout.interaction.bottom <= layout.bar.top, 'interaction text stays above shortcuts');
+  await screenshot(page, 'hotbar-final');
+  await evaluate(
+    page,
+    `(() => {
+    const origin = {kind:'raid-loot',obtainedInRaidId:testScene.services.controller.getView().raidId};
+    for (let i=0;i<2;i++) testScene.services.inventory.addLoot({instanceId:'hotbar-bike-'+i,itemId:'yellow-bike',origin});
+    testScene.services.inventory.addLoot({instanceId:'hotbar-shield',itemId:'thick-down-jacket',origin});
+  })()`,
+  );
+  await until(
+    page,
+    'testScene.hotbar.slots()[1].instanceId === "hotbar-bike-0" && testScene.hotbar.slots()[2].instanceId === "hotbar-bike-1"',
+  );
+  await press(page, '2', 'Digit2', 50);
+  await click(page, '#game-canvas canvas');
+  await until(page, 'document.querySelectorAll("[data-hotbar-slot]")[1].dataset.itemId === ""');
+  assert.equal(await evaluate(page, 'testScene.services.controller.getMoveSpeedMultiplier()'), 1.3);
+  assert.equal(await evaluate(page, 'testScene.hotbar.slots()[2].instanceId'), 'hotbar-bike-1');
+  await press(page, '3', 'Digit3', 51);
+  await click(page, '#game-canvas canvas');
+  assert.equal(
+    await evaluate(
+      page,
+      'testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==="yellow-bike").length',
+    ),
+    1,
+    'active speed boost rejects repeated use without consuming the other instance',
+  );
+  assert.equal(await evaluate(page, 'testScene.hotbar.slots()[2].instanceId'), 'hotbar-bike-1');
+  await press(page, '4', 'Digit4', 52);
+  await click(page, '#game-canvas canvas');
+  await until(page, 'document.querySelectorAll("[data-hotbar-slot]")[3].dataset.itemId === ""');
+  await screenshot(page, 'hotbar-utilities-used');
+  assert.equal(page.errors.length, 0, 'no browser exceptions during hotbar flow');
+  pass(
+    'Four shortcuts: keyboard/click empty-hand selection, highlight, weapon attack, one instance per slot, consumed slots empty without refilling, no badges, and modal guards',
+  );
+  await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+}
+
+async function verifyHotbarRebindingFlow() {
+  for (const mobile of [false, true]) {
+    const page = await newPage('bind' + (mobile ? 'mob' : 'pc'), { mobile });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    await evaluate(
+      page,
+      `(() => {
+      testScene.combat.enemies=[]; testScene.combat.updateSpawns=()=>[];
+      const raidId=testScene.services.controller.getView().raidId;
+      const ids=['training-bat','bandage','thick-down-jacket','electric-bike-helmet','morning-coffee','portable-medkit'];
+      const items=ids.map(itemId=>({instanceId:'rebind-'+itemId,itemId,origin:{kind:'carry-in'}}));
+      testScene.services.inventory.begin(raidId,items.slice(1),{primary:items[0]});
+      globalThis.rebindBefore=JSON.stringify(testScene.services.inventory.getCarriedItems());
+    })()`,
+    );
+    await click(page, '#inventory [data-item-id="morning-coffee"] [data-hotbar-assign]');
+    await until(page, 'document.querySelector("#raid-hotbar").dataset.assigning === "true"');
+    await screenshot(page, 'hotbar-rebind-' + (mobile ? 'touch' : 'desktop') + '-choosing');
+    await click(page, '[data-hotbar-slot="1"]');
+    await until(
+      page,
+      'document.querySelectorAll("[data-hotbar-slot]")[1].dataset.itemId === "morning-coffee"',
+    );
+    assert.equal(
+      await evaluate(page, 'JSON.stringify(testScene.services.inventory.getCarriedItems())'),
+      await evaluate(page, 'rebindBefore'),
+      'binding never consumes or drops inventory',
+    );
+    assert.equal(await evaluate(page, 'testScene.services.controller.getView().health'), 100);
+    assert.equal(await evaluate(page, 'document.querySelector("#inventory-panel").hidden'), false);
+    await click(page, '#inventory [data-item-id="portable-medkit"] [data-hotbar-assign]');
+    if (mobile) await click(page, '[data-hotbar-slot="2"]');
+    else await press(page, '3', 'Digit3', 51);
+    await until(
+      page,
+      'document.querySelectorAll("[data-hotbar-slot]")[2].dataset.itemId === "portable-medkit"',
+    );
+    await click(page, '#inventory [data-item-id="bandage"] [data-hotbar-assign]');
+    await press(page, 'Escape', 'Escape', 27);
+    await until(page, 'document.querySelector("#raid-hotbar").dataset.assigning === "false"');
+    assert.equal(
+      await evaluate(page, 'document.querySelector("#inventory-panel").hidden'),
+      false,
+      'Esc cancels assignment before closing bag',
+    );
+    assert.equal(await evaluate(page, 'testScene.hotbar.slots()[1].itemId'), 'morning-coffee');
+    await screenshot(page, 'hotbar-rebind-' + (mobile ? 'touch' : 'desktop') + '-complete');
+    await press(page, 'Tab', 'Tab', 9);
+    await until(page, 'document.querySelector("#inventory-panel").hidden');
+    if (mobile) await click(page, '[data-hotbar-slot="1"]');
+    else await press(page, '2', 'Digit2', 50);
+    await until(page, 'testScene.hotbar.selectedIndex === 1');
+    await evaluate(page, 'testScene.services.controller.applyDamage(25)');
+    if (mobile) await click(page, '[data-touch-action="SPACE"]');
+    else {
+      if (!(await evaluate(page, '!!document.pointerLockElement')))
+        await click(page, '#game-canvas canvas');
+      await click(page, '#game-canvas canvas');
+    }
+    await until(
+      page,
+      '!testScene.services.inventory.getCarriedItems().some(item=>item.itemId==="morning-coffee")',
+    );
+    assert.equal(await evaluate(page, 'testScene.services.controller.getView().health'), 100);
+    assert.equal(await evaluate(page, 'testScene.services.inventory.getCarriedItems().length'), 5);
+    // Choose between two identical items through their actual backpack instance.
+    await evaluate(
+      page,
+      `(() => {
+        const raidId = testScene.services.controller.getView().raidId;
+        const result = testScene.services.inventory.addLoot({instanceId:'rebind-bandage-extra',itemId:'bandage',origin:{kind:'raid-loot',obtainedInRaidId:raidId}});
+        if (!result.ok) throw new Error('duplicate seed rejected');
+      })()`,
+    );
+    await click(page, '#inventory [data-instance-id="rebind-bandage-extra"] [data-hotbar-assign]');
+    await click(page, '[data-hotbar-slot="1"]');
+    await until(page, 'testScene.hotbar.slots()[1].instanceId === "rebind-bandage-extra"');
+    await click(page, '#inventory [data-instance-id="rebind-bandage"] [data-hotbar-assign]');
+    await click(page, '[data-hotbar-slot="3"]');
+    await until(page, 'testScene.hotbar.slots()[3].instanceId === "rebind-bandage"');
+    await screenshot(page, 'hotbar-duplicates-' + (mobile ? 'touch' : 'desktop'));
+    await press(page, 'Tab', 'Tab', 9);
+    await until(page, 'document.querySelector("#inventory-panel").hidden');
+    await evaluate(page, 'testScene.services.controller.applyDamage(25)');
+    if (mobile) await click(page, '[data-touch-action="SPACE"]');
+    else {
+      if (!(await evaluate(page, '!!document.pointerLockElement')))
+        await click(page, '#game-canvas canvas');
+      await click(page, '#game-canvas canvas');
+    }
+    await until(
+      page,
+      'document.querySelectorAll("[data-hotbar-slot]")[1].dataset.instanceId === ""',
+    );
+    assert.equal(await evaluate(page, 'testScene.hotbar.selectedIndex'), 1);
+    assert.equal(await evaluate(page, 'testScene.hotbar.slots()[3].instanceId'), 'rebind-bandage');
+    assert.equal(
+      await evaluate(
+        page,
+        'testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==="bandage").length',
+      ),
+      1,
+    );
+    assert.equal(await evaluate(page, 'document.querySelectorAll(".hotbar-count").length'), 0);
+    await screenshot(page, 'hotbar-duplicate-used-' + (mobile ? 'touch' : 'desktop'));
+    assert.equal(page.errors.length, 0);
+    pass(
+      (mobile ? 'Touch' : 'Desktop') +
+        ' full six-slot inventory: replace shortcuts with fifth/sixth tools, cancel with Esc, assign exact duplicate instances, and empty only the used slot',
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  }
+}
+
+async function verifyHealingFlow(itemId = 'bandage') {
+  const coffee = itemId === 'morning-coffee';
+  const view = coffee ? 'coffeeHealing' : 'bandageHealing';
+  const elapsed = coffee ? 'coffeeHealingElapsedMs' : 'bandageHealingElapsedMs';
+  const label = coffee ? 'coffee' : 'healing';
+  for (const mobile of [false, true]) {
+    const page = await newPage(`${coffee ? 'coffee' : 'heal'}${mobile ? 'mob' : 'pc'}`, { mobile });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    await evaluate(
+      page,
+      `(() => {
+      testScene.combat.enemies = [];
+      testScene.combat.updateSpawns = () => [];
+      testScene.services.inventory.addLoot({
+        instanceId: 'healing-smoke-bandage', itemId: '${itemId}',
+        origin: {kind: 'raid-loot', obtainedInRaidId: testScene.services.controller.getView().raidId},
+      });
+    })()`,
+    );
+    await click(page, `#inventory [data-item-id="${itemId}"] button`);
+    assert.equal(await evaluate(page, `testScene.frame().${elapsed}`), undefined);
+    assert.equal(await evaluate(page, `testScene.view.${view}.sprite.visible`), false);
+    assert(
+      await evaluate(
+        page,
+        `testScene.services.inventory.getCarriedItems().some(i => i.itemId === "${itemId}")`,
+      ),
+    );
+    await evaluate(page, 'testScene.services.controller.applyDamage(20)');
+    await click(page, `#inventory [data-item-id="${itemId}"] button`);
+    await evaluate(
+      page,
+      `(() => {
+      if (!document.querySelector('#inventory-panel').hidden)
+        document.querySelector('#toggle-inventory').click();
+    })()`,
+    );
+    await until(
+      page,
+      `testScene.view.${view}.sprite.visible && testScene.view.${view}.sprite.material.opacity > 0.2`,
+    );
+    const healing = await evaluate(
+      page,
+      `(() => {
+      const sprite = testScene.view.${view}.sprite;
+      const texture = sprite.material.map;
+      return {health: testScene.services.controller.getView().health,
+        consumed: !testScene.services.inventory.getCarriedItems().some(i => i.itemId === '${itemId}'),
+        image: [texture.image.naturalWidth, texture.image.naturalHeight],
+        repeat: texture.repeat.toArray(), depthWrite: sprite.material.depthWrite,
+        headClearance: sprite.position.y - sprite.scale.y / 2,
+        position: sprite.position.toArray(), player: {...testScene.position}};
+    })()`,
+    );
+    assert.equal(healing.health, coffee ? 100 : 90);
+    assert(healing.consumed);
+    assert.deepEqual(healing.image, [1024, 1024]);
+    assert.deepEqual(healing.repeat, [0.25, 0.25]);
+    assert.equal(healing.depthWrite, false);
+    assert(healing.headClearance > 1.44);
+    assert(Math.abs(healing.position[0] - healing.player.x / 32) < 0.001);
+    assert(Math.abs(healing.position[2] - healing.player.y / 32) < 0.001);
+    await screenshot(page, `${label}-${mobile ? 'mobile' : 'desktop'}-active`);
+    await until(page, `!testScene.view.${view}.sprite.visible`);
+    assert.equal(await evaluate(page, `testScene.frame().${elapsed}`), undefined);
+    await screenshot(page, `${label}-${mobile ? 'mobile' : 'desktop'}-finished`);
+    pass(
+      `${mobile ? 'Mobile' : 'Desktop'} ${itemId}: full-health rejection, successful use, transparent sheet, head clearance, and animation completion`,
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  }
+}
+
+async function verifyUtilityEffectsFlow(boostItem = 'yellow-bike') {
+  const skates = boostItem === 'roller-skates';
+  const visual = skates ? 'skates' : 'bike';
+  const label = skates ? 'skates' : 'utility';
+  for (const mobile of [false, true]) {
+    const page = await newPage(`${skates ? 'skate' : 'util'}${mobile ? 'mob' : 'pc'}`, { mobile });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    await evaluate(
+      page,
+      `(() => {
+      testScene.combat.enemies = [];
+      testScene.combat.updateSpawns = () => [];
+      for (const [instanceId,itemId] of [['bike-a','${boostItem}'],['bike-b','${boostItem}'],['jacket-a','thick-down-jacket']])
+        testScene.services.inventory.addLoot({instanceId,itemId,
+          origin:{kind:'raid-loot',obtainedInRaidId:testScene.services.controller.getView().raidId}});
+    })()`,
+    );
+    await click(page, `#inventory [data-item-id="${boostItem}"] button`);
+    assert.equal(
+      await evaluate(page, 'testScene.services.controller.getMoveSpeedMultiplier()'),
+      skates ? 1.15 : 1.3,
+    );
+    await click(page, `#inventory [data-item-id="${boostItem}"] button`);
+    assert.equal(
+      await evaluate(
+        page,
+        `testScene.services.inventory.getCarriedItems().filter(i => i.itemId === "${boostItem}").length`,
+      ),
+      1,
+    );
+    await click(page, '#inventory [data-item-id="thick-down-jacket"] button');
+    await evaluate(
+      page,
+      `(() => {
+      if (!document.querySelector('#inventory-panel').hidden) document.querySelector('#toggle-inventory').click();
+    })()`,
+    );
+    await until(
+      page,
+      'testScene.frame().utilityEffects.length === 2 && testScene.frame().utilityEffects.every(e => e.phase === "loop")',
+    );
+    const active = await evaluate(
+      page,
+      `(() => {
+      const v = testScene.view.utilityEffects;
+      const image = v.shield.material.map.image;
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1024;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(image,0,0);
+      return {bike:v.${visual}.visible, shield:v.shield.visible, badge:v.jacketBadge.visible,
+        clearCenter:ctx.getImageData(128,384,1,1).data[3],
+        image:[image.naturalWidth,image.naturalHeight],
+        health:testScene.services.controller.getView().health,
+        jacketConsumed:!testScene.services.inventory.getCarriedItems().some(i => i.itemId === 'thick-down-jacket')};
+    })()`,
+    );
+    assert(active.bike && active.shield && !active.badge);
+    assert(active.jacketConsumed);
+    assert.equal(active.clearCenter, 0);
+    assert.equal(active.health, 100);
+    assert.deepEqual(active.image, [1024, 1024]);
+    await screenshot(page, `${label}-${mobile ? 'mobile' : 'desktop'}-active`);
+    if (!mobile) {
+      await move(page, 150);
+      const following = await evaluate(
+        page,
+        `(() => {
+        const v=testScene.view.utilityEffects, p=testScene.position;
+        return Math.abs(v.${visual}.position.x-p.x/32)<0.001 && Math.abs(v.shield.position.z-p.y/32)<0.001;
+      })()`,
+      );
+      assert(following, 'both effects follow real movement');
+    }
+    await evaluate(page, 'testScene.services.controller.applyDamage(10)');
+    assert.equal(
+      await evaluate(
+        page,
+        'testScene.frame().utilityEffects.find(e => e.itemId === "thick-down-jacket").phase',
+      ),
+      'loop',
+    );
+    await evaluate(page, 'testScene.services.controller.applyDamage(20)');
+    assert.equal(await evaluate(page, 'testScene.services.controller.getView().health'), 100);
+    assert.equal(
+      await evaluate(
+        page,
+        'testScene.frame().utilityEffects.find(e => e.itemId === "thick-down-jacket").phase',
+      ),
+      'end',
+    );
+    await screenshot(page, `${label}-${mobile ? 'mobile' : 'desktop'}-shield-break`);
+    await until(page, '!testScene.view.utilityEffects.shield.visible');
+    await until(
+      page,
+      `testScene.frame().utilityEffects.some(e => e.itemId === "${boostItem}" && e.phase === "end")`,
+    );
+    assert.equal(await evaluate(page, 'testScene.services.controller.getMoveSpeedMultiplier()'), 1);
+    await until(
+      page,
+      `testScene.frame().utilityEffects.length === 0 && !testScene.view.utilityEffects.${visual}.visible`,
+    );
+    await screenshot(page, `${label}-${mobile ? 'mobile' : 'desktop'}-finished`);
+    pass(
+      `${mobile ? 'Mobile' : 'Desktop'} ${boostItem} effects: successful consumption, rejected repeat boost, simultaneous loops, clear shield center, depletion without health loss, and five-second expiry`,
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  }
+}
+
+async function verifyChestTiersFlow() {
+  for (const mobile of [false, true]) {
+    const page = await newPage(mobile ? 'chestmob' : 'chestpc', { mobile });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    const layout = await evaluate(
+      page,
+      `({
+      threshold: testScene.services.controller.getView().threshold,
+      progressMax: document.querySelector('#value-progress').max,
+      points: testScene.searchPoints.filter(p => p.tier),
+      textures: testScene.searchPoints.filter(p => p.tier).map(p => ({ tier:p.tier,
+        src:testScene.view.chests.get(p.id).texture.image.src,
+        size:[testScene.view.chests.get(p.id).texture.image.width,testScene.view.chests.get(p.id).texture.image.height],
+        frame:testScene.view.chests.get(p.id).texture.offset.x }))
+    })`,
+    );
+    assert.equal(layout.threshold, 200);
+    assert.equal(layout.progressMax, 200);
+    assert.deepEqual(
+      ['normal', 'intermediate', 'advanced'].map(
+        (t) => layout.points.filter((p) => p.tier === t).length,
+      ),
+      [6, 4, 1],
+    );
+    for (const texture of layout.textures) {
+      assert(
+        texture.src.includes(
+          texture.tier === 'normal' ? 'treasure-chest.png' : `treasure-chest-${texture.tier}.png`,
+        ),
+      );
+      assert.deepEqual(texture.size, [1536, 256]);
+      assert.equal(texture.frame, 2 / 6);
+    }
+    for (const [tier, duration] of [
+      ['normal', 2000],
+      ['intermediate', 4000],
+      ['advanced', 6000],
+    ]) {
+      const point = layout.points.find((p) => p.tier === tier);
+      await standAt(page, point);
+      await until(page, `testScene.frame().visibleChests.includes('${point.id}')`);
+      assert((await evaluate(page, 'testScene.interaction')).includes(`${duration / 1000} 秒`));
+      await screenshot(page, `chest-${tier}-${mobile ? 'mobile' : 'desktop'}-closed`);
+      await interact(page, 2200);
+      await delay(100);
+      if (tier !== 'normal') {
+        assert.equal(await evaluate(page, `testScene.search.isOpened('${point.id}')`), false);
+        assert.equal(await evaluate(page, 'testScene.search.progress()'), 0);
+        await interact(page, duration + 350);
+      }
+      await until(page, `testScene.search.isOpened('${point.id}')`);
+      await delay(450);
+      assert.equal(
+        await evaluate(page, `testScene.view.chests.get('${point.id}').texture.offset.x`),
+        5 / 6,
+      );
+      await screenshot(page, `chest-${tier}-${mobile ? 'mobile' : 'desktop'}-opened`);
+      if (await evaluate(page, '!!document.querySelector("#story-dialog[open]")'))
+        await click(page, '#story-skip');
+      await evaluate(page, 'testScene.services.inventory.clear()');
+    }
+    const remaining = layout.points.find(
+      (p) =>
+        p.tier === 'intermediate' &&
+        p.id !== layout.points.find((p) => p.tier === 'intermediate').id,
+    );
+    await standAt(page, remaining);
+    await evaluate(
+      page,
+      `(() => {
+      for(let i=0;i<6;i++) testScene.services.inventory.addLoot({instanceId:'full-'+i,itemId:'school-badge',origin:{kind:'raid-loot',obtainedInRaidId:testScene.services.controller.getView().raidId}});
+    })()`,
+    );
+    await interact(page, 200);
+    assert.equal(await evaluate(page, `testScene.search.isOpened('${remaining.id}')`), false);
+    assert((await evaluate(page, 'testScene.interaction')).includes('背包已满'));
+    await evaluate(page, 'testScene.services.inventory.clear(); testScene.lighting.enabled=false');
+    await delay(150);
+    assert.equal(
+      await evaluate(page, `testScene.view.chests.get('${remaining.id}').mesh.visible`),
+      false,
+    );
+    await standAt(page, geometry.spawn, 0);
+    await evaluate(
+      page,
+      `(() => {
+      const {inventory,controller}=testScene.services;
+      for(let i=0;i<4;i++) inventory.addLoot({instanceId:'value-'+i,itemId:'school-badge',origin:{kind:'raid-loot',obtainedInRaidId:controller.getView().raidId}});
+    })()`,
+    );
+    assert.equal(
+      await evaluate(page, 'testScene.services.controller.startExtraction().error'),
+      'VALUE_TOO_LOW',
+    );
+    await evaluate(
+      page,
+      `(() => {
+      const {inventory,controller}=testScene.services;
+      for(let i=0;i<2;i++) inventory.addLoot({instanceId:'epic-'+i,itemId:'gpa-charm',origin:{kind:'raid-loot',obtainedInRaidId:controller.getView().raidId}});
+    })()`,
+    );
+    assert.equal(await evaluate(page, 'testScene.services.controller.getView().value'), 200);
+    await interact(page, 200);
+    await until(page, 'document.querySelector("#app").dataset.phase === "success"');
+    assert.equal(await evaluate(page, 'testScene.services.controller.getView().result.value'), 200);
+    await screenshot(page, `chests-${mobile ? 'mobile' : 'desktop'}-200-extraction`);
+    const storyChest = await evaluate(
+      page,
+      `(() => {
+      const point=testScene.searchPoints.find(p=>p.itemId==='torn-notebook');
+      return {point,src:testScene.view.chests.get(point.id).texture.image.src};
+    })()`,
+    );
+    assert.deepEqual(storyChest.point, { ...geometry.questChest, itemId: 'torn-notebook' });
+    assert(storyChest.src.includes('treasure-chest.png'));
+    await click(page, '#next');
+    await consent(page);
+    await click(page, '#start');
+    await until(
+      page,
+      'document.querySelector("#app").dataset.phase === "active" && testScene.lastRaidId === testScene.services.controller.getView().raidId',
+    );
+    await delay(200);
+    const nextRound = await evaluate(
+      page,
+      `testScene.searchPoints.filter(p=>p.tier).map(p=>({
+      tier:p.tier,src:testScene.view.chests.get(p.id).texture.image.src,
+      frame:testScene.view.chests.get(p.id).texture.offset.x,
+      openedAt:testScene.view.chests.get(p.id).openedAt,
+      delta:Math.hypot(testScene.view.chests.get(p.id).mesh.position.x*32-p.x,testScene.view.chests.get(p.id).mesh.position.z*32-p.y)
+    }))`,
+    );
+    for (const chest of nextRound) {
+      assert(
+        chest.src.includes(
+          chest.tier === 'normal' ? 'treasure-chest.png' : `treasure-chest-${chest.tier}.png`,
+        ),
+      );
+      assert.equal(chest.frame, 2 / 6);
+      assert.equal(chest.openedAt, null);
+      assert(chest.delta < 0.001);
+    }
+    pass(
+      `${mobile ? 'Mobile' : 'Desktop'} tiered chests: correct textures, 2/4/6 second searches, interruption, full bag, flashlight visibility, 200-value extraction, preserved story chest, and fresh-round texture reset`,
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  }
 }
 
 async function verifySteleFlow() {
@@ -805,7 +1646,21 @@ try {
     }
   });
 
-  if (steleOnly) {
+  if (chestsOnly) {
+    await verifyChestTiersFlow();
+  } else if (durabilityOnly) {
+    await verifyWeaponDurabilityFlow();
+  } else if (hotbarOnly) {
+    await verifyHotbarFlow();
+    await verifyHotbarRebindingFlow();
+  } else if (utilityEffectsOnly) {
+    await verifyUtilityEffectsFlow();
+    await verifyUtilityEffectsFlow('roller-skates');
+    await verifyHealingFlow();
+    await verifyHealingFlow('morning-coffee');
+  } else if (healingOnly) {
+    await verifyHealingFlow();
+  } else if (steleOnly) {
     await verifySteleFlow();
   } else if (immersiveOnly) {
     await verifyImmersiveFlow();

@@ -157,7 +157,7 @@ export class ReferenceInventory implements InventoryClientPort {
     if (!removed.ok) {
       return removed;
     }
-    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId });
+    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId, itemId: item.itemId });
     return removed;
   }
 
@@ -170,7 +170,7 @@ export class ReferenceInventory implements InventoryClientPort {
     if (!applyEffect()) return { ok: false, error: 'INVALID_STATE' };
     const removed = this.remove(instanceId);
     if (!removed.ok) return removed;
-    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId });
+    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId, itemId: item.itemId });
     return removed;
   }
 

@@ -4,6 +4,11 @@ import { RaidController } from '../modules/raid/raid-controller';
 import { PersistentSave } from '../modules/save/persistent-save';
 import type { StoragePort } from '../modules/save/reference-save';
 import { contains, movePlayer } from '../modules/world/movement';
+import {
+  generateChargingStations,
+  CHARGING_STATION_RANGE,
+  type ChargingStation,
+} from '../modules/world/charging-stations';
 import { SearchInteraction } from '../modules/world/search-interaction';
 import { EventBus } from '../shared/events/game-events';
 import type { ItemInstance, Point, Rect } from '../shared/types/game';
@@ -65,6 +70,7 @@ export function unobstructed(a: Point, b: Point, walls: readonly Rect[] = TRIAL_
 
 export class TrialSession {
   readonly lighting: NightLighting;
+  private chargingStations: ChargingStation[] = [];
   readonly combat?: NightCombat;
   private readonly combatMap?: CombatMap;
   private readonly deadMs = new Map<string, number>();
@@ -112,7 +118,7 @@ export class TrialSession {
       this.inventory,
       this.save,
       this.events,
-      RAID_RULES,
+      { ...RAID_RULES, threshold: 100 },
       ITEM_DEFINITIONS,
       clock,
       newId,
@@ -323,6 +329,11 @@ export class TrialSession {
     }
     this.controller.setExtractionPresence(contains(this.map.extraction, this.position));
     this.target = null;
+    const station = this.chargingStations.find(
+      (source) =>
+        distance(source, this.position) < CHARGING_STATION_RANGE &&
+        unobstructed(this.position, source, this.map.obstacles),
+    );
     const drop = [...this.ground.values()].find(
       (entry) =>
         distance(this.position, entry.position) < 42 &&
@@ -373,6 +384,20 @@ export class TrialSession {
           }
         }
       }
+    } else if (station && !this.controller.getView().inExtractionZone) {
+      this.target = `charge:${station.id}`;
+      this.prompt =
+        this.lighting.battery >= 99 ? '充电桩 · 手电筒电量已满' : '停下脚步 · 长按 E 充电 2 秒';
+      if (this.lighting.battery >= 99 || !held || this.moving) this.search.cancel();
+      else {
+        this.search.begin(this.target);
+        if (this.search.progress() >= 1) {
+          this.lighting.charge();
+          this.search.cancel();
+          this.prompt = '手电筒已充满';
+          this.sound('pick');
+        }
+      }
     } else {
       this.search.cancel();
       const current = this.controller.getView();
@@ -419,6 +444,7 @@ export class TrialSession {
 
   frame(): TrialFrame {
     return {
+      chargingStations: this.chargingStations,
       position: { ...this.position },
       facing: this.facing,
       moving: this.moving,
@@ -463,7 +489,12 @@ export class TrialSession {
         hit: this.combat?.attackHit ?? false,
         weapon: this.inventory.getEquipment().primary?.itemId ?? '',
         bagCount: this.bagCount(),
-        uses: this.combat?.weaponUsesRemaining ?? null,
+        uses:
+          this.combat?.getWeaponUsesRemaining(
+            this.inventory.getEquipment().primary?.itemId === 'stun-baton'
+              ? 'stun-baton'
+              : 'training-bat',
+          ) ?? null,
       },
       night: {
         enabled: this.night,
@@ -483,6 +514,7 @@ export class TrialSession {
   }
 
   private reset(): void {
+    this.chargingStations = generateChargingStations(this.map, this.random, this.map.chests);
     this.position = { ...this.map.spawn };
     this.facing = 'up';
     this.ground.clear();

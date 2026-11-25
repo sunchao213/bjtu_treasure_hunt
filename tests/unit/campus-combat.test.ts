@@ -127,6 +127,7 @@ describe('three-dimensional combat integration', () => {
 
   it('applies stun-baton damage, stun and finite uses', async () => {
     const { session, tick, enemy } = await setup('stun-baton');
+    expect(session.frame().combat.uses).toBe(15);
     const e = enemy();
     session.combat!.enemies = [e];
     tick(20, { ...EMPTY_INPUT, attack: true });

@@ -11,7 +11,16 @@ export interface GameEvents {
     readonly title: string;
     readonly text: string;
   };
-  ItemConsumed: { readonly raidId: string; readonly instanceId: string };
+  ItemConsumed: {
+    readonly raidId: string;
+    readonly instanceId: string;
+    readonly itemId: string;
+  };
+  ShieldAbsorbed: {
+    readonly raidId: string;
+    readonly amount: number;
+    readonly remaining: number;
+  };
   DamageTaken: { readonly raidId: string; readonly amount: number; readonly health: number };
   EnemyDefeated: { readonly raidId: string; readonly enemyId: string };
   LocationInteracted: { readonly raidId: string; readonly locationId: string };

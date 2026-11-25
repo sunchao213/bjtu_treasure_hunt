@@ -1,7 +1,7 @@
 import type { ItemDefinition, ItemInstance, RaidRules } from '../shared/types/game';
 
 export const RAID_RULES: RaidRules = {
-  threshold: 100,
+  threshold: 200,
   durationMs: 600_000,
   extractionDurationMs: 5_000,
   searchDurationMs: 2_000,

@@ -54,7 +54,7 @@ html.raid-immersive #stage #app .map-viewport {
   --hud-left: max(16px, var(--safe-left, 0px));
   --minimap-size: 164px;
   --minimap-top: calc(var(--hud-top) + 64px);
-  --interaction-bottom: var(--hud-bottom);
+  --interaction-bottom: calc(var(--hud-bottom) + 116px);
 }
 html.raid-immersive #stage #app .raid-hud-left {
   position: absolute;
@@ -182,10 +182,10 @@ html.raid-immersive #stage #app :is(.map-hud-right, .interaction) button {
   pointer-events: auto;
 }
 html.raid-immersive #stage #app .key-prompt {
-  bottom: calc(var(--hud-bottom) + 60px);
+  bottom: calc(var(--hud-bottom) + 170px);
 }
 html.raid-immersive #stage #app .map-toast {
-  bottom: calc(var(--hud-bottom) + 190px);
+  bottom: calc(var(--hud-bottom) + 300px);
 }
 html.raid-immersive[data-touch='true'] #stage #app .map-viewport {
   --hud-top: max(6px, var(--safe-top, 0px));

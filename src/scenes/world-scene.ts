@@ -1,3 +1,4 @@
+import { CHEST_TIERS } from '../config/chest-config';
 import {
   occupiedSlots,
   sectionCanFit,
@@ -1392,14 +1393,14 @@ export class WorldScene extends Phaser.Scene {
         }
         return;
       }
-      this.interaction = '长按 E 搜索';
+      this.interaction = `${CHEST_TIERS[chest.tier ?? 'normal'].name} · 长按 E 搜索 ${CHEST_TIERS[chest.tier ?? 'normal'].durationMs / 1000} 秒`;
       this.keyPrompt = { key: 'E', label: '搜索' };
       if (!held || this.moving || view.phase !== 'active') {
         this.search.cancel();
         return;
       }
       const wasSearching = this.search.current() === chest.id;
-      this.search.begin(chest.id);
+      this.search.begin(chest.id, CHEST_TIERS[chest.tier ?? 'normal'].durationMs);
       if (!wasSearching) {
         this.services.sound.play('box');
       }
@@ -1411,7 +1412,9 @@ export class WorldScene extends Phaser.Scene {
         };
         const result = this.search.finish(item, (entry) => this.services.inventory.addLoot(entry));
         if (result.ok) {
-          this.chestSprites.get(chest.id)?.play('treasure-chest-open');
+          this.chestSprites
+            .get(chest.id)
+            ?.play(`${CHEST_TIERS[chest.tier ?? 'normal'].texture}-open`);
           this.chestObjects.get(chest.id)?.setAlpha(0.23);
           this.services.events.emit('LocationInteracted', {
             raidId: view.raidId,
@@ -1504,24 +1507,9 @@ export class WorldScene extends Phaser.Scene {
         }
       }
     } else {
-      const lamp = activeMap().lamps.find((source) => distance(source, this.position) < 55);
-      if (lamp && this.lighting.battery < 99) {
-        this.interaction = '灯站充电';
-        if (held && !this.moving && !this.hurtThisFrame) {
-          this.search.begin(`charge:${lamp.x}`);
-          if (this.search.progress() >= 1) {
-            this.lighting.charge();
-            this.search.cancel();
-            this.services.notify('手电筒已充满。');
-          }
-        } else {
-          this.search.cancel();
-        }
-      } else {
-        this.search.cancel();
-        const request = this.requestingHug();
-        this.interaction = request ? this.hugInstruction(request) : '校园夜巡';
-      }
+      this.search.cancel();
+      const request = this.requestingHug();
+      this.interaction = request ? this.hugInstruction(request) : '校园夜巡';
     }
   }
 
@@ -1617,9 +1605,9 @@ export class WorldScene extends Phaser.Scene {
         )
       : [];
     for (const point of this.searchPoints) {
-      const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
+      const halo = this.add.circle(0, 0, 23, CHEST_TIERS[point.tier ?? 'normal'].color, 0.09);
       const chest = this.add
-        .sprite(0, 0, 'treasure-chest', 2)
+        .sprite(0, 0, CHEST_TIERS[point.tier ?? 'normal'].texture, 2)
         .setName('chest-sprite')
         .setOrigin(0.5, 1)
         .setScale(0.26);
@@ -1646,15 +1634,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createChestAnimations(): void {
-    if (!this.textures.exists('treasure-chest') || this.anims.exists('treasure-chest-open')) {
-      return;
+    for (const { texture } of Object.values(CHEST_TIERS)) {
+      if (!this.textures.exists(texture) || this.anims.exists(`${texture}-open`)) continue;
+      this.anims.create({
+        key: `${texture}-open`,
+        frames: this.anims.generateFrameNumbers(texture, { start: 3, end: 5 }),
+        frameRate: 8,
+        repeat: 0,
+      });
     }
-    this.anims.create({
-      key: 'treasure-chest-open',
-      frames: this.anims.generateFrameNumbers('treasure-chest', { start: 3, end: 5 }),
-      frameRate: 8,
-      repeat: 0,
-    });
   }
 
   private createEnemyAnimations(): void {

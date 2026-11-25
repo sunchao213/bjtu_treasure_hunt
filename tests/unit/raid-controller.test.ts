@@ -19,6 +19,7 @@ async function setup(
   values: typeof RAID_RULES.values = RAID_RULES.values,
   loadout: readonly ItemInstance[] = [],
   questChapterId = QUEST_CHAPTER_ID,
+  threshold = 100,
 ) {
   let now = 0;
   let rejectSave = false;
@@ -39,7 +40,7 @@ async function setup(
     inventory,
     save,
     events,
-    { ...RAID_RULES, durationMs, values },
+    { ...RAID_RULES, durationMs, values, threshold },
     ITEM_DEFINITIONS,
     () => now,
     () => 'raid-1',
@@ -67,6 +68,38 @@ async function setup(
 }
 
 describe('A extraction lifecycle', () => {
+  // Existing lifecycle fixtures use a 100-value rule; production boundaries are tested separately.
+  it('requires 200 in production, rejects 199 and cancels when carried value drops below 200', async () => {
+    const s = await setup(
+      600_000,
+      undefined,
+      { ...RAID_RULES.values, common: 49 },
+      [],
+      QUEST_CHAPTER_ID,
+      RAID_RULES.threshold,
+    );
+    expect(s.controller.getView().threshold).toBe(200);
+    s.inventory.addLoot(loot('legendary', 'strange-veined-ginkgo-leaf'));
+    s.inventory.addLoot(loot('common', 'scratch-paper'));
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.getView().value).toBe(199);
+    expect(s.controller.startExtraction()).toEqual({ ok: false, error: 'VALUE_TOO_LOW' });
+    s.inventory.remove('common');
+    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    expect(s.controller.getView().value).toBe(200);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(4_000);
+    const removed = s.inventory.remove('epic');
+    expect(s.controller.getView().phase).toBe('active');
+    expect(s.controller.getView().value).toBe(150);
+    if (removed.ok) s.inventory.addLoot(removed.value);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(4_999);
+    expect(s.results).toHaveLength(0);
+    s.advance(1);
+    await flush();
+    expect(s.results[0]).toMatchObject({ outcome: 'success', value: 200 });
+  });
   it('expires speed boosts and shields, and a renewed smaller shield does not inherit an expired value', async () => {
     const s = await setup();
     expect(s.controller.activateSpeedBoost(1.3, 5_000)).toBe(true);

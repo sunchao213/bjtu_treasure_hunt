@@ -269,9 +269,6 @@ html:not([data-touch='true']) #app:not([data-phase='preparing']) #game-canvas {
 .raid-settings .abandon-button {
   margin-top: 0;
 }
-html:not([data-touch='true']) #mobile-fullscreen {
-  display: none;
-}
 #result-panel {
   position: absolute;
   z-index: 14;
@@ -312,4 +309,136 @@ html:not([data-touch='true']) #app:not([data-phase='preparing']) #game-page {
 }
 #app[data-bag-open='true'] .tutorial-card {
   display: none;
+}
+
+/* Four stable shortcuts. Item counts come from the inventory, never a second stock. */
+.raid-hotbar {
+  position: absolute;
+  z-index: 9;
+  left: 50%;
+  bottom: max(20px, var(--safe-bottom, 0px));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+.raid-hotbar[hidden] {
+  display: none;
+}
+.hotbar-slots {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.hotbar-hint {
+  margin: 0 0 10px;
+  color: #f3eedc;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  text-shadow: 0 2px 4px #000;
+}
+.hotbar-slot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  min-height: 0;
+  padding: 8px;
+  border: 1px solid #b4c4c66b;
+  border-radius: 7px;
+  color: #e8edeb;
+  background: linear-gradient(145deg, #18242deb, #0d151ce6);
+  box-shadow: 0 3px 10px #0005;
+  pointer-events: auto;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+  touch-action: manipulation;
+}
+.hotbar-slot[aria-pressed='true'] {
+  transform: translateY(-3px);
+  border: 2px solid #f4d58b;
+  background: linear-gradient(145deg, #514837ee, #1d2628ee);
+  box-shadow:
+    0 0 0 1px #f4d58b30,
+    0 3px 12px #0007;
+}
+.hotbar-slot:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+.hotbar-slot:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.hotbar-slot kbd {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #d6ddd9;
+  font-size: 11px;
+  line-height: 14px;
+}
+.hotbar-icon,
+.hotbar-icon img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+.hotbar-icon {
+  display: grid;
+  place-items: center;
+}
+.hotbar-empty {
+  position: absolute;
+  color: #92a0a3;
+  font-size: 12px;
+}
+html[data-touch='true'] .hotbar-slots {
+  gap: 6px;
+}
+html[data-touch='true'] .hotbar-slot {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  padding: 5px;
+}
+html[data-touch='true'] .hotbar-icon,
+html[data-touch='true'] .hotbar-icon img {
+  width: 32px;
+  height: 32px;
+}
+html[data-touch='true'] .hotbar-hint {
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hotbar-slot {
+    transition: none;
+  }
+}
+
+.raid-hotbar[data-assigning='true'] .hotbar-slot {
+  border-style: dashed;
+  border-color: #9bded3;
+  cursor: crosshair;
+}
+.raid-hotbar[data-assigning='true'] .hotbar-slot:hover,
+.raid-hotbar[data-assigning='true'] .hotbar-slot:focus-visible {
+  border-style: solid;
+  background: #28443dee;
+  box-shadow: 0 0 0 2px #9bded350;
+}
+.raid-hotbar[data-assigning='true'] .hotbar-hint {
+  color: #c7f4eb;
+}
+.hotbar-slots {
+  justify-content: center;
 }

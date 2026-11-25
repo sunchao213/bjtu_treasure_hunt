@@ -1,3 +1,4 @@
+import { RAID_RULES } from '../../config/game-config';
 import campus from '../../config/formal-campus.json';
 import type { ItemInstance, Point } from '../../shared/types/game';
 import { hasEvidence, questChapterById } from '../quests/quest-service';
@@ -23,8 +24,7 @@ export const STORY_APPROACHES: Readonly<Record<string, string>> = {
     '你沿着被涂改的地图来到思源楼东侧。这里没有钥匙孔，只有一块吞掉反光的金属牌。按 E，把路线与门牌上的刻痕对照。',
   'complete-record-point':
     '中心广场的记录台泛起微光，护符也在掌心变暖。按 E，将护符贴近记录台，读出被遗漏的那一页。',
-  'south-extraction-point':
-    '两件证据都还在背包里。南门的灯在前方亮着——携带价值达到 100 后，按 E 开始撤离，并留在区域内等待 5 秒。',
+  'south-extraction-point': `两件证据都还在背包里。南门的灯在前方亮着——携带价值达到 ${RAID_RULES.threshold} 后，按 E 开始撤离，并留在区域内等待 ${RAID_RULES.extractionDurationMs / 1000} 秒。`,
 };
 export const STORY_SITES = [
   {
@@ -102,7 +102,7 @@ export function storyTriggers(
     id: 'south-extraction-point',
     kind: 'exit',
     title: '南门 · 带证据撤离',
-    action: '携带价值达到 100 后按 E 撤离',
+    action: `携带价值达到 ${RAID_RULES.threshold} 后按 E 撤离`,
     chapterId,
     status: first && second ? 'active' : 'locked',
   });

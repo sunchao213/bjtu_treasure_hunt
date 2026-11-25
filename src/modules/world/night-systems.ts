@@ -366,6 +366,7 @@ export class NightCombat {
   attackHit = false;
   currentWeaponId: CombatWeaponId = 'training-bat';
   weaponUsesRemaining: number | null = null;
+  private readonly remainingWeaponUses = new Map<CombatWeaponId, number>();
   private spawnTimer = 0;
   private hugSpawnTimer: number = COMBAT_RULES.spawning.hugSpawnIntervalMs;
   private nextSpawnId = 1;
@@ -387,6 +388,7 @@ export class NightCombat {
     this.attackHit = false;
     this.currentWeaponId = 'training-bat';
     this.weaponUsesRemaining = null;
+    this.remainingWeaponUses.clear();
     this.nextSpawnId = 1;
     this.nextPatrolSpecies = 0;
     this.resetSpawnTimer();
@@ -469,6 +471,17 @@ export class NightCombat {
     this.invulnerability = Math.max(0, this.invulnerability - deltaMs);
     this.swingMs = Math.max(0, this.swingMs - deltaMs);
   }
+  getWeaponUsesRemaining(weaponId: CombatWeaponId): number | null {
+    if (weaponId === this.currentWeaponId && this.weaponUsesRemaining !== null) {
+      return this.weaponUsesRemaining;
+    }
+    const weapon =
+      weaponId === 'stun-baton'
+        ? COMBAT_RULES.player.attack.weapons.stunBaton
+        : COMBAT_RULES.player.attack.weapons.trainingBat;
+    return this.remainingWeaponUses.get(weaponId) ?? weapon.maxUses;
+  }
+
   attack(
     player: Point,
     aim: number,
@@ -481,12 +494,8 @@ export class NightCombat {
       weaponId === 'stun-baton'
         ? COMBAT_RULES.player.attack.weapons.stunBaton
         : COMBAT_RULES.player.attack.weapons.trainingBat;
-    if (weaponId !== this.currentWeaponId) {
-      this.currentWeaponId = weaponId;
-      this.weaponUsesRemaining = weapon.maxUses;
-    } else if (this.weaponUsesRemaining === null && weapon.maxUses !== null) {
-      this.weaponUsesRemaining = weapon.maxUses;
-    }
+    this.weaponUsesRemaining = this.getWeaponUsesRemaining(weaponId);
+    this.currentWeaponId = weaponId;
     if (this.attackCooldown > 0 || this.weaponUsesRemaining === 0) {
       return [];
     }
@@ -494,6 +503,7 @@ export class NightCombat {
     this.swingMs = COMBAT_RULES.player.attack.swingMs;
     if (this.weaponUsesRemaining !== null) {
       this.weaponUsesRemaining--;
+      this.remainingWeaponUses.set(weaponId, this.weaponUsesRemaining);
     }
     const defeated: Enemy[] = [];
     for (const enemy of this.enemies) {

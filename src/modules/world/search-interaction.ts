@@ -4,17 +4,19 @@ import type { ActionResult, ItemInstance } from '../../shared/types/game';
 export class SearchInteraction {
   private target: string | null = null;
   private startedAtMs = 0;
+  private activeDurationMs = 0;
   private readonly opened = new Set<string>();
   constructor(
     private readonly durationMs: number,
     private readonly clock: () => number = Date.now,
   ) {}
 
-  begin(id: string): boolean {
+  begin(id: string, durationMs = this.durationMs): boolean {
     if (this.opened.has(id)) {
       return false;
     }
     if (this.target !== id) {
+      this.activeDurationMs = durationMs;
       this.target = id;
       this.startedAtMs = this.clock();
     }
@@ -23,7 +25,7 @@ export class SearchInteraction {
   progress(): number {
     return this.target === null
       ? 0
-      : Math.min(1, (this.clock() - this.startedAtMs) / this.durationMs);
+      : Math.min(1, (this.clock() - this.startedAtMs) / this.activeDurationMs);
   }
   current(): string | null {
     return this.target;

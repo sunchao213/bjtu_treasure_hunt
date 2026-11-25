@@ -38,3 +38,9 @@
 - `public/assets/ui/backpack.png`：用户提供的「棕色像素风背包图标.png」，裁去透明外边距，保留原始 RGBA 像素；输出 982×904。
 - `public/assets/ui/inventory-panel.png`：用户提供的「像素风背包道具栏.png」，裁去透明外边距，保留原始 RGBA 像素；输出 880×1355。局内仅底图以 75% 不透明度显示，物品与文字单独渲染。
 - 格子内物品插画复用现有图鉴 SVG，并为小黄车、羽绒服补充同规格简图；不依赖新增在线素材服务。
+
+## 分级宝箱（2026-11-25）
+
+- `public/assets/props/treasure-chest-intermediate.png`：用户提供的蓝色中级宝箱，1536×256 RGBA，6 帧横排，每帧 256×256。
+- `public/assets/props/treasure-chest-advanced.png`：用户提供的紫金高级宝箱，规格相同。
+- 三种宝箱均使用第 3 帧闭合状态，开箱播放第 4～6 帧；仅在手电直接照亮后显露。

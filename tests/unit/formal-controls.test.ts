@@ -37,6 +37,7 @@ function setup() {
     stopCameraLook: vi.fn(),
   };
   let enabled = true;
+  let inventoryOpen = false;
   const unlocked = vi.fn();
   const touch = { held: () => false, movement: { x: 0, y: 0 }, reset: vi.fn() };
   const controls = new FormalControls(
@@ -44,6 +45,7 @@ function setup() {
     touch as unknown as TouchControls,
     () => enabled,
     unlocked,
+    () => inventoryOpen,
   );
   const send = (target: EventTarget, type: string, data: Record<string, unknown>) =>
     target.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), data));
@@ -56,12 +58,64 @@ function setup() {
     unlocked,
     send,
     read,
+    setInventoryOpen: (value: boolean) => {
+      inventoryOpen = value;
+    },
     setEnabled: (value: boolean) => {
       enabled = value;
     },
   };
 }
 describe('formal game controls', () => {
+  it('allows WASD with the backpack open while keeping camera and gameplay actions blocked', () => {
+    const t = setup();
+    t.controls.captureMouse();
+    t.controls.clear();
+    t.setInventoryOpen(true);
+    for (const [key, move] of [
+      ['w', { x: 1, y: 0 }],
+      ['a', { x: -0, y: -1 }],
+      ['s', { x: -1, y: 0 }],
+      ['d', { x: -0, y: 1 }],
+    ] as const) {
+      t.send(t.document, 'keydown', { key });
+      expect(t.read().move).toEqual(move);
+      t.send(t.document, 'keyup', { key });
+      expect(t.read().move).toEqual({ x: -0, y: 0 });
+    }
+    for (const key of ['e', 'q', ' ', 'l', 'r', 'g', 'ArrowUp'])
+      t.send(t.document, 'keydown', { key });
+    expect(t.read()).toMatchObject({
+      move: { x: -0, y: 0 },
+      interact: false,
+      attack: false,
+      hug: false,
+      flashlight: false,
+      refill: false,
+      flare: false,
+    });
+    t.controls.captureMouse();
+    t.send(t.canvas, 'pointerdown', { pointerType: 'mouse' });
+    t.send(t.canvas, 'pointermove', { pointerType: 'mouse', clientX: 100, clientY: 100 });
+    t.send(t.canvas, 'pointermove', { pointerType: 'mouse', clientX: 120, clientY: 110 });
+    t.send(t.canvas, 'wheel', { deltaY: 100 });
+    expect(t.document.pointerLockElement).toBeNull();
+    expect(t.view.orbitCamera).not.toHaveBeenCalled();
+    expect(t.view.zoomCamera).not.toHaveBeenCalled();
+    t.send(t.document, 'keydown', { key: 'w' });
+    t.setEnabled(false);
+    expect(t.read().move).toEqual({ x: -0, y: 0 });
+    t.setEnabled(true);
+    t.document.activeElement = { closest: () => ({}) };
+    t.send(t.document, 'focusin', {});
+    expect(t.read().move).toEqual({ x: -0, y: 0 });
+    t.document.activeElement = null;
+    t.setInventoryOpen(false);
+    t.send(t.document, 'keydown', { key: 'w' });
+    t.send(t.document, 'keydown', { key: ' ' });
+    expect(t.read()).toMatchObject({ move: { x: 1, y: 0 }, attack: true });
+    t.controls.dispose();
+  });
   it('keeps a quick action tap until the next animation frame', () => {
     const t = setup();
     t.send(t.document, 'keydown', { key: ' ' });
@@ -250,6 +304,54 @@ describe('formal game controls', () => {
     t.send(t.document, 'focusin', {});
     t.document.activeElement = null;
     expect(t.read()).toMatchObject({ move: { x: -0, y: 0 }, attack: false });
+    t.controls.dispose();
+  });
+  it('selects every shortcut including empty positions and filters repeat, modifiers and menus', () => {
+    const t = setup();
+    for (let digit = 1; digit <= 4; digit++) {
+      t.send(t.document, 'keydown', { key: String(digit), code: 'Digit' + digit });
+      expect(t.read().quickSlot).toBe(digit - 1);
+      expect(t.read().quickSlot).toBeUndefined();
+    }
+    t.send(t.document, 'keydown', { key: 'End', code: 'Numpad1' });
+    expect(t.read().quickSlot).toBe(0);
+    for (const data of [{ repeat: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      t.send(t.document, 'keydown', { key: '4', code: 'Digit4', ...data });
+      expect(t.read().quickSlot).toBeUndefined();
+    }
+    t.setInventoryOpen(true);
+    t.send(t.document, 'keydown', { key: '4', code: 'Digit4' });
+    expect(t.read().quickSlot).toBeUndefined();
+    t.setInventoryOpen(false);
+    t.document.activeElement = { closest: () => ({}) };
+    t.send(t.document, 'keydown', { key: '4', code: 'Digit4' });
+    expect(t.read().quickSlot).toBeUndefined();
+    t.document.activeElement = null;
+    t.setEnabled(false);
+    t.send(t.document, 'keydown', { key: '4', code: 'Digit4' });
+    expect(t.read().quickSlot).toBeUndefined();
+    t.controls.dispose();
+  });
+  it('uses left clicks after capture, retains fast clicks for one frame, and clears held clicks', () => {
+    const t = setup();
+    const mouse = { pointerType: 'mouse', button: 0 };
+    t.send(t.canvas, 'pointerdown', mouse);
+    expect(t.read().attack).toBe(false);
+    t.send(t.canvas, 'pointerdown', mouse);
+    t.send(t.document, 'pointerup', mouse);
+    expect(t.read()).toMatchObject({ attack: true, usePressed: true });
+    expect(t.read().attack).toBe(false);
+    t.send(t.canvas, 'pointerdown', mouse);
+    expect(t.read()).toMatchObject({ attack: true, usePressed: true });
+    t.send(t.document, 'pointerup', mouse);
+    t.send(t.canvas, 'pointerdown', mouse);
+    expect(t.read()).toMatchObject({ attack: true, usePressed: true });
+    expect(t.read()).toMatchObject({ attack: true, usePressed: false });
+    t.controls.clear();
+    expect(t.read().attack).toBe(false);
+    t.setInventoryOpen(true);
+    t.send(t.canvas, 'pointerdown', mouse);
+    expect(t.read().attack).toBe(false);
     t.controls.dispose();
   });
 });

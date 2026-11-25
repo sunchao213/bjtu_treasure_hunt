@@ -1,4 +1,5 @@
 import './style.css';
+import { renderWeaponDurability, weaponDurabilityMarkup } from '../modules/ui/weapon-durability';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../config/game-config';
 import { acquireSaveLock } from '../modules/save/single-writer';
 import { SoundManager } from '../modules/ui/sound-manager';
@@ -67,7 +68,7 @@ root.innerHTML = `
       <h2 id="welcome-title">${IS_DISTRICT ? '从南门到明湖，<br/>走进这一片校园。' : IS_SIYUAN ? '走近思源楼，<br/>沿银杏大道漫游。' : '从南门出发，<br/>逛一小段校园。'}</h2>
       <p class="intro">${IS_DISTRICT ? '按你选取的区域重建思源楼一带、图书馆、教学楼、明湖和天佑会堂，以道路和庭园连成一片。<br/>可切换区域总览，沿途搜集四件物资，再回南门。建筑细部与尺寸为参考估算。' : IS_SIYUAN ? '左侧思源西楼，中间思源楼，右侧思源东楼，三栋楼之间可沿道路通行。西楼后方为信息中心，东楼后方为科学会堂（后方两栋待建）。<br/>找到四件物资，再回到楼前集合点。' : '穿过树影，沿着小路寻找宝箱。带上四件物资，再回到红色拱门。<br/>参考交大虚拟校园南门外观，按探索尺度重建。'}</p>
       <div class="rules-grid"><div><strong>8</strong><span>只宝箱</span></div><div><strong>100</strong><span>撤离价值</span></div><div><strong>5 秒</strong><span>${IS_SIYUAN ? '集合点撤离' : '南门撤离'}</span></div></div>
-      <p class="instruction"><kbd>W A S D</kbd> / 方向键移动<br/>移动鼠标转向 · 滚轮缩放 · <kbd>R</kbd> 重置镜头<br/><kbd>E</kbd> 长按搜索，按下开始撤离<br/><kbd>B</kbd> 背包 <kbd>Esc</kbd> 暂停</p>
+      <p class="instruction"><kbd>W A S D</kbd> / 方向键移动<br/>移动鼠标转向 · <kbd>R</kbd> 重置镜头<br/><kbd>E</kbd> 长按搜索，按下开始撤离<br/><kbd>B</kbd> 背包 <kbd>Esc</kbd> 暂停</p>
       <p class="risk">每局 10 分钟，背包 6 格。失败或局中刷新会失去本局物资。试验进度独立保存。</p>
       <label class="consent"><input id="consent" type="checkbox"/> 我已了解本局物资的损失规则</label>
       <button id="start" class="primary" disabled>正在准备校园…</button>
@@ -81,8 +82,9 @@ root.innerHTML = `
       <div class="night-actions"><button id="flashlight-button" class="quiet">手电 <kbd>F</kbd></button><button id="battery-button" class="quiet">电池 <span id="spare-count">2</span> <kbd>T</kbd></button><button id="flare-button" class="quiet">照明弹 <span id="flare-count">2</span> <kbd>G</kbd></button></div>
       <p>手电随镜头朝向 · Esc 释放鼠标</p>
       <p class="combat-status"><span id="weapon-status">训练棍</span> · 左键／空格 攻击 · Q 抱抱</p>
+      ${weaponDurabilityMarkup('campus-weapon-durability')}
     </section>
-    <footer class="field-footer"><span><i class="status-dot"></i> ${AREA_NAME} · ${NIGHT_MODE ? '黑夜探索' : '白昼探索'}</span><span id="control-hint">WASD 移动 · 鼠标转向 · 滚轮缩放 · R 重置 · E 交互</span></footer>
+    <footer class="field-footer"><span><i class="status-dot"></i> ${AREA_NAME} · ${NIGHT_MODE ? '黑夜探索' : '白昼探索'}</span><span id="control-hint">WASD 移动 · 鼠标转向 · R 重置 · E 交互</span></footer>
     <p id="notice" class="notice" role="status" hidden></p>
     <div id="damage-overlay" class="damage-overlay" aria-hidden="true" hidden></div>
     <dialog id="bag-dialog" aria-labelledby="bag-title"><div class="dialog-heading"><div><p class="eyebrow">FIELD COLLECTION</p><h2 id="bag-title">本局背包</h2></div><button id="close-bag" class="quiet">返回探索</button></div><p>丢弃后物品会留在脚边，可以按 E 拾回。</p><ul id="bag-list" class="bag-list"></ul><p id="bag-empty">还没有找到物资，去看看金色宝箱。</p></dialog>
@@ -314,7 +316,6 @@ async function bootstrap(): Promise<void> {
         enabled: () =>
           !contextLost && playing() && !session!.controller.isPaused() && view!.canOrbit(),
         orbit: (dx, dy) => view!.orbitCamera(dx, dy),
-        zoom: (delta) => view!.zoomCamera(delta),
         reset: () => view!.resetCamera(),
         move: (point) => view!.movementDirection(point),
         aim: () => view!.cameraAim(),
@@ -446,6 +447,11 @@ async function bootstrap(): Promise<void> {
         const weapon = ITEM_DEFINITIONS[frame.combat.weapon]?.name ?? '未装备武器';
         element('weapon-status').textContent =
           `${weapon}${frame.combat.uses === null ? '' : ` · 余 ${frame.combat.uses} 次`}${frame.combat.cooldown > 0 ? ' · 冷却中' : ''}`;
+        renderWeaponDurability(
+          element('campus-weapon-durability'),
+          frame.combat.weapon === 'stun-baton',
+          frame.combat.uses,
+        );
         element('damage-overlay').hidden = frame.action !== 'hurt' || !active;
       }
       element('flashlight-status').textContent = night.flashlight

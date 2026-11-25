@@ -1,4 +1,4 @@
-import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS } from '../../config/game-config';
+import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import {
   CHAPTERS,
   CODEX_ENTRIES,
@@ -133,14 +133,15 @@ export function renderLobbyMissions(
 
 /** 行前目标清单的纯数据视图：本章两件证据 + 统一的撤离价值门槛。 */
 export function prepGoalRows(chapterId: string | null): { name: string; place: string }[] {
-  if (chapterId === null) return [{ name: '携带价值 ≥ 100', place: '南门 · 撤离点' }];
+  if (chapterId === null)
+    return [{ name: `携带价值 ≥ ${RAID_RULES.threshold}`, place: '南门 · 撤离点' }];
   const chapter = questChapterById(chapterId);
   return [
     ...chapter.evidence.map((evidence) => ({
       name: evidence.label.replace(/[「」]/g, ''),
       place: evidence.placeName,
     })),
-    { name: '携带价值 ≥ 100', place: '南门 · 撤离点' },
+    { name: `携带价值 ≥ ${RAID_RULES.threshold}`, place: '南门 · 撤离点' },
   ];
 }
 

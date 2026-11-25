@@ -1,4 +1,8 @@
+import { CHEST_TIERS } from '../../config/chest-config';
+import { RaidHotbar } from '../inventory/raid-hotbar';
 import { COMBAT_RULES } from '../../config/combat-config';
+import { BANDAGE_HEALING_EFFECT, COFFEE_HEALING_EFFECT } from '../../config/item-effects';
+import { UtilityItemEffects } from './utility-item-effects';
 import { ITEM_DEFINITIONS, itemValueFor, RAID_RULES } from '../../config/game-config';
 import { activeMap, inExtraction } from '../../config/play-map';
 import { facingFromDirection } from '../../campus-3d/animation';
@@ -27,11 +31,17 @@ import {
 import { evidenceStoryBeat, steleStoryBeat } from '../quests/chapter-content';
 import { isTouchLayout } from '../ui/mobile-layout';
 import type { SoundManager } from '../ui/sound-manager';
+import {
+  generateChargingStations,
+  CHARGING_STATION_RANGE,
+  type ChargingStation,
+} from './charging-stations';
 import { SearchInteraction } from './search-interaction';
 import { generateLootSpawns, questSpawnPlan, roundRandom, type LootSpawn } from './loot-spawns';
 import { movePlayer } from './movement';
 import {
   STORY_APPROACHES,
+  STORY_SITES,
   storyDirection,
   storyTriggers,
   type StoryTrigger,
@@ -59,11 +69,14 @@ export interface FormalWorldServices {
   questChapter?: () => string | null;
   events: EventBus;
   notify(message: string): void;
+  useItem?(instanceId: string): void;
   sound: SoundManager;
   network?: NetworkSession | null;
   onFrame(interaction: string, progress: number, prompt?: KeyPrompt | null): void;
 }
 export interface WorldInput {
+  quickSlot?: number;
+  usePressed?: boolean;
   move: Point;
   aim: number;
   interact: boolean;
@@ -79,9 +92,11 @@ export class FormalWorld {
   position: Point = { ...activeMap().spawn };
   aim = -Math.PI / 2;
   readonly lighting = new NightLighting();
+  readonly hotbar = new RaidHotbar();
   combat = new NightCombat();
   readonly search: SearchInteraction;
   searchPoints: LootSpawn[] = [];
+  chargingStations: ChargingStation[] = [];
   readonly ground = new Map<string, { item: ItemInstance; position: Point }>();
   readonly teammates = new Map<
     string,
@@ -104,6 +119,11 @@ export class FormalWorld {
   private alertAnchor: { id: string; x: number; y: number } | null = null;
   private banner: { text: string; untilMs: number } | null = null;
   private releaseDamage: () => void;
+  private readonly releaseItemConsumed: () => void;
+  private bandageHealingStartedAt: number | null = null;
+  private coffeeHealingStartedAt: number | null = null;
+  private readonly utilityItemEffects = new UtilityItemEffects();
+  private readonly releaseShieldAbsorbed: () => void;
   private readonly discovered = new Set<string>();
   private readonly investigatedSites = new Set<string>();
   private storyCharmEarned = false;
@@ -113,6 +133,23 @@ export class FormalWorld {
     private readonly clock = Date.now,
   ) {
     this.search = new SearchInteraction(RAID_RULES.searchDurationMs, clock);
+    this.releaseItemConsumed = services.events.on('ItemConsumed', ({ raidId, itemId }) => {
+      const view = services.controller.getView();
+      if (
+        raidId === view.raidId &&
+        view.health > 0 &&
+        ['active', 'extracting'].includes(view.phase)
+      ) {
+        if (itemId === 'bandage') this.bandageHealingStartedAt = this.clock();
+        else if (itemId === 'morning-coffee') this.coffeeHealingStartedAt = this.clock();
+        else this.utilityItemEffects.consume(itemId, this.clock());
+      }
+    });
+    this.releaseShieldAbsorbed = services.events.on('ShieldAbsorbed', ({ raidId, remaining }) => {
+      if (raidId === services.controller.getView().raidId) {
+        this.utilityItemEffects.shieldAbsorbed(remaining, this.clock());
+      }
+    });
     this.releaseDamage = services.events.on('DamageTaken', ({ amount, health }) => {
       this.search.cancel();
       this.hurtThisFrame = true;
@@ -136,6 +173,27 @@ export class FormalWorld {
       this.previousFlare =
         false;
     for (const enemy of this.combat.enemies) enemy.hugProgress = 0;
+  }
+  syncHotbar(): void {
+    this.hotbar.sync(
+      this.services.controller.getView().raidId,
+      this.services.inventory.getCarriedItems(),
+      this.services.inventory.getEquipment().primary,
+    );
+  }
+  selectQuickSlot(index: number): void {
+    const view = this.services.controller.getView();
+    if (this.services.controller.isPaused() || !['active', 'extracting'].includes(view.phase))
+      return;
+    this.syncHotbar();
+    this.hotbar.select(index);
+  }
+  assignQuickSlot(index: number, instanceId: string): boolean {
+    const view = this.services.controller.getView();
+    if (this.services.controller.isPaused() || !['active', 'extracting'].includes(view.phase))
+      return false;
+    this.syncHotbar();
+    return this.hotbar.assign(index, instanceId);
   }
   getLightingStatus() {
     return {
@@ -191,6 +249,9 @@ export class FormalWorld {
   }
   private resetRaid(raidId: string | null): void {
     this.lastRaidId = raidId;
+    this.bandageHealingStartedAt = null;
+    this.coffeeHealingStartedAt = null;
+    this.utilityItemEffects.clear();
     this.position = { ...activeMap().spawn };
     this.aim = -Math.PI / 2;
     const round = this.services.network?.getRoomState()?.roundId;
@@ -225,6 +286,16 @@ export class FormalWorld {
             p.itemId === 'torn-notebook' || !chapter?.evidence.some((e) => e.itemId === p.itemId),
         )
       : [];
+    const map = activeMap();
+    this.chargingStations = raidId
+      ? generateChargingStations(map, roundRandom(`${round ?? raidId}:charging-stations`), [
+          // Use all ordinary slots and authored sites, independent of a player's chapter.
+          ...generateLootSpawns(roundRandom(round ?? raidId), []),
+          ...STORY_SITES,
+          ...(map.stone ? [map.stone] : []),
+          ...map.lamps,
+        ])
+      : [];
     this.banner = null;
     const players = this.services.network?.getRoomState()?.players;
     if (players) this.syncRemotePlayers(players);
@@ -233,6 +304,7 @@ export class FormalWorld {
     const controller = this.services.controller;
     const view = controller.getView();
     if (view.raidId !== this.lastRaidId) this.resetRaid(view.raidId);
+    this.syncHotbar();
     this.alertAnchor = null;
     this.keyPrompt = null;
     for (const remote of this.teammates.values()) {
@@ -247,6 +319,18 @@ export class FormalWorld {
     this.moving = false;
     this.hitStopMs = Math.max(0, this.hitStopMs - deltaMs);
     if (playable) {
+      if (input.quickSlot !== undefined) this.hotbar.select(input.quickSlot);
+      const selected = this.hotbar.selected();
+      const weapon =
+        selected.item && ITEM_DEFINITIONS[selected.item.itemId]?.kind === 'weapon'
+          ? selected.item
+          : null;
+      if ((input.usePressed ?? (input.attack && !this.previousAttack)) && !weapon) {
+        this.search.cancel();
+        if (selected.item) this.services.useItem?.(selected.item.instanceId);
+        else this.services.notify('当前为空手，请按 1–4 选择道具。');
+      }
+      const attacking = input.attack && weapon !== null;
       this.aim = input.aim;
       const map = activeMap();
       this.moving = Math.hypot(input.move.x, input.move.y) > 0.1;
@@ -256,7 +340,7 @@ export class FormalWorld {
         this.networkInputElapsed %= 50;
         this.services.network?.sendInput(input.move, this.aim, [
           ...(input.interact ? ['interact' as const] : []),
-          ...(input.attack ? ['attack' as const] : []),
+          ...(attacking ? ['attack' as const] : []),
           ...(input.hug ? ['hug' as const] : []),
         ]);
       }
@@ -278,18 +362,20 @@ export class FormalWorld {
       if (input.flashlight && !this.previousLight) this.lighting.toggle();
       if (input.refill && !this.previousRefill) this.lighting.refill();
       if (input.flare && !this.previousFlare) this.lighting.deploy(this.position);
-      if (input.attack && this.hitStopMs <= 0) {
+      if (attacking && this.hitStopMs <= 0) {
         this.search.cancel();
-        const weapon =
-          this.services.inventory.getEquipment().primary ??
-          this.services.inventory
-            .getCarriedItems()
-            .find((i) => ITEM_DEFINITIONS[i.itemId]?.kind === 'weapon');
-        if (weapon && ITEM_DEFINITIONS[weapon.itemId]?.kind === 'weapon') {
+        if (weapon) {
           const baton = weapon.itemId === 'stun-baton';
           const stats = baton
             ? COMBAT_RULES.player.attack.weapons.stunBaton
             : COMBAT_RULES.player.attack.weapons.trainingBat;
+          if (
+            baton &&
+            this.combat.getWeaponUsesRemaining('stun-baton') === 0 &&
+            !this.previousAttack
+          ) {
+            this.services.notify('电击器次数已耗尽，请切换道具。');
+          }
           const before = this.combat.attackCooldown;
           const dead = this.combat.attack(
             this.position,
@@ -301,6 +387,9 @@ export class FormalWorld {
           if (before <= 0 && this.combat.attackCooldown > 0) {
             this.attackUntil = this.clock() + COMBAT_RULES.player.attack.swingMs + 140;
             this.services.sound.play('hit');
+            if (baton && this.combat.weaponUsesRemaining === 0) {
+              this.services.notify('电击器次数已耗尽，请切换道具。');
+            }
             if (this.combat.attackHit) this.hitStopMs = COMBAT_RULES.feedback.playerAttackHitStopMs;
           }
           for (const enemy of dead)
@@ -319,7 +408,7 @@ export class FormalWorld {
                   enemy.position,
                 );
             }
-        } else if (!this.previousAttack) this.services.notify('未携带武器，无法攻击。');
+        }
       }
       const combat = this.combat.update(
         deltaMs,
@@ -405,7 +494,34 @@ export class FormalWorld {
   frame(): WorldFrame {
     const map = activeMap();
     const view = this.services.controller.getView();
+    const healingElapsedMs =
+      this.bandageHealingStartedAt === null
+        ? undefined
+        : this.clock() - this.bandageHealingStartedAt;
+    const coffeeElapsedMs =
+      this.coffeeHealingStartedAt === null ? undefined : this.clock() - this.coffeeHealingStartedAt;
     return {
+      coffeeHealingElapsedMs:
+        coffeeElapsedMs !== undefined &&
+        coffeeElapsedMs >= 0 &&
+        coffeeElapsedMs < COFFEE_HEALING_EFFECT.durationMs &&
+        view.health > 0 &&
+        ['active', 'extracting'].includes(view.phase)
+          ? coffeeElapsedMs
+          : undefined,
+      utilityEffects:
+        view.health > 0 && ['active', 'extracting'].includes(view.phase)
+          ? this.utilityItemEffects.frames(this.clock())
+          : [],
+      bandageHealingElapsedMs:
+        healingElapsedMs !== undefined &&
+        healingElapsedMs >= 0 &&
+        healingElapsedMs < BANDAGE_HEALING_EFFECT.durationMs &&
+        view.health > 0 &&
+        ['active', 'extracting'].includes(view.phase)
+          ? healingElapsedMs
+          : undefined,
+      chargingStations: this.chargingStations,
       storyMarkers: this.storyMarkers(),
       extraction: {
         ready: view.value >= view.threshold,
@@ -431,7 +547,7 @@ export class FormalWorld {
       ground: [...this.ground.values()],
       prompt: this.interaction,
       searchProgress: this.search.progress(),
-      target: this.alertAnchor?.id ?? null,
+      target: this.search.current() ?? this.alertAnchor?.id ?? null,
       visibleChests: this.searchPoints
         .filter((p) => this.lighting.flashlightReveals(p, this.position, this.aim, map.obstacles))
         .map((p) => p.id),
@@ -462,6 +578,11 @@ export class FormalWorld {
   }
   dispose(): void {
     this.releaseDamage();
+    this.releaseItemConsumed();
+    this.releaseShieldAbsorbed();
+    this.utilityItemEffects.clear();
+    this.bandageHealingStartedAt = null;
+    this.coffeeHealingStartedAt = null;
     this.teammates.clear();
   }
   private nearbyHug(): Enemy | undefined {
@@ -721,14 +842,16 @@ export class FormalWorld {
         return;
       }
       this.interaction =
-        chest.id === activeMap().questChest?.id ? '思源楼前手记宝箱 · 长按 E 搜索' : '长按 E 搜索';
+        chest.id === activeMap().questChest?.id
+          ? '思源楼前手记宝箱 · 长按 E 搜索'
+          : `${CHEST_TIERS[chest.tier ?? 'normal'].name} · 长按 E 搜索 ${CHEST_TIERS[chest.tier ?? 'normal'].durationMs / 1000} 秒`;
       this.keyPrompt = { key: 'E', label: '搜索' };
       if (!held || this.moving || view.phase !== 'active') {
         this.search.cancel();
         return;
       }
       const wasSearching = this.search.current() === chest.id;
-      this.search.begin(chest.id);
+      this.search.begin(chest.id, CHEST_TIERS[chest.tier ?? 'normal'].durationMs);
       if (!wasSearching) {
         this.services.sound.play('box');
       }
@@ -844,11 +967,16 @@ export class FormalWorld {
         }
       }
     } else {
-      const lamp = activeMap().lamps.find((source) => distance(source, this.position) < 55);
-      if (lamp && this.lighting.battery < 99) {
-        this.interaction = '灯站充电';
+      const station = this.chargingStations.find(
+        (source) =>
+          distance(source, this.position) < CHARGING_STATION_RANGE &&
+          lineOfSight(this.position, source, activeMap().obstacles),
+      );
+      if (station && this.lighting.battery < 99) {
+        this.interaction = '停下脚步 · 长按 E 充电 2 秒';
+        this.keyPrompt = { key: 'E', label: '充电' };
         if (held && !this.moving && !this.hurtThisFrame) {
-          this.search.begin(`charge:${lamp.x}`);
+          this.search.begin(`charge:${station.id}`);
           if (this.search.progress() >= 1) {
             this.lighting.charge();
             this.search.cancel();
@@ -860,7 +988,11 @@ export class FormalWorld {
       } else {
         this.search.cancel();
         const request = this.requestingHug();
-        this.interaction = request ? this.hugInstruction(request) : '校园夜巡';
+        this.interaction = station
+          ? '充电桩 · 手电筒电量已满'
+          : request
+            ? this.hugInstruction(request)
+            : '校园夜巡';
       }
     }
   }

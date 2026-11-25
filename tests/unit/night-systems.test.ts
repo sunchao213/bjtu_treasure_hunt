@@ -350,6 +350,28 @@ describe('night combat', () => {
     expect(narrow.attackHit).toBe(false);
     expect(target.health).toBe(70);
   });
+  it('preserves baton durability across weapon switches and restores it for a new raid', () => {
+    const combat = isolatedCombat();
+    combat.enemies = [];
+    const player = { x: 1000, y: 1000 };
+    expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(15);
+    for (let i = 0; i < 15; i++) {
+      combat.tick(1200);
+      combat.attack(player, 0, [], 15, 'stun-baton');
+      expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(14 - i);
+      combat.tick(1200);
+      combat.attack(player, 0, [], 35, 'training-bat');
+      expect(combat.getWeaponUsesRemaining('training-bat')).toBeNull();
+      expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(14 - i);
+    }
+    combat.tick(1200);
+    combat.attack(player, 0, [], 15, 'stun-baton');
+    expect(combat.weaponUsesRemaining).toBe(0);
+    expect(combat.swingMs).toBe(0);
+    expect(combat.attackCooldown).toBe(0);
+    combat.reset();
+    expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(15);
+  });
   it('stuns mutated enemies for 600ms and respects the 75-unit attack range', () => {
     const combat = isolatedCombat('hug');
     const hug = combat.enemies.find((e) => e.kind === 'hug')!;

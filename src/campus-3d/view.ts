@@ -1,3 +1,4 @@
+import { CHEST_TIERS, type ChestTier } from '../config/chest-config';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Point, Rect } from '../shared/types/game';
@@ -6,8 +7,16 @@ import { CampusEnemyView } from './enemy-view';
 import { DISTRICT_SCENE, toMap, toWorld, type CampusSceneConfig } from './scene-config';
 import type { WorldFrame as TrialFrame } from './world-frame';
 import { PlayerCameraRig, screenFacing, screenToGround } from './camera-rig';
+import { ChargingStationView } from './charging-station-view';
 import { CampusNightView } from './night-view';
 import { CampusTreeView } from './tree-view';
+import { BandageHealingView } from './bandage-healing-view';
+import {
+  BANDAGE_HEALING_EFFECT,
+  COFFEE_HEALING_EFFECT,
+  UTILITY_ITEM_EFFECTS,
+} from '../config/item-effects';
+import { UtilityItemEffectsView } from './utility-item-effects-view';
 import type { StoryTrigger } from '../modules/world/story-triggers';
 
 declare const __GAME_ASSET_VERSION__: string;
@@ -25,6 +34,7 @@ export class CampusView implements WorldView {
     powerPreference: 'high-performance',
   });
   private readonly scene = new THREE.Scene();
+  private readonly chargingStationView = new ChargingStationView(this.scene);
   private readonly camera = new THREE.OrthographicCamera(-16, 16, 11, -11, 0.1, 120);
   private readonly followCamera = new THREE.PerspectiveCamera(48, 1, 0.1, 400);
   private readonly cameraRig = new PlayerCameraRig();
@@ -42,7 +52,7 @@ export class CampusView implements WorldView {
   private readonly pointer = new THREE.Vector2();
   private readonly hit = new THREE.Vector3();
   private readonly textures = new Set<THREE.Texture>();
-  private chestSource?: THREE.Texture;
+  private readonly chestSources = new Map<ChestTier, THREE.Texture>();
   private stele?: THREE.Group;
   private readonly storyVisuals = new Map<
     string,
@@ -67,6 +77,7 @@ export class CampusView implements WorldView {
     {
       mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
       texture: THREE.Texture;
+      tier: ChestTier;
       openedAt: number | null;
       ring: THREE.Mesh;
     }
@@ -96,6 +107,9 @@ export class CampusView implements WorldView {
   private readonly nightView?: CampusNightView;
   private readonly enemyView?: CampusEnemyView;
   private treeView?: CampusTreeView;
+  private bandageHealing?: BandageHealingView;
+  private coffeeHealing?: BandageHealingView;
+  private utilityEffects?: UtilityItemEffectsView;
   private readonly treePlayerProbe = new THREE.Vector3();
   private readonly treeLandmarkProbes: THREE.Vector3[];
 
@@ -360,8 +374,28 @@ export class CampusView implements WorldView {
         this.players.set(action, texture);
       }),
     );
+    this.bandageHealing = new BandageHealingView(
+      this.scene,
+      await load(BANDAGE_HEALING_EFFECT.asset),
+    );
+    this.coffeeHealing = new BandageHealingView(
+      this.scene,
+      await load(COFFEE_HEALING_EFFECT.asset),
+      COFFEE_HEALING_EFFECT,
+    );
+    const [bike, shieldAura, jacket, skates] = await Promise.all([
+      load(UTILITY_ITEM_EFFECTS['yellow-bike'].asset),
+      load(UTILITY_ITEM_EFFECTS['thick-down-jacket'].auraAsset),
+      load(UTILITY_ITEM_EFFECTS['thick-down-jacket'].asset),
+      load(UTILITY_ITEM_EFFECTS['roller-skates'].asset),
+    ]);
+    this.utilityEffects = new UtilityItemEffectsView(this.scene, bike, shieldAura, jacket, skates);
     await this.enemyView?.init();
-    this.chestSource = await load('props/treasure-chest.png');
+    await Promise.all(
+      (Object.keys(CHEST_TIERS) as ChestTier[]).map(async (tier) => {
+        this.chestSources.set(tier, await load(`props/${CHEST_TIERS[tier].texture}.png`));
+      }),
+    );
     this.syncChests(this.config.map.chests);
     this.playerMaterial.map = this.players.get('idle')!;
     this.playerMaterial.needsUpdate = true;
@@ -394,7 +428,7 @@ export class CampusView implements WorldView {
     this.buildStoryMarkers();
   }
 
-  private syncChests(points: readonly (Point & { id: string })[]): void {
+  private syncChests(points: readonly (Point & { id: string; tier?: ChestTier })[]): void {
     const ids = new Set(points.map((point) => point.id));
     for (const [id, chest] of this.chests) {
       if (ids.has(id)) continue;
@@ -408,14 +442,21 @@ export class CampusView implements WorldView {
       this.chests.delete(id);
     }
     for (const chest of points) {
+      const tier = chest.tier ?? 'normal';
       const existing = this.chests.get(chest.id);
       if (existing) {
+        if (existing.tier !== tier) {
+          existing.texture.image = this.chestSources.get(tier)!.image;
+          existing.texture.needsUpdate = true;
+          (existing.ring.material as THREE.MeshBasicMaterial).color.setHex(CHEST_TIERS[tier].color);
+          existing.tier = tier;
+        }
         const p = toWorld(chest);
         existing.mesh.position.set(p.x, 0.025, p.z);
         existing.ring.position.set(p.x, 0.025, p.z);
         continue;
       }
-      const texture = this.chestSource!.clone();
+      const texture = this.chestSources.get(tier)!.clone();
       texture.repeat.set(1 / 6, 1);
       texture.offset.x = 2 / 6;
       this.textures.add(texture);
@@ -428,12 +469,12 @@ export class CampusView implements WorldView {
       this.scene.add(mesh);
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.53, 0.6, 24),
-        new THREE.MeshBasicMaterial({ color: 0xf4d17d, side: THREE.DoubleSide }),
+        new THREE.MeshBasicMaterial({ color: CHEST_TIERS[tier].color, side: THREE.DoubleSide }),
       );
       ring.rotation.x = -Math.PI / 2;
       ring.position.set(p.x, 0.025, p.z);
       this.scene.add(ring);
-      this.chests.set(chest.id, { mesh, texture, openedAt: null, ring });
+      this.chests.set(chest.id, { mesh, texture, tier, openedAt: null, ring });
     }
   }
 
@@ -484,6 +525,7 @@ export class CampusView implements WorldView {
     this.syncChests(frame.chests ?? this.config.map.chests);
     const p = toWorld(frame.position);
     this.nightView?.update(frame);
+    this.chargingStationView.update(frame, elapsedMs);
     this.playerMaterial.color.set(frame.night.enabled ? 0xa6b7d1 : 0xffffff);
     const destination = this.isDistrict
       ? this.overview
@@ -526,9 +568,24 @@ export class CampusView implements WorldView {
         : 0.24;
     }
     this.treePlayerProbe.set(p.x, 0.8, p.z);
+    const markerCount = this.config.markers?.length ?? 0;
+    const chargingStations = frame.chargingStations ?? [];
+    this.treeLandmarkProbes.length = markerCount + chargingStations.length;
+    chargingStations.forEach((station, index) => {
+      const probe = (this.treeLandmarkProbes[markerCount + index] ??= new THREE.Vector3());
+      const point = toWorld(station);
+      probe.set(point.x, 1.1, point.z);
+    });
     this.treeView?.update(camera, this.treePlayerProbe, deltaMs, this.treeLandmarkProbes);
     this.enemyView?.update(frame, camera, elapsedMs);
     this.player.position.set(p.x, 0.03, p.z);
+    this.bandageHealing?.update(frame.bandageHealingElapsedMs, frame.position);
+    this.coffeeHealing?.update(frame.coffeeHealingElapsedMs, frame.position);
+    this.utilityEffects?.update(
+      frame.utilityEffects ?? [],
+      frame.position,
+      screenFacing(frame.facing, this.overview ? 0 : this.cameraRig.viewYaw) === 'left',
+    );
     this.player.scale.set(
       (0.8 * PLAYER_ANIMATIONS[frame.action].width) / 128,
       (0.8 * PLAYER_ANIMATIONS[frame.action].height) / 160,
