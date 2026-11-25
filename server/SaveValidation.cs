@@ -3,13 +3,18 @@ using System.Text.Json;
 // Validate the persisted snapshot boundary. Combat/loot remain client simulations in this iteration.
 static class SaveValidation
 {
+    /// <summary>仓库硬上限，与前端 WAREHOUSE_CAPACITY 保持一致。</summary>
+    private const int WarehouseCapacity = 100;
+
     public static bool IsValid(JsonElement data)
     {
-        if (data.ValueKind != JsonValueKind.Object || !data.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var version) || version != 3
+        if (data.ValueKind != JsonValueKind.Object || !data.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var version) || version is not (3 or 4)
             || !Array(data, "warehouse", out var warehouse) || !Items(warehouse, out var warehouseIds)
             || !Strings(data, "codexIds", out _) || !Strings(data, "unlockedChapterIds", out _)
             || !Strings(data, "settledRaidIds", out var settled)
             || !data.TryGetProperty("activeRaid", out var active) || !data.TryGetProperty("lastResult", out var last)) return false;
+        // 硬上限只约束 v4 起的快照：更早的档可能已经超量，前端迁移时会把超出部分折进信箱
+        if (version >= 4 && (warehouse.GetArrayLength() > WarehouseCapacity || !MailboxValid(data, warehouseIds))) return false;
         if (active.ValueKind != JsonValueKind.Null)
         {
             if (!Text(active, "raidId", out var raidId) || settled.Contains(raidId)
@@ -28,6 +33,33 @@ static class SaveValidation
             var origin = item.GetProperty("origin");
             return origin.GetProperty("kind").GetString() == "carry-in" || origin.GetProperty("obtainedInRaidId").GetString() == lastId;
         });
+    }
+
+    /// <summary>信箱：每封都要有唯一 mailId、非空附件，附件 instanceId 不能与仓库或彼此重复。</summary>
+    private static bool MailboxValid(JsonElement data, HashSet<string> warehouseIds)
+    {
+        if (!Array(data, "mailbox", out var mailbox)) return false;
+        var mailIds = new HashSet<string>(StringComparer.Ordinal);
+        var taken = new HashSet<string>(warehouseIds, StringComparer.Ordinal);
+        foreach (var mail in mailbox.EnumerateArray())
+        {
+            if (!Text(mail, "mailId", out var mailId) || !mailIds.Add(mailId)
+                || !Text(mail, "title", out _)
+                || !Body(mail, out _)
+                || !mail.TryGetProperty("createdAt", out var createdAt) || createdAt.ValueKind != JsonValueKind.Number || !createdAt.TryGetInt64(out _)
+                || !Array(mail, "attachments", out var attachments) || attachments.GetArrayLength() == 0
+                || !Items(attachments, out var attachmentIds)) return false;
+            if (!attachmentIds.All(taken.Add)) return false;
+        }
+        return true;
+    }
+
+    private static bool Body(JsonElement parent, out string value)
+    {
+        value = "";
+        if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty("body", out var element) || element.ValueKind != JsonValueKind.String) return false;
+        value = element.GetString()!;
+        return value.Length <= 2_000 && !value.Any(char.IsControl);
     }
 
     private static bool Text(JsonElement parent, string key, out string value)

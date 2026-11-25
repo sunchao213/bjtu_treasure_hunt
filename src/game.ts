@@ -2,9 +2,13 @@ import './style.css';
 import './mobile-layout.css';
 import './archive-browser.css';
 import './friends.css';
+import './explore-loader.css';
+import './warehouse-panel.css';
+import './bag-panel.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { createGame } from './app/create-game';
 import {
+  BAG_CAPACITY,
   HEALING_AMOUNTS,
   isCarryInAllowed,
   ITEM_DEFINITIONS,
@@ -13,6 +17,7 @@ import {
   UTILITY_EFFECTS,
 } from './config/game-config';
 import { renderShop, SHOP_EFFECTS } from './modules/ui/shop';
+import { renderMailPanel } from './modules/ui/mail-panel';
 import { createFriendsPanel } from './modules/ui/friends-panel';
 import { SocialClient } from './modules/social/social-client';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
@@ -20,6 +25,7 @@ import { RaidController } from './modules/raid/raid-controller';
 import { FORMAL_SAVE_KEY } from './modules/save/persistent-save';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
+import { createExploreLoader } from './modules/ui/explore-loader';
 import { bindGameRules } from './modules/ui/game-rules';
 import { bindConfirmDialog } from './modules/ui/confirm-dialog';
 import { canStartRaid, shouldShowPrepView } from './modules/ui/prep-view';
@@ -53,10 +59,17 @@ import {
 } from './modules/ui/extraction-feedback';
 import { exportCodexImage } from './modules/ui/codex';
 import { renderArchiveBrowser } from './modules/ui/archive-browser';
+import {
+  mountWarehousePanel,
+  refreshWarehouseCarry,
+  renderWarehousePanel,
+  type WarehouseCarryApi,
+} from './modules/ui/warehouse-panel';
+import { renderBagPanel } from './modules/ui/bag-panel';
 import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
 import { WorldScene } from './scenes/world-scene';
 import { contains } from './modules/world/movement';
-import { activeMap, upcomingMap } from './config/play-map';
+import { activeMap } from './config/play-map';
 import { EventBus } from './shared/events/game-events';
 import type { InventoryClientPort, ItemInstance, RaidControllerPort } from './shared/types/game';
 import { TouchControls } from './modules/world/touch-controls';
@@ -89,6 +102,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
   }
   mountShell(app);
   const confirmDialog = bindConfirmDialog();
+  // 开局过场遮罩：构造即开始预热 710KB 视频，点「开始探索」时才不会白屏。
+  const exploreLoader = createExploreLoader();
   // 一级大厅导航只切换页面内容，不改变对局状态；各模块可独立接入后端数据。
   const lobbyTabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-lobby-tab]'));
   const lobbyPanels = Array.from(document.querySelectorAll<HTMLElement>('[data-lobby-panel]'));
@@ -523,6 +538,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let interacted = '';
     let searchProgress = 0;
     let buyingItem: string | null = null;
+    /** 信箱领取：busy 期间禁用按钮，status 是给玩家看的结果文案 */
+    let claimingMail = false;
+    let mailStatus = '';
+    let mailSignature = '';
+    /** 带入装备的唯一真源：仓库面板和旧「行前准备」勾选列表都读写这一份 instanceId 集合 */
+    const carriedInstances = new Set<string>();
     // F02：记录读条开始时的状态，用来判断读条为什么被取消。
     let extractionSnapshot: ExtractionSnapshot | null = null;
     let enteredExtractionZone = false;
@@ -687,7 +708,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           activeController.pause();
           scene.clearInteractions();
         }
-      } else if (!rulesOpen && !mapOpen && !storyOpen && !roomOpen) activeController.resume();
+      } else if (
+        !rulesOpen &&
+        !mapOpen &&
+        !storyOpen &&
+        !roomOpen &&
+        // 开局加载遮罩在场上时同样不让 resume：否则这几秒的对局时钟会继续走。
+        !exploreLoader.isShowing()
+      ) {
+        activeController.resume();
+      }
     };
     let roomTrigger = 'open-room';
     let gameScroll = 0;
@@ -852,10 +882,193 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     };
     syncVoice();
     element('v19-map-open').onclick = () => element('open-campus-map').click();
-    element('v19-loadout-open').onclick = () =>
-      element<HTMLDialogElement>('v19-loadout-dialog').showModal();
+    // 舞台固定 1672×941，按弹窗可用区域等比缩放（桌面端弹窗尺寸就是 1280×720 画框）
+    function fitBagStage(): void {
+      const dialog = element<HTMLDialogElement>('v19-loadout-dialog');
+      // 没打开时 dialog 是 display:none，量出来是 0，不必算
+      if (!dialog.open) return;
+      const stage = dialog.querySelector<HTMLElement>('.bp-stage');
+      if (!stage) return;
+      // 量弹窗自己的可用区域：innerWidth/visualViewport 会受 DPI 与大厅缩放画框影响，不可靠
+      const viewW = dialog.clientWidth || window.innerWidth;
+      const viewH = dialog.clientHeight || window.innerHeight;
+      const scale = Math.min(viewW / 1672, viewH / 941);
+      stage.style.setProperty('--bp-scale', String(scale));
+    }
+    window.addEventListener('resize', fitBagStage);
+    element('v19-loadout-open').onclick = () => {
+      const dialog = element<HTMLDialogElement>('v19-loadout-dialog');
+      dialog.showModal();
+      // 打开后才有尺寸，等一帧再量
+      requestAnimationFrame(fitBagStage);
+    };
     element('v19-loadout-close').onclick = () =>
       element<HTMLDialogElement>('v19-loadout-dialog').close();
+    element('v19-prepare-close').onclick = () =>
+      element<HTMLDialogElement>('v19-prepare-dialog').close();
+
+    /** 已带入物品占用的背包格数；物品在本局丢失/消耗后自动不计 */
+    function carriedSlots(): number {
+      let sum = 0;
+      for (const item of save?.view().warehouse ?? []) {
+        if (!carriedInstances.has(item.instanceId)) continue;
+        sum += ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1;
+      }
+      return sum;
+    }
+
+    /** 左面板要显示的东西：按 carriedInstances 的勾选顺序取仓库里的实例 */
+    function bagItemsOf(warehouse: readonly ItemInstance[]): ItemInstance[] {
+      return [...carriedInstances]
+        .map((id) => warehouse.find((item) => item.instanceId === id))
+        .filter((item): item is ItemInstance => Boolean(item))
+        .slice(0, BAG_CAPACITY);
+    }
+
+    function refreshBagPanel(warehouse: readonly ItemInstance[]): void {
+      renderBagPanel(element('v19-loadout-dialog'), bagItemsOf(warehouse));
+    }
+
+    /** 把 carriedInstances 同步到三套 UI：旧勾选列表、仓库角标、左侧随身背包 */
+    function syncLoadoutSelection(): void {
+      const loadout = element<HTMLDivElement>('loadout');
+      for (const input of loadout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+        input.checked = carriedInstances.has(input.value);
+      }
+      element('loadout-slots').textContent = `已选 ${carriedSlots()} / ${RAID_RULES.bagCapacity} 格`;
+      refreshWarehouseCarry(element('warehouse-panel'));
+      const archive = save?.view();
+      if (archive) refreshBagPanel(archive.warehouse);
+    }
+
+    const carryApi: WarehouseCarryApi = {
+      list: () =>
+        (save?.view().warehouse ?? [])
+          .filter((item) => carriedInstances.has(item.instanceId))
+          .map((item) => ({
+            instanceId: item.instanceId,
+            itemId: item.itemId,
+            bagSlots: ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1,
+          })),
+      capacity: () => RAID_RULES.bagCapacity,
+      locked: () => lobby.isLocked(),
+      hasSpare: (itemId) =>
+        (save?.view().warehouse ?? []).some(
+          (item) => item.itemId === itemId && !carriedInstances.has(item.instanceId),
+        ),
+      carry: (itemId) => {
+        if (lobby.isLocked()) return false;
+        const spare = (save?.view().warehouse ?? []).find(
+          (item) => item.itemId === itemId && !carriedInstances.has(item.instanceId),
+        );
+        if (!spare) return false;
+        const need = ITEM_DEFINITIONS[itemId]?.bagSlots ?? 1;
+        if (carriedSlots() + need > RAID_RULES.bagCapacity) {
+          notify(`带入物品最多占 ${RAID_RULES.bagCapacity} 格。`);
+          return false;
+        }
+        carriedInstances.add(spare.instanceId);
+        syncLoadoutSelection();
+        return true;
+      },
+      uncarry: (itemId) => {
+        if (lobby.isLocked()) return;
+        for (const item of save?.view().warehouse ?? []) {
+          if (item.itemId === itemId) carriedInstances.delete(item.instanceId);
+        }
+        syncLoadoutSelection();
+      },
+    };
+
+    mountWarehousePanel(element('warehouse-panel'), {
+      // 拖拽互换/一键整理后立即落盘（instanceId 全序），刷新后顺序还在
+      onReorder: (instanceIds) => {
+        save?.reorderWarehouse(instanceIds).catch(() => notify('仓库顺序未保存，请稍后重试。'));
+      },
+      carry: carryApi,
+      // 跨面板拖拽：仓库⇄随身背包。带入/放回只改 carriedInstances 标记，实例始终留在仓库数组
+      crossDrag: {
+        carryInstance: (instanceId) => {
+          if (lobby.isLocked()) {
+            notify('房间准备期间不能调整带入。');
+            return false;
+          }
+          if (carriedInstances.has(instanceId)) return true; // 已在背包，原样弹回即可
+          const item = (save?.view().warehouse ?? []).find(
+            (entry) => entry.instanceId === instanceId,
+          );
+          if (!item) return false;
+          if (carriedInstances.size >= BAG_CAPACITY) {
+            notify(`随身背包只有 ${BAG_CAPACITY} 格。`);
+            return false;
+          }
+          const need = ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1;
+          if (carriedSlots() + need > RAID_RULES.bagCapacity) {
+            notify(`带入物品最多占 ${RAID_RULES.bagCapacity} 格。`);
+            return false;
+          }
+          carriedInstances.add(instanceId);
+          syncLoadoutSelection();
+          return true;
+        },
+        uncarryInstance: (instanceId) => {
+          if (lobby.isLocked()) {
+            notify('房间准备期间不能调整带入。');
+            return;
+          }
+          if (carriedInstances.delete(instanceId)) syncLoadoutSelection();
+        },
+        swapBag: (a, b) => {
+          // Set 按插入序渲染背包，重建一次即完成换位
+          const ids = [...carriedInstances];
+          const ia = ids.indexOf(a);
+          const ib = ids.indexOf(b);
+          if (ia < 0 || ib < 0 || ia === ib) return;
+          const moved = ids[ia]!;
+          ids[ia] = ids[ib]!;
+          ids[ib] = moved;
+          carriedInstances.clear();
+          for (const id of ids) carriedInstances.add(id);
+          syncLoadoutSelection();
+        },
+      },
+      bagGrid: () =>
+        element('v19-loadout-dialog').querySelector<HTMLElement>('[data-bp-bag-grid]'),
+      // 拖影挂舞台（两面板共同祖先），从背包起拖时不会被仓库面板边界裁掉
+      ghostLayer: () => element('v19-loadout-dialog').querySelector<HTMLElement>('.bp-stage'),
+      // 旧那套「初始武器 + 勾选带入」完整保留，入口挪到左面板底部
+      onOpenPrepare: () => element<HTMLDialogElement>('v19-prepare-dialog').showModal(),
+    });
+    // 「出发准备」入口在左面板，不在 .wh-panel 里，事件委托够不到，单独绑
+    const prepLink = element('v19-loadout-dialog').querySelector<HTMLButtonElement>(
+      '[data-wh-prep]',
+    );
+    if (prepLink) {
+      prepLink.onclick = () => element<HTMLDialogElement>('v19-prepare-dialog').showModal();
+    }
+    const bagRoot = element('v19-loadout-dialog');
+    // 一键放入：把随身背包里的装备全部退回避难所仓库
+    bagRoot
+      .querySelector<HTMLButtonElement>('[data-bp-put-all]')
+      ?.addEventListener('click', () => {
+        if (lobby.isLocked() || carriedInstances.size === 0) return;
+        const count = carriedInstances.size;
+        carriedInstances.clear();
+        syncLoadoutSelection();
+        notify(`${count} 件装备已放回仓库。`);
+      });
+    // 维修全部：耐久系统还没进这一版，先给玩家一个明确答复
+    bagRoot.querySelector<HTMLButtonElement>('[data-bp-repair]')?.addEventListener('click', () => {
+      notify('装备耐久暂未启用，现在不需要维修。');
+    });
+    // 左侧竖排导航：背包是当前页；商店三项目前统一回大厅商城页
+    for (const nav of bagRoot.querySelectorAll<HTMLButtonElement>('[data-bp-nav]')) {
+      nav.addEventListener('click', () => {
+        if (nav.dataset.bpNav === 'bag') return;
+        element<HTMLDialogElement>('v19-loadout-dialog').close();
+        document.querySelector<HTMLButtonElement>('[data-lobby-tab="mall"]')?.click();
+      });
+    }
     element('v19-mission-open').onclick = () =>
       element<HTMLDialogElement>('v19-mission-dialog').showModal();
     element('v19-skin-open').onclick = () =>
@@ -980,6 +1193,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const prepTarget =
         roomOpen && lobby.isJoined() ? element('room-preparation-slot') : preparationHome;
       if (preparation.parentElement !== prepTarget) prepTarget.append(preparation);
+      // 联机时准备区被搬进房间页，子弹窗里没有内容可放，先禁用入口
+      // 入口在左面板，不在 warehouse-panel 内，改从整个弹窗里找
+      const prepEntry =
+        element('v19-loadout-dialog').querySelector<HTMLButtonElement>('[data-wh-prep]');
+      if (prepEntry) prepEntry.disabled = roomOpen && lobby.isJoined();
       element<HTMLSelectElement>('starter-weapon').disabled = lobby.isLocked();
       element<HTMLInputElement>('risk-consent').disabled = lobby.isLocked();
       const loadout = element<HTMLDivElement>('loadout');
@@ -1085,10 +1303,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element<HTMLProgressElement>('battery-progress').value = lighting.battery;
       app.dataset.valueReady = String(view.value >= view.threshold);
       element('gate-label').textContent = view.value >= view.threshold ? '可以撤离' : '继续搜集';
-      const nextMap = upcomingMap();
-      element('next-map').textContent = nextMap.hasStory
-        ? `本局地图：${nextMap.title}`
-        : `本局地图：${nextMap.title}（无剧情线索）`;
       element('value-hint').textContent =
         view.value >= view.threshold
           ? activeMap().hasStory
@@ -1136,15 +1350,24 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('next').hidden = !['success', 'failed'].includes(view.phase);
       element('next').textContent = lobby.isJoined() ? '返回组队房间' : '返回大厅';
       element('result-title').textContent = view.saveError ? '存档未保存' : phaseNames[view.phase];
+      const carried = activeInventory.getCarriedItems();
+      const archive = save.view();
+      // 本局因爆仓转进信箱的件数：只统计这一局补发的邮件，历史上别的局不算进来
+      const mailed = view.result
+        ? archive.mailbox
+            .filter((mail) => mail.sourceRaidId === view.result!.raidId)
+            .reduce((sum, mail) => sum + mail.attachments.length, 0)
+        : 0;
       element('result-detail').textContent = view.saveError
         ? '结果已冻结，重试保存不会重复发奖。不要刷新页面。'
         : view.phase === 'settling'
           ? '正在保存本次结果…'
           : view.result?.outcome === 'success'
-            ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。仓库和图鉴已保存。`
+            ? `带回 ${view.result.items.length} 件物品，本局价值 ${view.result.value}。` +
+              (mailed > 0
+                ? `仓库已满，其中 ${mailed} 件转由信箱保管，去大厅「邮件」领取。`
+                : '仓库和图鉴已保存。')
             : `失败原因：${view.result?.reason ? reasonNames[view.result.reason] : '未知'}。本局携带物损失，之前的收藏保留。`;
-      const carried = activeInventory.getCarriedItems();
-      const archive = save.view();
       const activeChapter = activeQuestChapter(archive.unlockedChapterIds);
       renderQuestPanel(
         questProgress(carried, view.raidId, activeChapter.id, view.steleInvestigated),
@@ -1155,6 +1378,30 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         lastInventory = signature;
       }
       renderArchiveBrowser(element('lobby-archive-browser'), archive);
+      renderWarehousePanel(element('warehouse-panel'), archive.warehouse, archive.currency);
+      // 左面板：本次带入的装备，按勾选顺序排（carriedInstances 是 Set，天然保序）
+      refreshBagPanel(archive.warehouse);
+      element('v19-loadout-dialog').querySelector<HTMLElement>('[data-bp-balance]')!.textContent =
+        String(archive.currency);
+      // 信箱：只有爆仓补发邮件，条数少；内容或仓库余量变了才重绘，避免每次 render 都重建列表
+      const nextMailSignature = JSON.stringify([
+        archive.mailbox,
+        archive.warehouse.length,
+        claimingMail,
+        mailStatus,
+      ]);
+      if (nextMailSignature !== mailSignature) {
+        mailSignature = nextMailSignature;
+        renderMailPanel(document, {
+          mailbox: archive.mailbox,
+          warehouseCount: archive.warehouse.length,
+          busy: claimingMail,
+          status: mailStatus,
+        });
+      }
+      const unreadBadge = element('mail-unread-badge');
+      unreadBadge.hidden = archive.mailbox.length === 0;
+      unreadBadge.textContent = String(archive.mailbox.length);
       element('lobby-currency').textContent = String(archive.currency);
       const warehouseSignature = JSON.stringify([archive.warehouse, archive.currency]);
       const supplies = archive.warehouse.filter(
@@ -1177,13 +1424,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           ? `已点亮 ${archive.codexIds.length} 种图鉴；带回本局手记、调查明湖石碑并成功撤离后，阅读结尾可解锁下一章。`
           : '成功撤离后，物品和图鉴会保存到当前账号的云端仓库。';
       if (lastWarehouse !== warehouseSignature) {
+        // 本局丢失/消耗掉的物品要从带入集合里摘掉，避免带走不存在的实例
+        const alive = new Set(archive.warehouse.map((item) => item.instanceId));
+        for (const instanceId of carriedInstances) {
+          if (!alive.has(instanceId)) carriedInstances.delete(instanceId);
+        }
         const loadout = element<HTMLDivElement>('loadout');
-        const selectedIds = new Set(
-          Array.from(
-            loadout.querySelectorAll<HTMLInputElement>('input:checked'),
-            (input) => input.value,
-          ),
-        );
         loadout.replaceChildren();
         if (!carryableSupplies.length) {
           const empty = document.createElement('p');
@@ -1198,33 +1444,31 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.value = item.instanceId;
+          checkbox.dataset.itemId = item.itemId;
           checkbox.dataset.bagSlots = String(definition?.bagSlots ?? 1);
-          checkbox.checked = selectedIds.has(item.instanceId);
+          checkbox.checked = carriedInstances.has(item.instanceId);
           checkbox.disabled = lobby.isLocked();
           checkbox.addEventListener('change', () => {
-            const selected = Array.from(
-              loadout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked'),
-            );
-            const slots = selected.reduce(
-              (sum, entry) => sum + Number(entry.dataset.bagSlots ?? 1),
-              0,
-            );
-            if (slots > RAID_RULES.bagCapacity) {
-              checkbox.checked = false;
-              notify(`带入物品最多占 ${RAID_RULES.bagCapacity} 格。`);
-              return;
+            if (checkbox.checked) {
+              // 容量按「已带入格数 + 这一件」算，Set 还没有这件
+              const next = carriedSlots() + Number(checkbox.dataset.bagSlots ?? 1);
+              if (next > RAID_RULES.bagCapacity) {
+                checkbox.checked = false;
+                notify(`带入物品最多占 ${RAID_RULES.bagCapacity} 格。`);
+                return;
+              }
+              carriedInstances.add(item.instanceId);
+            } else {
+              carriedInstances.delete(item.instanceId);
             }
-            element('loadout-slots').textContent = `已选 ${slots} / ${RAID_RULES.bagCapacity} 格`;
+            syncLoadoutSelection();
           });
           const text = document.createElement('span');
           text.textContent = `${definition?.name ?? item.itemId} · 占 ${definition?.bagSlots ?? 1} 格`;
           row.append(checkbox, text);
           loadout.append(row);
         }
-        const slots = supplies
-          .filter((item) => selectedIds.has(item.instanceId))
-          .reduce((total, item) => total + (ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1), 0);
-        element('loadout-slots').textContent = `已选 ${slots} / ${RAID_RULES.bagCapacity} 格`;
+        syncLoadoutSelection();
         lastWarehouse = warehouseSignature;
       }
       const settlement = view.result ?? (view.phase === 'preparing' ? archive.lastResult : null);
@@ -1369,6 +1613,42 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     }
 
     element('risk-consent').onchange = render;
+    // 信箱领取：仓库有格子就放进去，放不下的留在信里，玩家腾出空间后再来
+    const claimMail = (mailId: string | null): void => {
+      if (claimingMail || !save?.claimMail) return;
+      claimingMail = true;
+      mailStatus = '正在领取…';
+      render();
+      void save
+        .claimMail(mailId)
+        .then((result) => {
+          const room = save.view().warehouse.length;
+          mailStatus =
+            result.moved === 0
+              ? result.remaining > 0
+                ? `仓库已满（${room}/100），先腾出格子再来领取。`
+                : '没有可领取的物资。'
+              : result.remaining > 0
+                ? `已领取 ${result.moved} 件放进仓库，仓库已满，还有 ${result.remaining} 件留在信箱。`
+                : `已领取 ${result.moved} 件，全部存入仓库。`;
+          notify(mailStatus);
+        })
+        .catch((error: unknown) => {
+          mailStatus =
+            error instanceof Error ? `领取失败：${error.message}` : '领取失败，请稍后重试。';
+          notify(mailStatus);
+        })
+        .finally(() => {
+          claimingMail = false;
+          render();
+        });
+    };
+    document.querySelector('#mail-claim-all')?.addEventListener('click', () => claimMail(null));
+    document.querySelector('#lobby-mail-list')?.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-mail-claim]');
+      if (!button || button.disabled) return;
+      claimMail(button.dataset.mailClaim ?? null);
+    });
     element('shop-prepare').onclick = () =>
       document.querySelector<HTMLButtonElement>('[data-lobby-tab="prepare"]')!.click();
     element('prep-view').addEventListener('click', (event) => {
@@ -1388,7 +1668,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
             ? `已购买${ITEM_DEFINITIONS[itemId]?.name ?? itemId}，已存入仓库。请在出发准备中勾选带入。`
             : result.error === 'INSUFFICIENT_FUNDS'
               ? '交子不足，本次未购买。'
-              : '当前无法购买，本次未扣款。';
+              : result.error === 'WAREHOUSE_FULL'
+                ? `仓库已满（${save.view().warehouse.length}/100），腾出格子后再购买，本次未扣款。`
+                : '当前无法购买，本次未扣款。';
           element('shop-status').textContent = message;
           element('shop-status').dataset.state = result.ok ? 'success' : 'error';
           notify(message);
@@ -1416,27 +1698,35 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       // Start playback within the click gesture, before fullscreen or save awaits.
       sound.setMusic(true);
       void requestLandscape();
-      const selected = Array.from(
-        element<HTMLDivElement>('loadout').querySelectorAll<HTMLInputElement>(
-          'input[type="checkbox"]:checked',
-        ),
-      ).map((input) => input.value);
+      const selected = [...carriedInstances].filter((instanceId) =>
+        (save?.view().warehouse ?? []).some((item) => item.instanceId === instanceId),
+      );
       const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
+      // 加载动画必须在这个点击手势里起播，否则浏览器会拦掉自动播放。
+      const loading = exploreLoader.play();
       const starting = activeController.start(selected, starterWeapon || undefined);
       render();
       const result = await starting;
-      notify(
-        result.ok
-          ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
-          : '开局未成功：请检查网络和云存档状态后重试，当前装备仍保留。',
-      );
-      render();
-      if (result.ok) {
-        element<HTMLButtonElement>('start').blur();
-        app.scrollTo(0, 0);
-        window.scrollTo(0, 0);
+      if (!result.ok) {
+        // 开局失败：立刻收回遮罩，不能让玩家停在加载页上。
+        exploreLoader.cancel();
+        notify('开局未成功：请检查网络和云存档状态后重试，当前装备仍保留。');
+        render();
+        return false;
       }
-      return result.ok;
+      // 动画这几秒先把对局冻住：否则计时在走、怪物在动，玩家却看不见也动不了。
+      // resume() 会把暂停时长补回 startedAtMs，剩余时间不受影响。
+      activeController.pause();
+      render();
+      exploreLoader.hide();
+      await loading;
+      activeController.resume();
+      notify('探索开始。当前物资价值达到 100 后，回到南侧撤离点。');
+      render();
+      element<HTMLButtonElement>('start').blur();
+      app.scrollTo(0, 0);
+      window.scrollTo(0, 0);
+      return true;
     }
     element('reload-game').onclick = () => location.reload();
     element('mode-room').onclick = () => element('open-room').click();

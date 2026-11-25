@@ -127,8 +127,9 @@ async function connect(index) {
   // Independent fixture accounts: no production save is modified.
   const opened = await (await cloudPost('/open', { clientId: randomUUID() })).json();
   const data = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     warehouse: [],
+    mailbox: [],
     currency: 0,
     codexIds: [],
     unlockedChapterIds: [],

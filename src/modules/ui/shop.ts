@@ -1,4 +1,4 @@
-import { ITEM_DEFINITIONS, PURCHASE_ITEM_IDS } from '../../config/game-config';
+import { ITEM_DEFINITIONS, PURCHASE_ITEM_IDS, WAREHOUSE_CAPACITY } from '../../config/game-config';
 import type { ItemInstance } from '../../shared/types/game';
 import { assetUrl } from '../../app/asset-url';
 
@@ -39,6 +39,7 @@ export function renderShop(
   available: boolean,
 ): void {
   root.querySelector('#shop-balance')!.textContent = String(currency);
+  const full = warehouse.length >= WAREHOUSE_CAPACITY;
   for (const card of root.querySelectorAll<HTMLElement>('[data-shop-item]')) {
     const itemId = card.dataset.shopItem!;
     const price = ITEM_DEFINITIONS[itemId]!.price!;
@@ -46,14 +47,16 @@ export function renderShop(
       warehouse.filter((item) => item.itemId === itemId).length,
     );
     const button = card.querySelector<HTMLButtonElement>('[data-shop-buy]')!;
-    button.disabled = buying !== null || !available || currency < price;
+    button.disabled = buying !== null || !available || currency < price || full;
     button.textContent =
       buying === itemId
         ? '正在购买…'
         : !available
           ? '准备时购买'
-          : currency < price
-            ? `还差 ${price - currency} 交子`
-            : '购买';
+          : full
+            ? '仓库已满'
+            : currency < price
+              ? `还差 ${price - currency} 交子`
+              : '购买';
   }
 }

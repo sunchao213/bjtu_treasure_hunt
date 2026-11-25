@@ -1,5 +1,11 @@
 import type { ItemDefinition, ItemInstance, RaidRules } from '../shared/types/game';
 
+/** 仓库硬上限：100 格（20 行 × 5 列）。满仓后新物品不再入仓，改由信箱保管。 */
+export const WAREHOUSE_CAPACITY = 100;
+
+/** 随身背包上限：6 格（2 行 × 3 列），对应界面左侧「道具背包」 */
+export const BAG_CAPACITY = 6;
+
 export const RAID_RULES: RaidRules = {
   threshold: 100,
   durationMs: 600_000,

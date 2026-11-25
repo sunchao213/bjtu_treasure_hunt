@@ -8,7 +8,7 @@ import {
 import { FORMAL_SAVE_KEY, type FormalSaveData } from '../../src/modules/save/persistent-save';
 
 const empty = (): FormalSaveData => ({
-  schemaVersion: 3,
+  schemaVersion: 4,
   warehouse: [],
   currency: 0,
   codexIds: [],
@@ -16,6 +16,7 @@ const empty = (): FormalSaveData => ({
   activeRaid: null,
   settledRaidIds: [],
   lastResult: null,
+  mailbox: [],
 });
 const storage = (raw: string | null = null) => {
   let value = raw;

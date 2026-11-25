@@ -8,6 +8,8 @@ import { assetUrl } from '../../app/asset-url';
 import { shopMarkup } from './shop';
 import { archiveBrowserMarkup } from './archive-browser';
 import { friendsPanelMarkup } from './friends-panel';
+import { warehousePanelMarkup } from './warehouse-panel';
+import { BAG_CAPACITY } from '../../config/game-config';
 
 /**
  * F01 准备页整页首屏（与助教要求一致）：
@@ -60,7 +62,6 @@ export function prepViewMarkup(): string {
 
               <label class="v19-risk-consent"><input id="risk-consent" type="checkbox" /><span>出发风险我已知悉</span></label>
               <button id="start" class="v19-hotspot v19-start" type="button" disabled aria-label="开始探索"></button>
-              <p id="next-map" class="v19-load-status">本局地图：海淀夜巡</p>
               <p id="game-load-status" class="v19-load-status" role="status">正在加载校园与角色资源…</p>
               <button id="reload-game" class="v19-sr-only" type="button" hidden>重新加载校园</button>
               <p class="v19-sr-only" id="lobby-prepare-title">行前准备</p>
@@ -90,9 +91,28 @@ export function prepViewMarkup(): string {
               <div id="v19-room-controls" class="v19-room-actions" hidden><button id="v19-room-ready" class="secondary" type="button">准备</button><button id="v19-room-start" class="primary" type="button">开始游戏</button><button id="v19-room-leave" class="text-button" type="button">离开房间</button></div>
             </dialog>
             <dialog id="v19-loadout-dialog" class="v19-dialog v19-loadout-dialog" aria-labelledby="v19-loadout-title">
-              <header><h2 id="v19-loadout-title">背包与出发装备</h2><button id="v19-loadout-close" type="button">返回大厅</button></header>
-              <p class="prep-warning">失败、超时或刷新页面会损失本局全部携带物（包括带入装备）；未带入的仓库物品会保留。</p>
+              <header class="bp-sr-head"><h2 id="v19-loadout-title">背包与出发装备</h2></header>
+              <div class="bp-stage">
+                <span class="bp-balance"><b data-bp-balance>0</b></span>
+                <button id="v19-loadout-close" class="bp-hot bp-hot-back" type="button" aria-label="返回大厅"></button>
+                <button class="bp-hot bp-hot-nav" data-bp-nav="bag" type="button" aria-label="背包"></button>
+                <button class="bp-hot bp-hot-nav" data-bp-nav="shop" type="button" aria-label="商店"></button>
+                <button class="bp-hot bp-hot-nav" data-bp-nav="buy" type="button" aria-label="购买"></button>
+                <button class="bp-hot bp-hot-nav" data-bp-nav="sell" type="button" aria-label="出售"></button>
+                <div class="bp-bag">
+                  <span class="bp-load"><b data-bp-load>0</b><i>/ ${BAG_CAPACITY}</i></span>
+                  <div class="bp-bag-grid" data-bp-bag-grid role="group" aria-label="随身背包"></div>
+                  <button class="bp-hot bp-hot-put-all" data-bp-put-all type="button" aria-label="一键放入仓库"></button>
+                  <button class="bp-hot bp-hot-repair" data-bp-repair type="button" aria-label="维修全部"></button>
+                  <button class="bp-prep-link" data-wh-prep type="button">出发准备</button>
+                </div>
+                <div id="warehouse-panel" class="bp-wh">${warehousePanelMarkup()}</div>
+              </div>
+            </dialog>
+            <dialog id="v19-prepare-dialog" class="v19-dialog v19-prepare-dialog" aria-labelledby="v19-prepare-title">
+              <header><h2 id="v19-prepare-title">行前准备</h2><button id="v19-prepare-close" type="button">关闭</button></header>
               <div id="preparation" class="prep-main v19-preparation">
+                <p class="prep-warning">失败、超时或刷新页面会损失本局全部携带物（包括带入装备）；未带入的仓库物品会保留。</p>
                 <div class="game-load-feedback"><p class="v19-sr-only">校园状态</p><button id="reload-game-dialog" type="button" hidden>重新加载校园</button></div>
                 <section class="prep-block prep-kit" aria-labelledby="prep-kit-title">
                   <h3 id="prep-kit-title">装备与带入</h3>
@@ -151,13 +171,20 @@ export function prepViewMarkup(): string {
               '<div class="lobby-panel-heading">',
               '<button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button><div class="lobby-panel-heading">',
             )}
+          <!-- 临时版邮件页：正式归属项会惠（官方邮件列表/已读/附件预览/领取）。
+               这里只承载「仓库爆仓补发」的领取闭环，替换时保留 #lobby-mail-list 等挂载点即可。 -->
           <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="mail" hidden aria-labelledby="lobby-mail-title">
             <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
             <div class="lobby-panel-heading"><div><p class="prep-kicker">思源信箱</p><h2 id="lobby-mail-title">邮件</h2></div><span class="lobby-panel-meta" id="lobby-mail-meta">0 封未读</span></div>
-            <p class="lobby-panel-intro">任务奖励、系统通知与队友留言都会送到这里。邮件界面尚未开放，奖励结算仍会直接进入仓库与交子余额。</p>
-            <div class="lobby-mail-empty">
+            <p class="lobby-panel-intro">撤离带出的物资超过仓库上限时，多出来的部分会送到这里。腾出格子后回来领取即可，邮件不会过期。</p>
+            <div class="lobby-mail-toolbar">
+              <button id="mail-claim-all" class="secondary" type="button">全部领取</button>
+              <span id="lobby-mail-status" class="lobby-mail-status" role="status" aria-live="polite"></span>
+            </div>
+            <ul id="lobby-mail-list" class="lobby-mail-list"></ul>
+            <div class="lobby-mail-empty" id="lobby-mail-empty">
               <p class="lobby-mail-empty-title">信箱空空如也</p>
-              <p class="lobby-mail-empty-hint">完成三章任务后，委托与奖励邮件会陆续送达。</p>
+              <p class="lobby-mail-empty-hint">仓库没满时，撤离物资会直接进仓库，不会打扰你。</p>
             </div>
           </section>
           <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="settings" hidden aria-labelledby="lobby-settings-title">

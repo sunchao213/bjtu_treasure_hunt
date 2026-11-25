@@ -3598,6 +3598,15 @@ html:not([data-touch='true']) #stage dialog[open] {
   transform: translate(-50%, -50%) scale(var(--stage-scale));
   transform-origin: center center;
 }
+/* 背包仓库是整屏面板：尺寸必须等于画框 1280×720，
+   否则会被 dialog[open] 的 stage-scale 再缩一次，只剩窗口七成大小、四周留黑边。
+   内部 .bp-stage（1672×941）由 JS 按 --bp-scale 贴合这个画框。 */
+html:not([data-touch='true']) #stage .v19-loadout-dialog[open] {
+  width: 1280px;
+  height: 720px;
+  max-width: none;
+  max-height: 720px;
+}
 html:not([data-touch='true']) #stage .room-dialog {
   max-width: 460px;
 }
@@ -3684,7 +3693,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   width: 1280px;
   height: 720px;
   overflow: hidden;
-  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261119d') center / 1280px 720px
+  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261120b') center / 1280px 720px
     no-repeat;
   color: #fff0c2;
   font-family: 'Zpix', 'Microsoft YaHei', sans-serif;
@@ -3797,7 +3806,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   top: 14px;
   width: 84px;
   height: 94px;
-  background-image: url('/assets/ui/nav-mail.png?v=20261119c');
+  background-image: url('/assets/ui/nav-mail.png?v=20261120a');
   background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%;
@@ -4254,6 +4263,120 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   margin: 0;
   color: #a98f68;
   font-size: 13px;
+}
+/* 邮件页列表：只承载「仓库爆仓补发」，领空即删 */
+.lobby-mail-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+/* 和"退出登录"一样，别把次要按钮拉成整行灰条 */
+.lobby-mail-toolbar .secondary {
+  width: auto;
+  min-width: 120px;
+  margin: 0;
+}
+/* ── 邮件页（临时版，正式归属项会惠）────────────────────────────
+   只服务「仓库爆仓补发」的领取闭环；正式设计里的已读/分类/附件预览请自行覆盖这段。 */
+.lobby-mail-status {
+  color: #a98f68;
+  font-size: 13px;
+}
+.lobby-mail-status[data-state='info'] {
+  color: #e8c477;
+}
+.lobby-mail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 660px;
+  max-height: 46vh;
+  margin: 14px 0 0;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.mail-item {
+  padding: 14px 16px;
+  border: 1px solid #5c4021;
+  border-radius: 2px;
+  background: #17100de6;
+}
+.mail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mail-title {
+  color: #e8c477;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+.mail-time {
+  color: #7d6544;
+  font-size: 12px;
+}
+.mail-body {
+  margin: 8px 0 10px;
+  color: #c8ab7d;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.mail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 4px;
+  border: 1px solid #4a3319;
+  border-radius: 2px;
+  background: #221710;
+  color: #d8bd8e;
+  font-size: 12px;
+}
+.mail-chip img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.mail-chip b {
+  color: #e8c477;
+  font-weight: 400;
+}
+.mail-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.mail-hint {
+  color: #93794f;
+  font-size: 12px;
+}
+.mail-claim {
+  padding: 6px 16px;
+  border: 1px solid #8a6a35;
+  border-radius: 2px;
+  background: #2a1a10;
+  color: #ffe4a0;
+  font: 13px/1.2 'Zpix', 'Microsoft YaHei', sans-serif;
+  cursor: pointer;
+}
+.mail-claim:hover:not(:disabled) {
+  background: #3a2415;
+}
+.mail-claim:disabled {
+  border-color: #4a3a24;
+  color: #7d6a4a;
+  cursor: not-allowed;
 }
 .v19-gold-button {
   margin-top: 18px;

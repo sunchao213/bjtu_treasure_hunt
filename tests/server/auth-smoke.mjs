@@ -253,8 +253,9 @@ try {
   assert.equal(initial.data, null);
   assert.equal(initial.revision, 0);
   const cloudData = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     warehouse: [],
+    mailbox: [],
     codexIds: ['school-badge'],
     unlockedChapterIds: [],
     activeRaid: null,
@@ -272,7 +273,7 @@ try {
   };
   const write = { leaseToken: initial.leaseToken, revision: 0, data: cloudData };
   assert.equal(
-    (await cloudPost('', { ...write, data: { ...cloudData, schemaVersion: '3' } }, cookie)).status,
+    (await cloudPost('', { ...write, data: { ...cloudData, schemaVersion: '4' } }, cookie)).status,
     400,
     'malformed schema types fail cleanly',
   );

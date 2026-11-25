@@ -783,8 +783,9 @@ try {
     const data = row?.data
       ? JSON.parse(row.data)
       : {
-          schemaVersion: 3,
+          schemaVersion: 4,
           warehouse: [],
+          mailbox: [],
           currency: 0,
           codexIds: [],
           activeRaid: null,

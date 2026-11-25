@@ -111,6 +111,8 @@ export interface WarehouseItemDetails {
   readonly name: string;
   readonly category: string;
   readonly rarity: string;
+  /** 原始稀有度键（common/uncommon/epic/legendary），格子底色据此选择 */
+  readonly rarityKey: string;
   readonly value: number | null;
   readonly bagSlots: number;
   readonly description: string;
@@ -181,6 +183,7 @@ export function warehouseItemDetails(itemId: string): WarehouseItemDetails | nul
     name: item.name,
     category: CATEGORY_NAMES[item.kind] ?? '道具',
     rarity: RARITY_NAMES[item.rarity] ?? item.rarity,
+    rarityKey: item.rarity,
     value: itemValueFor(item),
     bagSlots: item.bagSlots ?? 1,
     description: DESCRIPTIONS[itemId] ?? '探索中发现并成功撤离后保存在仓库。',
