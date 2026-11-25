@@ -81,6 +81,23 @@ afterEach(() => {
 });
 
 describe('shared mobile audio', () => {
+  it('keeps trial settings separate while the default settings key stays unchanged', () => {
+    const settings = new Map([
+      ['bjtu-audio-settings-v1', JSON.stringify({ volume: 0.7, brightness: 1 })],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => settings.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        settings.set(key, value);
+      },
+    });
+    sound = new SoundManager('bjtu-campus-3d:v1:audio');
+    sound.setSettings({ volume: 0.2 });
+    sound.dispose();
+    sound = new SoundManager();
+    expect(sound.getSettings().volume).toBe(0.7);
+    expect(JSON.parse(settings.get('bjtu-campus-3d:v1:audio')!).volume).toBe(0.2);
+  });
   it('preloads a Safari compatible music file relative to the deployment and waits for touch release', async () => {
     sound = new SoundManager();
     await ready();

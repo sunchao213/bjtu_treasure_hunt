@@ -2,7 +2,7 @@ import type { Point, Rect } from '../../shared/types/game';
 import { COMBAT_RULES } from '../../config/combat-config';
 import { movePlayer } from './movement';
 import { activeMap } from '../../config/play-map';
-import { WORLD } from '../../config/world-config';
+import formal from '../../config/formal-campus.json';
 
 export const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
 export const angleBetween = (a: Point, b: Point): number => Math.atan2(b.y - a.y, b.x - a.x);
@@ -69,16 +69,29 @@ function distanceToRect(position: Point, rect: Rect): number {
   return Math.hypot(dx, dy);
 }
 
-function nearExtraction(position: Point, gap: number): boolean {
-  return activeMap().extractions.some((zone) => distanceToRect(position, zone) < gap);
+/** The combat simulation accepts either campus map without changing global map selection. */
+export interface CombatMap {
+  width: number;
+  height: number;
+  spawn: Point;
+  obstacles: readonly Rect[];
+  extractions: readonly Rect[];
+  enemyRoutes: readonly { id: string; kind: 'patrol' | 'hug'; route: readonly Point[] }[];
+  canSpawn?: (point: Point) => boolean;
+}
+
+function nearExtraction(position: Point, gap: number, map: CombatMap): boolean {
+  return map.extractions.some((zone) => distanceToRect(position, zone) < gap);
 }
 
 export interface LightSource extends Point {
   radius: number;
 }
-export const LAMPS: readonly LightSource[] = WORLD.lamps;
+export const LAMPS: readonly LightSource[] = formal.lamps;
 
 export class NightLighting {
+  constructor(private readonly lamps?: readonly LightSource[]) {}
+
   battery = 100;
   enabled = true;
   spareBatteries = 2;
@@ -128,7 +141,7 @@ export class NightLighting {
     return true;
   }
   sources(): readonly LightSource[] {
-    return [...activeMap().lamps, ...this.flares];
+    return [...(this.lamps ?? activeMap().lamps), ...this.flares];
   }
   visible(target: Point, player: Point, aim: number, walls: readonly Rect[]): boolean {
     if (distance(target, player) <= 62 && lineOfSight(player, target, walls)) {
@@ -193,12 +206,14 @@ export interface Enemy {
   mutated: boolean;
   wanders: boolean;
 }
-export function createEnemies(random: () => number = Math.random): Enemy[] {
-  const map = activeMap();
+export function createEnemies(
+  random: () => number = Math.random,
+  map: CombatMap = activeMap(),
+): Enemy[] {
   const bounds = { x: 45, y: 50, width: map.width - 90, height: map.height - 100 };
   const usedPositions: Point[] = [];
   let patrolOrdinal = 0;
-  return map.enemyRoutes.map((enemyConfig) => {
+  return map.enemyRoutes.flatMap((enemyConfig) => {
     let position: Point | null = null;
     for (let attempt = 0; attempt < COMBAT_RULES.spawning.candidateAttempts; attempt++) {
       const candidatePosition = {
@@ -211,7 +226,8 @@ export function createEnemies(random: () => number = Math.random): Enemy[] {
         candidatePosition.y < bounds.y + 18 ||
         candidatePosition.y > bounds.y + bounds.height - 18 ||
         map.obstacles.some((obstacle) => overlaps(candidatePosition, 18, obstacle)) ||
-        nearExtraction(candidatePosition, COMBAT_RULES.spawning.extractionSafeDistance) ||
+        nearExtraction(candidatePosition, COMBAT_RULES.spawning.extractionSafeDistance, map) ||
+        (map.canSpawn && !map.canSpawn(candidatePosition)) ||
         distance(candidatePosition, map.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
         usedPositions.some(
           (position) =>
@@ -229,7 +245,8 @@ export function createEnemies(random: () => number = Math.random): Enemy[] {
           const candidate = { x, y };
           if (
             map.obstacles.some((obstacle) => overlaps(candidate, 18, obstacle)) ||
-            nearExtraction(candidate, COMBAT_RULES.spawning.extractionSafeDistance) ||
+            nearExtraction(candidate, COMBAT_RULES.spawning.extractionSafeDistance, map) ||
+            (map.canSpawn && !map.canSpawn(candidate)) ||
             distance(candidate, map.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
             usedPositions.some(
               (used) => distance(candidate, used) < COMBAT_RULES.spawning.minEnemyDistance,
@@ -242,32 +259,32 @@ export function createEnemies(random: () => number = Math.random): Enemy[] {
         }
       }
     }
-    const spawnPosition = position ?? {
-      x: bounds.x + bounds.width / 2,
-      y: bounds.y + bounds.height / 2,
-    };
+    if (!position) return [];
+    const spawnPosition = position;
     usedPositions.push(spawnPosition);
     const species =
       enemyConfig.kind === 'patrol'
         ? PATROL_SPECIES[patrolOrdinal++ % PATROL_SPECIES.length]
         : undefined;
-    return {
-      ...enemyConfig,
-      species,
-      route: [{ ...spawnPosition }],
-      position: { ...spawnPosition },
-      home: { ...spawnPosition },
-      waypoint: 0,
-      health:
-        enemyConfig.kind === 'hug' ? COMBAT_RULES.hug.health : COMBAT_RULES.enemy.patrol.health,
-      state: 'patrol',
-      timer: 0,
-      cooldown: 0,
-      hugProgress: 0,
-      calmHitCount: 0,
-      mutated: false,
-      wanders: enemyConfig.kind === 'patrol',
-    };
+    return [
+      {
+        ...enemyConfig,
+        species,
+        route: [{ ...spawnPosition }],
+        position: { ...spawnPosition },
+        home: { ...spawnPosition },
+        waypoint: 0,
+        health:
+          enemyConfig.kind === 'hug' ? COMBAT_RULES.hug.health : COMBAT_RULES.enemy.patrol.health,
+        state: 'patrol',
+        timer: 0,
+        cooldown: 0,
+        hugProgress: 0,
+        calmHitCount: 0,
+        mutated: false,
+        wanders: enemyConfig.kind === 'patrol',
+      },
+    ];
   });
 }
 
@@ -277,9 +294,9 @@ export function findEnemySpawnPosition(
   lighting: NightLighting,
   enemies: readonly Enemy[],
   random: () => number = Math.random,
+  map: CombatMap = activeMap(),
 ): Point | null {
   const rules = COMBAT_RULES.spawning;
-  const map = activeMap();
   const bounds = { x: 45, y: 50, width: map.width - 90, height: map.height - 100 };
   for (let attempt = 0; attempt < rules.candidateAttempts; attempt++) {
     const point = {
@@ -290,7 +307,8 @@ export function findEnemySpawnPosition(
       distance(player, point) < rules.minPlayerDistance ||
       lighting.visible(point, player, aim, map.obstacles) ||
       map.obstacles.some((obstacle) => overlaps(point, 18, obstacle)) ||
-      nearExtraction(point, rules.extractionSafeDistance) ||
+      nearExtraction(point, rules.extractionSafeDistance, map) ||
+      (map.canSpawn && !map.canSpawn(point)) ||
       enemies.some(
         (enemy) =>
           enemy.state !== 'dead' && distance(enemy.position, point) < rules.minEnemyDistance,
@@ -303,8 +321,12 @@ export function findEnemySpawnPosition(
   return null;
 }
 
-function findPatrolWaypoint(anchor: Point, current: Point, random: () => number): Point | null {
-  const map = activeMap();
+function findPatrolWaypoint(
+  anchor: Point,
+  current: Point,
+  random: () => number,
+  map: CombatMap,
+): Point | null {
   const bounds = { x: 45, y: 50, width: map.width - 90, height: map.height - 100 };
   for (let attempt = 0; attempt < COMBAT_RULES.spawning.candidateAttempts; attempt++) {
     const angle = random() * Math.PI * 2 + attempt * 2.399963229728653;
@@ -323,7 +345,8 @@ function findPatrolWaypoint(anchor: Point, current: Point, random: () => number)
       point.y < bounds.y + 18 ||
       point.y > bounds.y + bounds.height - 18 ||
       map.obstacles.some((obstacle) => overlaps(point, 18, obstacle)) ||
-      nearExtraction(point, COMBAT_RULES.spawning.extractionSafeDistance) ||
+      nearExtraction(point, COMBAT_RULES.spawning.extractionSafeDistance, map) ||
+      (map.canSpawn && !map.canSpawn(point)) ||
       distance(current, point) < COMBAT_RULES.spawning.patrolStepMinDistance ||
       !lineOfSight(current, point, map.obstacles)
     ) {
@@ -348,13 +371,16 @@ export class NightCombat {
   private nextSpawnId = 1;
   private nextPatrolSpecies = 0;
 
-  constructor(private readonly random: () => number = Math.random) {
-    this.enemies = createEnemies(this.random);
+  constructor(
+    private readonly random: () => number = Math.random,
+    private readonly map: () => CombatMap = activeMap,
+  ) {
+    this.enemies = createEnemies(this.random, this.map());
     this.resetSpawnTimer();
   }
 
   reset(): void {
-    this.enemies = createEnemies(this.random);
+    this.enemies = createEnemies(this.random, this.map());
     this.attackCooldown = 0;
     this.invulnerability = 0;
     this.swingMs = 0;
@@ -378,7 +404,7 @@ export class NightCombat {
       for (let i = 0; i < rules.spawnCount && this.aliveEnemyCount() < rules.maxAlive; i++) {
         const position = findPosition();
         if (!position) break;
-        const patrolPoint = findPatrolWaypoint(position, position, this.random);
+        const patrolPoint = findPatrolWaypoint(position, position, this.random, this.map());
         if (!patrolPoint) continue;
         const enemy: Enemy = {
           id: `spawn-${this.nextSpawnId++}`,
@@ -687,7 +713,7 @@ export class NightCombat {
       let target = enemy.state === 'chase' ? player : enemy.route[enemy.waypoint]!;
       if (enemy.state === 'patrol' && distance(enemy.position, target) < 12) {
         if (enemy.wanders) {
-          const next = findPatrolWaypoint(enemy.home, enemy.position, this.random);
+          const next = findPatrolWaypoint(enemy.home, enemy.position, this.random, this.map());
           if (next) {
             enemy.route = [next];
             enemy.waypoint = 0;

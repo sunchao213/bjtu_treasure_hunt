@@ -29,8 +29,8 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
     id: 'move',
     title: '先走出去',
-    body: '用 W A S D 或方向键在校园里移动；鼠标指向决定手电照向哪边。手机用左摇杆移动、右摇杆瞄准。',
-    keys: 'WASD / 方向键 · 鼠标指向',
+    body: '用 W A S D 或方向键相对镜头移动；移动鼠标转动视角，Esc 释放鼠标并打开设置，Tab 打开背包。手机左摇杆移动、右摇杆瞄准，空白地图拖动镜头。',
+    keys: 'WASD / 方向键 · 移动鼠标转向',
   },
   {
     id: 'light',
@@ -47,7 +47,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
     id: 'value',
     title: `凑够 ${threshold} 价值`,
-    body: `只有本局搜到并还带在身上的物资计入价值，从仓库带入的物品不算。差额看侧栏「本局物资价值」。`,
+    body: `只有本局搜到并还带在身上的物资计入价值，从仓库带入的物品不算。价值看顶部中央；按 Tab 或点左下角背包管理物品，背包打开时探索继续。`,
     keys: `目标 ${threshold} · 背包 ${RAID_RULES.bagCapacity} 格`,
   },
   {

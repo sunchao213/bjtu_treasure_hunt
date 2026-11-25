@@ -1,3 +1,8 @@
+import {
+  occupiedSlots,
+  sectionCanFit,
+  type InventoryCapacities,
+} from '../modules/inventory/inventory-sections';
 import { isTouchLayout } from '../modules/ui/mobile-layout';
 import { createTypingGuard, isFormFocused } from '../modules/ui/typing-guard';
 import { assetUrl } from '../app/asset-url';
@@ -75,8 +80,9 @@ interface SceneServices {
   displayName?: string;
   controller: RaidControllerPort;
   inventory: InventoryPort;
+  inventoryCapacities?: InventoryCapacities;
   /** 当前进行中的章节 id，由大厅按存档实时给出（章节推进后下一局自动换章）。 */
-  questChapter?: () => string;
+  questChapter?: () => string | null;
   events: EventBus;
   notify: (message: string) => void;
   touch: TouchControls;
@@ -236,8 +242,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** 当前章节 id；未接线时退回第一章，保证单测与旧调用方行为不变。 */
-  private questChapterId(): string {
-    return this.services.questChapter?.() ?? QUEST_CHAPTER_ID;
+  private questChapterId(): string | null {
+    return this.services.questChapter ? this.services.questChapter() : QUEST_CHAPTER_ID;
   }
 
   preload(): void {
@@ -509,8 +515,16 @@ export class WorldScene extends Phaser.Scene {
       const snapshot = this.onlineSnapshot;
       // 焦点在输入框/下拉框时不消费按键（typing-guard 同时会放开 capture）。
       const isTyping = isFormFocused();
+      const focused = document.activeElement;
+      const inInventory =
+        focused !== null &&
+        'closest' in focused &&
+        (focused as HTMLElement).closest('#inventory-panel') !== null;
       const down = (key: string) =>
-        this.services.touch.held(key) || (!isTyping && (this.keys[key]?.isDown ?? false));
+        this.services.touch.held(key) ||
+        (!isTyping &&
+          !(inInventory && ['UP', 'DOWN', 'LEFT', 'RIGHT', 'SPACE'].includes(key)) &&
+          (this.keys[key]?.isDown ?? false));
       const movement = {
         x:
           Number(down('D') || down('RIGHT')) -
@@ -574,8 +588,16 @@ export class WorldScene extends Phaser.Scene {
       this.hurtThisFrame = false;
       // 焦点在输入框/下拉框时不消费按键（typing-guard 同时会放开 capture）。
       const isTyping = isFormFocused();
+      const focused = document.activeElement;
+      const inInventory =
+        focused !== null &&
+        'closest' in focused &&
+        (focused as HTMLElement).closest('#inventory-panel') !== null;
       const down = (key: string) =>
-        this.services.touch.held(key) || (!isTyping && (this.keys[key]?.isDown ?? false));
+        this.services.touch.held(key) ||
+        (!isTyping &&
+          !(inInventory && ['UP', 'DOWN', 'LEFT', 'RIGHT', 'SPACE'].includes(key)) &&
+          (this.keys[key]?.isDown ?? false));
       const movement = {
         x:
           Number(down('D') || down('RIGHT')) -
@@ -796,7 +818,7 @@ export class WorldScene extends Phaser.Scene {
         this.setPlayerAction('death', Number.POSITIVE_INFINITY);
       }
       this.interaction = this.services.controller.isPaused()
-        ? '已暂停 · 横屏并关闭规则 / 校园图 / 图鉴后继续'
+        ? '已暂停 · 关闭设置或当前弹窗后继续'
         : view.phase === 'preparing'
           ? '准备好后，开始本次校园探索'
           : '本次探索已结束，请查看结算';
@@ -1294,9 +1316,12 @@ export class WorldScene extends Phaser.Scene {
     const equippedIds = new Set(
       Object.values(this.services.inventory.getEquipment()).map((item) => item.instanceId),
     );
-    const chapter = questChapterById(this.questChapterId());
-    const bagFull =
-      carried.filter((item) => !equippedIds.has(item.instanceId)).length >= RAID_RULES.bagCapacity;
+    const chapterId = this.questChapterId();
+    const chapter = chapterId === null ? null : questChapterById(chapterId);
+    const bagFull = this.services.inventoryCapacities
+      ? occupiedSlots(carried, ITEM_DEFINITIONS, 'bag') >= this.services.inventoryCapacities.bag
+      : carried.filter((item) => !equippedIds.has(item.instanceId)).length >=
+        RAID_RULES.bagCapacity;
     const hug = this.nearbyHug();
     if (hug) {
       this.search.cancel();
@@ -1313,8 +1338,17 @@ export class WorldScene extends Phaser.Scene {
       .sort((a, b) => distance(a.position, this.position) - distance(b.position, this.position))[0];
     if (loot) {
       this.search.cancel();
-      if (bagFull) {
-        this.interaction = `背包已满 · ${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}留在地上，先腾出空间再拾取`;
+      const lootFits = this.services.inventoryCapacities
+        ? sectionCanFit(carried, loot.item, ITEM_DEFINITIONS, this.services.inventoryCapacities)
+        : occupiedSlots(carried, ITEM_DEFINITIONS) +
+            (ITEM_DEFINITIONS[loot.item.itemId]?.bagSlots ?? 1) <=
+          RAID_RULES.bagCapacity;
+      if (!lootFits) {
+        const sectionName =
+          loot.item.origin.kind === 'carry-in' && this.services.inventoryCapacities
+            ? '道具栏'
+            : '背包';
+        this.interaction = `${sectionName}已满 · ${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}留在地上，先腾出空间再拾取`;
         return;
       }
       this.interaction = `按 E 拾取：${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}`;
@@ -1343,7 +1377,7 @@ export class WorldScene extends Phaser.Scene {
     );
     if (chest) {
       this.alertAnchor = { id: chest.id, x: chest.x, y: chest.y };
-      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapter.id);
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapterId);
       if (prerequisite !== null) {
         this.search.cancel();
         this.interaction = prerequisite;
@@ -1390,10 +1424,10 @@ export class WorldScene extends Phaser.Scene {
           const beat = isQuestComplete(
             this.services.inventory.getCarriedItems(),
             view.raidId,
-            chapter.id,
+            chapterId,
             view.steleInvestigated,
           )
-            ? chapter.completeHint
+            ? chapter?.completeHint
             : evidenceStoryBeat(chest.itemId);
           const pickup =
             beat ??
@@ -1415,7 +1449,7 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const stele = activeMap().stone;
-    if (chapter.id === QUEST_CHAPTER_ID && stele) {
+    if (chapter?.id === QUEST_CHAPTER_ID && stele) {
       const steleDistance = distance(stele, this.position);
       if (steleDistance < 78) {
         this.search.cancel();

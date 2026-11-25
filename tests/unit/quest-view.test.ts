@@ -64,6 +64,10 @@ describe('撤离成功但未解锁时的说明', () => {
     expect(hint).toBeNull();
   });
 
+  it('全部剧情完成后不再提示未解锁章节', () => {
+    expect(chapterLockHint(result(), null)).toBeNull();
+  });
+
   it('失败结算不提示解锁说明', () => {
     expect(chapterLockHint(result({ outcome: 'failed', reason: 'death' }))).toBeNull();
     expect(chapterLockHint(null)).toBeNull();

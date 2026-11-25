@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
 
@@ -117,7 +118,7 @@ IResult WithSave(HttpContext context, Func<LoginSession, IResult> action)
 
 var rooms = new RoomDirectory();
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-const int protocolVersion = 1;
+const int protocolVersion = 2;
 const int maxMessageBytes = 4096;
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", protocol = protocolVersion }));
@@ -281,7 +282,10 @@ if (Directory.Exists(frontendPath))
 {
     var files = new PhysicalFileProvider(frontendPath);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-    app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+    var contentTypes = new FileExtensionContentTypeProvider();
+    contentTypes.Mappings[".glb"] = "model/gltf-binary";
+    contentTypes.Mappings[".gltf"] = "model/gltf+json";
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = files, ContentTypeProvider = contentTypes });
 }
 app.Run();
 

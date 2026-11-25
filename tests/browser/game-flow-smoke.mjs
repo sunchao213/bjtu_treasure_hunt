@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 // Real production frontend, browser, HTTP account saves, and WebSocket room service.
 // All accounts and saves belong to a separate local database. No production writes.
+const geometry = JSON.parse(await readFile('src/config/formal-campus.json', 'utf8'));
 const directory = resolve(`artifacts/game-flow-${Date.now()}`);
 await mkdir(directory, { recursive: true });
 // Serve an isolated release copy so the cache upgrade test never edits the build under review.
@@ -33,7 +34,7 @@ let logs = '';
 const server = spawn(
   'dotnet',
   [
-    resolve('server/bin/Debug/net8.0/OnlineHost.dll'),
+    resolve(process.env.BROWSER_TEST_SERVER_DLL ?? 'server/bin/Debug/net8.0/OnlineHost.dll'),
     '--contentRoot',
     contentRoot,
     '--urls',
@@ -54,6 +55,9 @@ const pending = new Map();
 const pages = new Map();
 const passed = [];
 const stamp = Date.now().toString(36);
+const roomsOnly = process.argv.includes('--rooms-only');
+const immersiveOnly = process.argv.includes('--immersive-only');
+const steleOnly = process.argv.includes('--stele-only');
 
 function command(method, params = {}, sessionId) {
   const id = ++nextId;
@@ -90,24 +94,71 @@ async function until(page, expression) {
     await delay(100);
   }
   throw new Error(
-    `Timed out: ${expression}\n${await evaluate(page, 'document.body.innerText.slice(-2500)')}`,
+    `Timed out: ${expression}\n${await evaluate(page, 'document.body.innerText.slice(-2500)')}\n${JSON.stringify(await evaluate(page, 'globalThis.testScene && ({phase:testScene.services.controller.getView(), disposed:testScene.disposed, network:testScene.services.network.getStatus(), roomHidden:document.querySelector("#room-page").hidden, modal:document.querySelector("dialog[open]")?.id,consent:document.querySelector("#risk-consent").checked})'))}`,
   );
 }
 async function click(page, selector) {
+  // A player releases captured look through Esc before clicking HUD controls.
+  if (
+    selector !== '#game-canvas canvas' &&
+    (await evaluate(page, '!!document.pointerLockElement'))
+  ) {
+    await press(page, 'Escape', 'Escape', 27);
+    await until(page, 'document.querySelector("#raid-settings").open');
+    await press(page, 'Escape', 'Escape', 27);
+    await until(page, '!document.querySelector("#raid-settings").open');
+  }
+  if (selector === '#mode-room') selector = '.v19-teammate-one';
+  if (selector === '#mode-solo' && (await evaluate(page, '!testScene.services.network.isInRoom()')))
+    return;
+  if (
+    selector === '#next' &&
+    (await evaluate(page, 'document.querySelector("#app").dataset.phase === "preparing"'))
+  ) {
+    if (
+      await evaluate(
+        page,
+        'testScene.services.network.isInRoom() && document.querySelector("#room-page").hidden',
+      )
+    )
+      await click(page, '#start');
+    return;
+  }
+  if (selector.startsWith('#inventory ')) {
+    if (await evaluate(page, 'document.querySelector("#inventory-panel").hidden'))
+      await click(page, '#toggle-inventory');
+    const liSelector = selector.replace(/ button.*$/, '');
+    const id = await evaluate(
+      page,
+      `document.querySelector(${JSON.stringify(liSelector)})?.dataset.instanceId`,
+    );
+    if (id) await click(page, `.item-slot[data-item-id="${id}"]`);
+  }
   await until(
     page,
     `(() => { const element = document.querySelector(${JSON.stringify(selector)}); return element?.checkVisibility() && !element.disabled; })()`,
   );
-  const point = await evaluate(
-    page,
-    `(() => {
+  let point;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    point = await evaluate(
+      page,
+      `(() => {
       const element = document.querySelector(${JSON.stringify(selector)});
       if (!element || !element.checkVisibility() || element.disabled) throw Error('Cannot click ' + ${JSON.stringify(selector)});
-      element.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+      if (!element.matches('#game-canvas canvas'))
+        element.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
       const box = element.getBoundingClientRect();
       return {x: box.x + box.width / 2, y: box.y + box.height / 2};
     })()`,
-  );
+    );
+    await delay(80);
+    const stable = await evaluate(
+      page,
+      `(() => {const el=document.querySelector(${JSON.stringify(selector)});const b=el.getBoundingClientRect(); const hit=document.elementFromPoint(${point.x},${point.y}); return Math.abs(b.x+b.width/2-${point.x})<0.5 && Math.abs(b.y+b.height/2-${point.y})<0.5 && (el===hit || el.contains(hit));})()`,
+    );
+    if (stable) break;
+    if (attempt === 19) throw Error('Click target is obscured or moving: ' + selector);
+  }
   await command(
     'Input.dispatchMouseEvent',
     { type: 'mousePressed', ...point, button: 'left', clickCount: 1 },
@@ -123,6 +174,37 @@ async function screenshot(page, name) {
   const shot = await command('Page.captureScreenshot', { format: 'png' }, page.id);
   await writeFile(join(directory, `${name}.png`), Buffer.from(shot.data, 'base64'));
 }
+async function press(page, key, code, windowsVirtualKeyCode) {
+  await command(
+    'Input.dispatchKeyEvent',
+    { type: 'keyDown', key, code, windowsVirtualKeyCode },
+    page.id,
+  );
+  await command(
+    'Input.dispatchKeyEvent',
+    { type: 'keyUp', key, code, windowsVirtualKeyCode },
+    page.id,
+  );
+}
+async function touchDrag(page, selector, dx, dy) {
+  const point = await evaluate(
+    page,
+    `(() => {const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};})()`,
+  );
+  await command(
+    'Input.dispatchTouchEvent',
+    { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] },
+    page.id,
+  );
+  await command(
+    'Input.dispatchTouchEvent',
+    { type: 'touchMove', touchPoints: [{ x: point.x + dx, y: point.y + dy, id: 1 }] },
+    page.id,
+  );
+  await delay(250);
+  await command('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }, page.id);
+  await delay(250);
+}
 function pass(message) {
   passed.push(message);
   console.log(`PASS ${message}`);
@@ -131,14 +213,14 @@ function pass(message) {
 // Inspect the real production scene through Chrome's heap API. This needs no
 // production debug globals or alternative gameplay implementation.
 async function attachScene(page) {
-  const phaserAsset = (await readdir(join(frontendRoot, 'assets'))).find((file) =>
-    /^phaser-.*\.js$/.test(file),
+  const sceneAsset = (await readdir(join(frontendRoot, 'assets'))).find((file) =>
+    /^formal-world-.*\.js$/.test(file),
   );
-  assert(phaserAsset);
+  assert(sceneAsset);
   const prototype = await command(
     'Runtime.evaluate',
     {
-      expression: `import('/assets/${phaserAsset}').then(m => Object.values(m).map(v => { try { return typeof v === 'function' ? v() : v; } catch { return v; } }).find(v => v?.Scene)?.Scene.prototype)`,
+      expression: `import('/assets/${sceneAsset}').then(m => Object.values(m).find(v => typeof v === 'function' && v.prototype?.start && v.prototype?.destroy)?.prototype)`,
       awaitPromise: true,
     },
     page.id,
@@ -152,7 +234,7 @@ async function attachScene(page) {
     'Runtime.callFunctionOn',
     {
       objectId: objects.objects.objectId,
-      functionDeclaration: `function() { globalThis.testScene = this.find(s => s.sys?.settings?.key === 'world' && s.sys.isActive()); }`,
+      functionDeclaration: `function() { globalThis.testScene = this.find(s => s.view?.renderer?.domElement?.isConnected && !s.disposed); }`,
     },
     page.id,
   );
@@ -174,39 +256,69 @@ async function interact(page, heldMs = 150) {
 }
 
 async function standAt(page, point, offsetY = 35) {
+  if (await evaluate(page, '!!document.querySelector("#story-dialog[open]")'))
+    await click(page, '#story-skip');
   await evaluate(
     page,
     `(() => {
     const target = ${JSON.stringify(point)};
     testScene.position = { x: target.x, y: target.y + ${offsetY} };
-    testScene.player.setPosition(testScene.position.x, testScene.position.y);
-    testScene.cameras.main.centerOn(testScene.position.x, testScene.position.y);
+    testScene.clearInteractions();
     testScene.aim = -Math.PI / 2;
+    testScene.view.resetCamera();
     testScene.lighting.enabled = true;
     testScene.services.controller.activateInvulnerability(60000);
     // Keep this story/shop integration scenario independent of timed combat
     // spawns and hug requests, which have their own scene regression tests.
-    testScene.combat.enemies = [];
+    testScene.combat.enemies = testScene.combat.enemies.filter(e => e.id === 'story-garden-help');
     testScene.combat.updateSpawns = () => [];
-    for (const object of testScene.enemyObjects.values()) object.destroy();
-    testScene.enemyObjects.clear();
   })()`,
   );
   await delay(200);
-  const aim = await evaluate(
+  if (await evaluate(page, '!!document.querySelector("#story-dialog[open]")'))
+    await click(page, '#story-skip');
+  // Desktop flashlight aim follows the camera, including without pointer lock.
+  // Teleporting through the test seam needs two render frames: cameraAim reads
+  // the last rendered avatar, then the following input frame uses its new position.
+  await until(
     page,
-    `(() => {
-    const rect = testScene.game.canvas.getBoundingClientRect();
-    const camera = testScene.cameras.main;
-    return { x: rect.left + (${point.x} - camera.worldView.x) * camera.zoom * rect.width / testScene.scale.width,
-      y: rect.top + (${point.y} - camera.worldView.y) * camera.zoom * rect.height / testScene.scale.height };
-  })()`,
+    `!testScene.services.controller.isPaused() &&
+    !document.querySelector('dialog[open]') && Math.abs(testScene.aim + Math.PI / 2) < 0.01`,
   );
-  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', ...aim }, page.id);
-  await delay(100);
 }
 
 async function searchEvidence(page, itemId, screenshotName) {
+  await until(page, 'testScene.lastRaidId === testScene.services.controller.getView().raidId');
+  const authored = {
+    'marked-campus-map': geometry.chapterTwoPoints.campusMap,
+    'siyuan-key': geometry.chapterTwoPoints.siyuanKey,
+    'soothe-charm': geometry.chapterThreePoints.help,
+    'complete-record': geometry.chapterThreePoints.record,
+  }[itemId];
+  if (authored) {
+    await standAt(page, authored, itemId === 'soothe-charm' ? 20 : 35);
+    if (itemId === 'soothe-charm') {
+      await command(
+        'Input.dispatchKeyEvent',
+        { type: 'keyDown', key: 'q', code: 'KeyQ', windowsVirtualKeyCode: 81 },
+        page.id,
+      );
+      await delay(1800);
+      await command(
+        'Input.dispatchKeyEvent',
+        { type: 'keyUp', key: 'q', code: 'KeyQ', windowsVirtualKeyCode: 81 },
+        page.id,
+      );
+    } else await interact(page);
+    await until(
+      page,
+      `testScene.services.inventory.getCarriedItems().some(i => i.itemId === ${JSON.stringify(itemId)})`,
+    );
+    await until(page, 'document.querySelector("#story-dialog").open');
+    if (screenshotName) await screenshot(page, screenshotName);
+    await click(page, '#story-skip');
+    return;
+  }
   const point = await evaluate(
     page,
     `testScene.searchPoints.find(p => p.itemId === ${JSON.stringify(itemId)})`,
@@ -214,15 +326,15 @@ async function searchEvidence(page, itemId, screenshotName) {
   assert(point, `${itemId} search point exists`);
   await standAt(page, point);
   assert(
-    await evaluate(page, `testScene.chestObjects.get(${JSON.stringify(point.id)}).visible`),
+    await evaluate(page, `testScene.frame().visibleChests.includes(${JSON.stringify(point.id)})`),
     `flashlight reveals ${itemId}: ${JSON.stringify(await evaluate(page, '({position:testScene.position,aim:testScene.aim,interaction:testScene.interaction})'))}`,
   );
   assert(
     await evaluate(
       page,
-      `testScene.player.depth > testScene.chestObjects.get(${JSON.stringify(point.id)}).depth`,
+      `testScene.view.chests.get(${JSON.stringify(point.id)}).mesh.material.depthWrite`,
     ),
-    'player in front of box is drawn above it',
+    'chest cutout participates in 3D depth testing',
   );
   await interact(page, 1000);
   if (screenshotName) await screenshot(page, screenshotName);
@@ -245,6 +357,7 @@ async function newPage(name, { mobile = false, failAsset = false, legacyCache = 
   await command('Runtime.enable', {}, sessionId);
   await command('Page.enable', {}, sessionId);
   await command('Network.enable', {}, sessionId);
+  await command('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId);
   await command(
     'Emulation.setDeviceMetricsOverride',
     {
@@ -345,12 +458,11 @@ async function consent(page) {
     await click(page, '#risk-consent');
 }
 async function abandon(page) {
-  if (!(await evaluate(page, 'document.querySelector(".danger-area").open')))
-    await click(page, '.danger-area > summary');
+  if (!(await evaluate(page, 'document.querySelector("#raid-settings").open')))
+    await click(page, '#open-raid-settings');
   await click(page, '#abandon');
   await click(page, '#confirm-ok');
-  await until(page, 'document.querySelector("#app").dataset.phase === "failed"');
-  await until(page, '!document.querySelector("#next").hidden');
+  await until(page, 'document.querySelector("#app").dataset.phase === "preparing"');
 }
 async function move(page, duration = 350) {
   await command(
@@ -363,6 +475,252 @@ async function move(page, duration = 350) {
     'Input.dispatchKeyEvent',
     { type: 'keyUp', key: 'd', code: 'KeyD', windowsVirtualKeyCode: 68 },
     page.id,
+  );
+}
+
+async function verifyImmersiveLayout(page, width, height, mobile = false) {
+  await command(
+    'Emulation.setDeviceMetricsOverride',
+    {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile,
+    },
+    page.id,
+  );
+  await delay(300);
+  const layout = await evaluate(
+    page,
+    `(() => {
+    const canvas = document.querySelector('#game-canvas canvas').getBoundingClientRect();
+    const selectors = ['.raid-location', '.formal-story-objective', '#tutorial', '#team-status',
+      '#raid-value', '.map-hud-right', '#open-campus-map', '.formal-camera-controls',
+      '.interaction', '#toggle-inventory', '#key-prompt', '#map-toast',
+      '.touch-controls .touch-stick', '.touch-aim', '.touch-actions'];
+    const boxes = selectors.flatMap(selector => {
+      const el = document.querySelector(selector);
+      if (!el?.checkVisibility()) return [];
+      const r = el.getBoundingClientRect();
+      return [{selector, x:r.x, y:r.y, width:r.width, height:r.height}];
+    });
+    return {width:innerWidth, height:innerHeight, canvas:{x:canvas.x,y:canvas.y,width:canvas.width,height:canvas.height},
+      scroll:document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
+      boxes, bars:document.querySelectorAll('.map-top').length};
+  })()`,
+  );
+  assert.equal(layout.bars, 0, 'old top bar removed');
+  assert.equal(layout.scroll, false, 'no document scrolling');
+  assert(
+    Math.abs(layout.canvas.x) < 1 && Math.abs(layout.canvas.y) < 1,
+    `canvas starts at viewport origin: ${JSON.stringify(layout)}`,
+  );
+  assert(
+    Math.abs(layout.canvas.width - layout.width) < 1 &&
+      Math.abs(layout.canvas.height - layout.height) < 1,
+    `canvas fills viewport: ${JSON.stringify(layout)}`,
+  );
+  for (const box of layout.boxes) {
+    assert(
+      box.x >= -1 &&
+        box.y >= -1 &&
+        box.x + box.width <= layout.width + 1 &&
+        box.y + box.height <= layout.height + 1,
+      `HUD fits viewport: ${JSON.stringify(box)}`,
+    );
+  }
+  for (let i = 0; i < layout.boxes.length; i++)
+    for (let j = i + 1; j < layout.boxes.length; j++) {
+      const a = layout.boxes[i],
+        b = layout.boxes[j];
+      assert(
+        !(
+          a.x < b.x + b.width - 1 &&
+          b.x < a.x + a.width - 1 &&
+          a.y < b.y + b.height - 1 &&
+          b.y < a.y + a.height - 1
+        ),
+        `HUD overlap at ${width}×${height}: ${JSON.stringify([a, b])}`,
+      );
+    }
+  await screenshot(page, `immersive-${mobile ? 'touch' : 'desktop'}-${width}x${height}`);
+}
+
+async function verifyImmersiveFlow() {
+  const page = await newPage('immersive');
+  await consent(page);
+  await click(page, '#start');
+  await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+  await attachScene(page);
+  await until(page, 'document.pointerLockElement === testScene.view.renderer.domElement');
+  assert.equal(
+    await evaluate(page, 'testScene.view.cameraInfo().includes("俯角 18° · 缩放 5.0")'),
+    true,
+  );
+  const yaw = await evaluate(page, 'testScene.view.cameraRig.yaw');
+  for (const x of [550, 570, 590])
+    await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: 450 }, page.id);
+  await delay(150);
+  assert.notEqual(
+    await evaluate(page, 'testScene.view.cameraRig.yaw'),
+    yaw,
+    'start captures continuous mouse look without a canvas click',
+  );
+  await press(page, 'Escape', 'Escape', 27);
+  await until(
+    page,
+    'document.querySelector("#raid-settings").open && !document.pointerLockElement',
+  );
+  // Browser-native Esc recapture cooldown must not break hover fallback.
+  await delay(1500);
+  await click(page, '#resume-raid');
+  await until(page, 'document.pointerLockElement === testScene.view.renderer.domElement');
+  await press(page, 'Tab', 'Tab', 9);
+  await until(
+    page,
+    '!document.querySelector("#inventory-panel").hidden && !document.pointerLockElement',
+  );
+  await press(page, 'Escape', 'Escape', 27);
+  await until(page, 'document.querySelector("#inventory-panel").hidden');
+  // Use actual reset control after releasing capture via the normal settings flow.
+  await click(page, '#camera-reset');
+  await evaluate(page, 'testScene.services.controller.activateInvulnerability(60000)');
+  for (const [width, height] of [
+    [1920, 1080],
+    [1366, 768],
+    [1024, 768],
+    [2560, 1080],
+  ])
+    await verifyImmersiveLayout(page, width, height);
+  await click(page, '#open-campus-map');
+  await until(
+    page,
+    'document.querySelector("#campus-map-dialog").open && !document.pointerLockElement',
+  );
+  await screenshot(page, 'immersive-expanded-map');
+  await click(page, '#close-campus-map');
+  await abandon(page);
+  assert.equal(
+    await evaluate(page, 'document.documentElement.classList.contains("raid-immersive")'),
+    false,
+    'lobby restores fixed stage',
+  );
+  await screenshot(page, 'immersive-return-lobby');
+  await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+
+  const denied = await newPage('hover');
+  await consent(denied);
+  await evaluate(
+    denied,
+    'HTMLCanvasElement.prototype.requestPointerLock = () => Promise.reject(new Error("Test capture denial"))',
+  );
+  await click(denied, '#start');
+  await until(denied, 'document.querySelector("#app").dataset.phase === "active"');
+  await attachScene(denied);
+  const before = await evaluate(denied, 'testScene.view.cameraRig.yaw');
+  for (const x of [600, 620, 640])
+    await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: 450 }, denied.id);
+  assert.notEqual(
+    await evaluate(denied, 'testScene.view.cameraRig.yaw'),
+    before,
+    'denied capture allows hover look without clicking',
+  );
+  await abandon(denied);
+  await command('Target.disposeBrowserContext', { browserContextId: denied.browserContextId });
+
+  const mobile = await newPage('itouch', { mobile: true });
+  await consent(mobile);
+  await click(mobile, '#start');
+  await until(mobile, 'document.querySelector("#app").dataset.phase === "active"');
+  await attachScene(mobile);
+  for (const [width, height] of [
+    [844, 390],
+    [390, 844],
+    [844, 300],
+  ])
+    await verifyImmersiveLayout(mobile, width, height, true);
+  await command('Target.disposeBrowserContext', { browserContextId: mobile.browserContextId });
+  pass(
+    'Immersive entry, automatic capture/resume, hover fallback, full viewport, HUD clearance and lobby restoration',
+  );
+}
+
+async function verifySteleFlow() {
+  const page = await newPage('stele');
+  await consent(page);
+  await click(page, '#start');
+  await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+  await click(page, '#tutorial-skip');
+  await attachScene(page);
+  await standAt(page, geometry.stone, 100);
+  const before = await evaluate(
+    page,
+    `(() => {
+    const stele = testScene.view.stele;
+    const meshes = [];
+    stele.traverse(o => { if(o.isMesh) meshes.push(o); });
+    return {solid:!!stele.getObjectByName('Minghu_SolidStele'), position:stele.position.toArray(),rotation:stele.quaternion.toArray(),
+      names:meshes.map(o => o.name), opaque:meshes.every(o =>
+        (Array.isArray(o.material) ? o.material : [o.material]).every(m => !m.transparent && m.isMeshStandardMaterial)),
+      textures:[...testScene.view.textures].some(t => /minghu-stele.png/.test(t.image?.currentSrc ?? ''))};
+  })()`,
+  );
+  assert(before.solid);
+  assert.equal(before.names.length, 6, 'two body materials plus four foot rocks');
+  assert.equal(before.opaque, true, 'stone uses opaque PBR lighting rather than cutout shading');
+  assert.equal(before.textures, false, 'legacy billboard image is not loaded');
+  for (const [name, yaw, dx, dy] of [
+    ['front', 0, 0, 140],
+    ['side', Math.PI / 2, 140, 0],
+    ['back', Math.PI, 0, -140],
+  ]) {
+    await evaluate(
+      page,
+      `(() => {
+      testScene.clearInteractions();
+      testScene.position = {x:${geometry.stone.x + dx},y:${geometry.stone.y + dy}};
+      const rig = testScene.view.cameraRig;
+      rig.yaw = rig.viewYaw = ${yaw};
+      rig.pitch = rig.viewPitch = 0.30;
+      rig.distance = 5;
+    })()`,
+    );
+    await delay(600);
+    await screenshot(page, `minghu-3d-${name}-night`);
+    assert.deepEqual(
+      await evaluate(page, 'testScene.view.stele.quaternion.toArray()'),
+      before.rotation,
+      'orbit never rotates the landmark to face the camera',
+    );
+    assert.deepEqual(
+      await evaluate(page, 'testScene.view.stele.position.toArray()'),
+      before.position,
+    );
+  }
+  await click(page, '#camera-overview');
+  assert.deepEqual(
+    await evaluate(page, 'testScene.view.stele.quaternion.toArray()'),
+    before.rotation,
+  );
+  await click(page, '#camera-overview');
+  await standAt(page, geometry.stone, 65);
+  await interact(page);
+  await until(page, 'document.querySelector("#story-dialog").open');
+  await screenshot(page, 'minghu-3d-investigation');
+  assert.equal(
+    await evaluate(page, 'testScene.services.controller.getView().steleInvestigated'),
+    false,
+    '3D replacement preserves the notebook prerequisite',
+  );
+  await click(page, '#story-skip');
+  await searchEvidence(page, 'torn-notebook');
+  await standAt(page, geometry.stone, 65);
+  await interact(page);
+  await until(page, 'testScene.services.controller.getView().steleInvestigated');
+  await screenshot(page, 'minghu-3d-investigated');
+  await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  pass(
+    'Solid photo-referenced Minghu model, front/side/back fixed orientation, overview and original investigation',
   );
 }
 const marker = `(() => {
@@ -424,6 +782,12 @@ try {
     if (!page) return;
     if (message.method === 'Runtime.exceptionThrown')
       page.errors.push(message.params.exceptionDetails);
+    if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error')
+      console.error(
+        'BROWSER',
+        page.name,
+        message.params.args.map((arg) => arg.description ?? arg.value),
+      );
     if (message.method === 'Page.javascriptDialogOpening')
       void command('Page.handleJavaScriptDialog', { accept: true }, page.id);
     if (message.method === 'Fetch.requestPaused')
@@ -441,412 +805,719 @@ try {
     }
   });
 
-  const upgraded = await newPage('upgraded', { legacyCache: true });
-  await consent(upgraded);
-  await click(upgraded, '#start');
-  await until(
-    upgraded,
-    'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#timer").textContent !== "10:00"',
-  );
-  assert(await evaluate(upgraded, marker), 'upgraded browser has a working minimap');
-  await screenshot(upgraded, '08-cache-upgrade');
-  await abandon(upgraded);
-  await command('Target.disposeBrowserContext', { browserContextId: upgraded.browserContextId });
-  pass('Cached 128px sprites → new 176px release → solo launch without clearing browser data');
+  if (steleOnly) {
+    await verifySteleFlow();
+  } else if (immersiveOnly) {
+    await verifyImmersiveFlow();
+  } else {
+    if (!roomsOnly) {
+      const upgraded = await newPage('upgraded', { legacyCache: true });
+      await consent(upgraded);
+      await click(upgraded, '#start');
+      await until(
+        upgraded,
+        'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#timer").textContent !== "10:00"',
+      );
+      assert(await evaluate(upgraded, marker), 'upgraded browser has a working minimap');
+      await screenshot(upgraded, '08-cache-upgrade');
+      await abandon(upgraded);
+      await command('Target.disposeBrowserContext', {
+        browserContextId: upgraded.browserContextId,
+      });
+      pass('Cached 128px sprites → new 176px release → solo launch without clearing browser data');
+    }
 
-  const host = await newPage('host');
-  assert.equal(await evaluate(host, 'document.querySelector("#start").disabled'), true);
-  assert.equal(await evaluate(host, '!!document.querySelector("#room-panel")'), false);
-  await screenshot(host, '01-lobby');
-  await consent(host);
-  await click(host, '#start');
-  await until(
-    host,
-    'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#timer").textContent !== "10:00"',
-  );
-  const before = await evaluate(host, marker);
-  assert(before, 'minimap initialized with player');
-  await move(host);
-  await delay(300);
-  const after = await evaluate(host, marker);
-  assert(after.x > before.x + 2, 'keyboard moves player and minimap');
-  await screenshot(host, '02-single-game');
-  await click(host, '#hud-rules');
-  const pausedTime = await evaluate(host, 'document.querySelector("#timer").textContent');
-  await delay(1100);
-  assert.equal(
-    await evaluate(host, 'document.querySelector("#timer").textContent'),
-    pausedTime,
-    'rules pause the raid',
-  );
-  await click(host, '#close-rules');
-  await abandon(host);
-  await screenshot(host, '03-result');
-  await click(host, '#next');
-  await until(host, 'document.querySelector("#app").dataset.phase === "preparing"');
-  pass('Single player: consent → start → running timer → movement → pause → settlement → lobby');
-
-  await command(
-    'Emulation.setDeviceMetricsOverride',
-    { width: 900, height: 500, deviceScaleFactor: 1, mobile: false },
-    host.id,
-  );
-  await delay(300);
-  await click(host, '#start');
-  await until(host, 'document.querySelector("#app").dataset.phase === "active"');
-  await abandon(host);
-  await click(host, '#next');
-  await command(
-    'Emulation.setDeviceMetricsOverride',
-    { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false },
-    host.id,
-  );
-  pass('Second solo round and short desktop window remain usable');
-
-  const storyPage = await newPage('story');
-  await consent(storyPage);
-  await click(storyPage, '#start');
-  await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
-  await click(storyPage, '#tutorial-skip');
-  await attachScene(storyPage);
-  assert.deepEqual(
-    await evaluate(
-      storyPage,
-      `(() => {
-    const context = testScene.textures.get('campus-foreground').getSourceImage().getContext('2d');
-    return [[160,1500], [235,1740], [150,1750]].map(([x,y]) => context.getImageData(x,y,1,1).data[3]);
+    const host = await newPage('host');
+    assert.equal(await evaluate(host, 'document.querySelector("#start").disabled'), true);
+    assert.equal(await evaluate(host, '!!document.querySelector("#room-panel")'), false);
+    await screenshot(host, '01-lobby');
+    await consent(host);
+    if (!roomsOnly) {
+      await click(host, '#start');
+      await until(
+        host,
+        'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#timer").textContent !== "10:00"',
+      );
+      const before = await evaluate(host, marker);
+      assert(before, 'minimap initialized with player');
+      await attachScene(host);
+      const initialPosition = await evaluate(host, '({...testScene.position})');
+      await move(host);
+      await delay(300);
+      const after = await evaluate(host, marker);
+      assert(after, 'player-centred minimap remains visible');
+      assert(
+        await evaluate(host, `testScene.position.x > ${initialPosition.x} + 8`),
+        'keyboard moves the player in the 3D world',
+      );
+      await screenshot(host, '02-single-game');
+      await press(host, 'Tab', 'Tab', 9);
+      await until(host, '!document.querySelector("#inventory-panel").hidden');
+      await screenshot(host, '14-tab-inventory');
+      await press(host, 'Escape', 'Escape', 27);
+      await until(
+        host,
+        'document.querySelector("#inventory-panel").hidden && !document.querySelector("#raid-settings").open',
+      );
+      await press(host, 'Escape', 'Escape', 27);
+      await until(host, 'document.querySelector("#raid-settings").open');
+      await screenshot(host, '15-esc-settings');
+      const settingsTime = await evaluate(host, 'document.querySelector("#timer").textContent');
+      await delay(1100);
+      assert.equal(
+        await evaluate(host, 'document.querySelector("#timer").textContent'),
+        settingsTime,
+        'Esc settings pause the clock',
+      );
+      await click(host, '#hud-rules');
+      const pausedTime = await evaluate(host, 'document.querySelector("#timer").textContent');
+      await delay(1100);
+      assert.equal(
+        await evaluate(host, 'document.querySelector("#timer").textContent'),
+        pausedTime,
+        'rules pause the raid',
+      );
+      await click(host, '#close-rules');
+      await press(host, 'Escape', 'Escape', 27);
+      await until(host, '!document.querySelector("#raid-settings").open');
+      await press(host, 'Tab', 'Tab', 9);
+      await until(host, '!document.querySelector("#inventory-panel").hidden');
+      await press(host, 'Tab', 'Tab', 9);
+      await until(host, 'document.querySelector("#inventory-panel").hidden');
+      pass(
+        'Tab backpack and Esc settings retain their original panels, close order and pause rules',
+      );
+      const typingPosition = await evaluate(
+        host,
+        `(() => {
+    const input = document.createElement('input'); input.id='browser-typing-probe';
+    document.body.append(input); input.focus(); return {...testScene.position};
   })()`,
-    ),
-    [0, 0, 255],
-    'foreground preserves open pavement and gate doorway, and only covers the actual gate pillar',
-  );
-  await standAt(storyPage, { x: 990, y: 230 }, 0);
-  await interact(storyPage);
-  assert.equal(
-    await evaluate(storyPage, 'testScene.services.controller.getView().steleInvestigated'),
-    false,
-    'stele still requires this raid notebook',
-  );
-  await searchEvidence(storyPage, 'torn-notebook', '09-notebook-search');
-  await until(storyPage, 'document.querySelector("#quest-count").textContent === "1 / 2"');
-  await standAt(storyPage, { x: 990, y: 230 }, 0);
-  await interact(storyPage);
-  await until(storyPage, 'document.querySelector("#story-dialog").open');
-  assert(
-    await evaluate(
-      storyPage,
-      'document.querySelector("#story-label").textContent.includes("石碑")',
-    ),
-  );
-  await screenshot(storyPage, '10-stele-story');
-  await click(storyPage, '#story-skip');
-  await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
-  // Ordinary valuables only supply the extraction threshold; all story evidence
-  // above and below is obtained through the actual world interactions.
-  const addValuables = `(() => {
+      );
+      for (const [key, code, vk] of [
+        ['w', 'KeyW', 87],
+        ['e', 'KeyE', 69],
+        ['q', 'KeyQ', 81],
+        [' ', 'Space', 32],
+        ['l', 'KeyL', 76],
+        ['r', 'KeyR', 82],
+        ['g', 'KeyG', 71],
+        ['Escape', 'Escape', 27],
+        ['Tab', 'Tab', 9],
+      ])
+        await press(host, key, code, vk);
+      assert.deepEqual(
+        await evaluate(host, '({...testScene.position})'),
+        typingPosition,
+        'typing never moves the player',
+      );
+      assert.equal(
+        await evaluate(
+          host,
+          'testScene.lighting.enabled && testScene.lighting.spareBatteries === 2 && testScene.lighting.flareCount === 2 && testScene.combat.attackCooldown === 0 && document.querySelector("#inventory-panel").hidden && !document.querySelector("#raid-settings").open',
+        ),
+        true,
+        'typing suppresses all gameplay and panel shortcuts',
+      );
+      await evaluate(host, 'document.querySelector("#browser-typing-probe").remove()');
+      await click(host, '#tutorial-skip');
+      await screenshot(host, '23-formal-entry');
+      await command('Page.bringToFront', {}, host.id);
+      await click(host, '#game-canvas canvas');
+      await until(host, 'document.pointerLockElement === testScene.view.renderer.domElement');
+      await press(host, 'Escape', 'Escape', 27);
+      await until(
+        host,
+        '!document.pointerLockElement && document.querySelector("#raid-settings").open',
+      );
+      await press(host, 'Escape', 'Escape', 27);
+      await until(host, '!document.querySelector("#raid-settings").open');
+      // Chromium enforces a short recapture cooldown after native Esc unlock.
+      await delay(1500);
+      await click(host, '#game-canvas canvas');
+      await until(host, 'document.pointerLockElement === testScene.view.renderer.domElement');
+      await press(host, 'Tab', 'Tab', 9);
+      await until(
+        host,
+        '!document.pointerLockElement && !document.querySelector("#inventory-panel").hidden',
+      );
+      await press(host, 'Escape', 'Escape', 27);
+      await until(
+        host,
+        'document.querySelector("#inventory-panel").hidden && !document.querySelector("#raid-settings").open',
+      );
+      pass(
+        'Pointer lock: Esc opens one settings panel, Tab releases capture, closing bag preserves panel order, clicking map recaptures',
+      );
+      await click(host, '#camera-overview');
+      assert.equal(await evaluate(host, 'testScene.view.canOrbit()'), false);
+      await delay(400);
+      assert.equal(
+        await evaluate(host, 'testScene.view.scene.fog'),
+        null,
+        'overview remains visible beyond night fog distance',
+      );
+      await screenshot(host, '16-formal-overview');
+      await click(host, '#camera-overview');
+      const cameraBefore = await evaluate(host, 'testScene.view.cameraInfo()');
+      await evaluate(host, 'testScene.view.orbitCamera(140, -30); testScene.view.zoomCamera(120)');
+      await delay(350);
+      assert.notEqual(await evaluate(host, 'testScene.view.cameraInfo()'), cameraBefore);
+      await click(host, '#camera-reset');
+      await delay(350);
+      assert.equal(await evaluate(host, 'testScene.view.cameraInfo()'), cameraBefore);
+      await evaluate(
+        host,
+        `(() => {
+    globalThis.lostExtension = testScene.view.renderer.getContext().getExtension('WEBGL_lose_context');
+    if (!lostExtension) throw Error('Context loss extension unavailable');
+    lostExtension.loseContext();
+  })()`,
+      );
+      await until(host, 'testScene.contextLost && document.querySelector("#raid-settings").open');
+      await click(host, '#resume-raid');
+      await delay(300);
+      assert.equal(
+        await evaluate(host, 'testScene.services.controller.isPaused()'),
+        true,
+        'lost context cannot resume through a closed panel',
+      );
+      await evaluate(host, 'lostExtension.restoreContext()');
+      await until(host, '!testScene.contextLost && document.querySelector("#raid-settings").open');
+      assert.equal(await evaluate(host, 'testScene.services.controller.isPaused()'), true);
+      await screenshot(host, '17-context-restored');
+      await click(host, '#resume-raid');
+      await until(host, '!testScene.services.controller.isPaused()');
+      pass('Formal camera overview/reset and real WebGL context loss require manual resume');
+      await abandon(host);
+      await screenshot(host, '03-result');
+      await click(host, '#next');
+      await until(host, 'document.querySelector("#app").dataset.phase === "preparing"');
+      pass(
+        'Single player: consent → start → running timer → movement → pause → settlement → lobby',
+      );
+
+      await command(
+        'Emulation.setDeviceMetricsOverride',
+        { width: 900, height: 500, deviceScaleFactor: 1, mobile: false },
+        host.id,
+      );
+      await delay(300);
+      await click(host, '#start');
+      await until(host, 'document.querySelector("#app").dataset.phase === "active"');
+      await abandon(host);
+      await click(host, '#next');
+      await command(
+        'Emulation.setDeviceMetricsOverride',
+        { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false },
+        host.id,
+      );
+      pass('Second solo round and short desktop window remain usable');
+      await click(host, '#start');
+      await until(
+        host,
+        'testScene.lastRaidId === testScene.services.controller.getView().raidId && testScene.searchPoints.length > 0',
+      );
+      assert.equal(
+        await evaluate(
+          host,
+          `testScene.searchPoints.every(p => {
+    const chest = testScene.view.chests.get(p.id);
+    return Math.abs(chest.mesh.position.x*32-p.x)<0.001 && Math.abs(chest.mesh.position.z*32-p.y)<0.001;
+  })`,
+        ),
+        true,
+        'reused scene moves every chest mesh to the current round layout',
+      );
+      await evaluate(
+        host,
+        `(() => {
+    const s = testScene;
+    s.controls.pointer = undefined;
+    globalThis.battleEnemy = s.combat.enemies.find(e => e.kind === 'patrol');
+    globalThis.calmEnemy = s.combat.enemies.find(e => e.kind === 'hug');
+    battleEnemy.position = {x:s.position.x,y:s.position.y-48};
+    battleEnemy.home = {...battleEnemy.position}; battleEnemy.route = [{...battleEnemy.position}];
+    battleEnemy.state = 'windup'; battleEnemy.timer = 10000; battleEnemy.wanders = false;
+    s.combat.enemies = [battleEnemy]; s.clearInteractions();
+  })()`,
+      );
+      await press(host, ' ', 'Space', 32);
+      await until(host, 'battleEnemy.health < 70');
+      await screenshot(host, '20-formal-combat');
+      await evaluate(host, 'battleEnemy.timer=1; testScene.combat.invulnerability=0');
+      await until(host, 'testScene.services.controller.getView().health < 100');
+      await evaluate(
+        host,
+        `(() => {
+    calmEnemy.position = {x:testScene.position.x,y:testScene.position.y-40};
+    calmEnemy.state='request'; calmEnemy.timer=10000; calmEnemy.hugProgress=0;
+    testScene.combat.enemies=[calmEnemy]; testScene.clearInteractions();
+  })()`,
+      );
+      await command(
+        'Input.dispatchKeyEvent',
+        { type: 'keyDown', key: 'q', code: 'KeyQ', windowsVirtualKeyCode: 81 },
+        host.id,
+      );
+      await until(host, 'calmEnemy.state === "calmed"');
+      await command(
+        'Input.dispatchKeyEvent',
+        { type: 'keyUp', key: 'q', code: 'KeyQ', windowsVirtualKeyCode: 81 },
+        host.id,
+      );
+      await screenshot(host, '21-formal-calming');
+      await evaluate(host, 'testScene.services.controller.applyDamage(1000)');
+      await until(host, 'document.querySelector("#app").dataset.phase === "failed"');
+      await screenshot(host, '22-formal-failure');
+      await click(host, '#next');
+      await click(host, '#start');
+      await until(host, 'document.querySelector("#app").dataset.phase === "active"');
+      await command('Page.reload', {}, host.id);
+      await until(
+        host,
+        'typeof globalThis.testScene === "undefined" && document.querySelector("#game-load-status")?.dataset.state === "ready"',
+      );
+      await attachScene(host);
+      assert.equal(
+        await evaluate(host, 'testScene.services.controller.getView().phase'),
+        'preparing',
+      );
+      pass(
+        'Formal combat: Space damages enemies, enemy windup hurts player, Q calms, death settles and active reload recovers',
+      );
+
+      const storyPage = await newPage('story');
+      await consent(storyPage);
+      await click(storyPage, '#start');
+      await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
+      await click(storyPage, '#tutorial-skip');
+      await attachScene(storyPage);
+      assert.equal(
+        await evaluate(storyPage, 'testScene.view.treeView.mesh.count'),
+        198,
+        'pixel trees are loaded in the formal scene',
+      );
+      await standAt(storyPage, geometry.stone, 65);
+      await screenshot(storyPage, '10-minghu-stele-world');
+      await interact(storyPage);
+      assert.equal(
+        await evaluate(storyPage, 'testScene.services.controller.getView().steleInvestigated'),
+        false,
+        'stele still requires this raid notebook',
+      );
+      await searchEvidence(storyPage, 'torn-notebook', '09-notebook-search');
+      await until(storyPage, 'document.querySelector("#quest-count").textContent === "1 / 2"');
+      const notebook = await evaluate(
+        storyPage,
+        'testScene.services.inventory.getCarriedItems().find(i => i.itemId === "torn-notebook")',
+      );
+      await click(storyPage, '#inventory [data-item-id="torn-notebook"] button:last-child');
+      await click(storyPage, '#confirm-ok');
+      await until(storyPage, `testScene.ground.has(${JSON.stringify(notebook.instanceId)})`);
+      await screenshot(storyPage, '19-dropped-quest-item');
+      await press(storyPage, 'Tab', 'Tab', 9);
+      await interact(storyPage);
+      await until(
+        storyPage,
+        `testScene.services.inventory.getCarriedItems().some(i => i.instanceId === ${JSON.stringify(notebook.instanceId)})`,
+      );
+      assert.deepEqual(
+        await evaluate(
+          storyPage,
+          'testScene.services.inventory.getCarriedItems().find(i => i.itemId === "torn-notebook")',
+        ),
+        notebook,
+        'drop/pickup preserves quest instance and raid provenance',
+      );
+      await standAt(storyPage, geometry.stone, 0);
+      await interact(storyPage);
+      await until(storyPage, 'document.querySelector("#story-dialog").open');
+      assert(
+        await evaluate(
+          storyPage,
+          'document.querySelector("#story-label").textContent.includes("石碑")',
+        ),
+      );
+      await screenshot(storyPage, '10-stele-story');
+      await click(storyPage, '#story-skip');
+      await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
+      // Ordinary valuables only supply the extraction threshold; all story evidence
+      // above and below is obtained through the actual world interactions.
+      const addValuables = `(() => {
     const {inventory, controller} = testScene.services;
     const raidId = controller.getView().raidId;
     for (let i = 0; i < 2; i++) inventory.addLoot({instanceId: raidId + ':test-value:' + i, itemId: 'gpa-charm', origin: {kind:'raid-loot', obtainedInRaidId:raidId}});
   })()`;
-  const finishChapter = async (expectedChapter, nextChapter) => {
-    await evaluate(storyPage, addValuables);
-    await standAt(storyPage, { x: 235, y: 1682 }, 0);
-    await interact(storyPage);
-    await until(
-      storyPage,
-      'document.querySelector("#app").dataset.phase === "success" && document.querySelector("#story-dialog").open',
-    );
-    assert.equal(
-      await evaluate(storyPage, 'testScene.services.controller.getView().result.questComplete'),
-      true,
-    );
-    assert.equal(
+      const finishChapter = async (expectedChapter, nextChapter) => {
+        await evaluate(storyPage, addValuables);
+        await standAt(storyPage, geometry.spawn, 0);
+        await interact(storyPage);
+        await until(
+          storyPage,
+          'document.querySelector("#app").dataset.phase === "success" && document.querySelector("#story-dialog").open',
+        );
+        assert.equal(
+          await evaluate(storyPage, 'testScene.services.controller.getView().result.questComplete'),
+          true,
+        );
+        assert.equal(
+          await evaluate(
+            storyPage,
+            `document.querySelector('[data-chapter-story="${expectedChapter}"]') !== null`,
+          ),
+          false,
+          'ending must close before chapter unlock',
+        );
+        await click(storyPage, '#story-skip');
+        await until(
+          storyPage,
+          `!!document.querySelector('[data-chapter-story="${expectedChapter}"]')`,
+        );
+        await click(storyPage, '#next');
+        await until(
+          storyPage,
+          `!!document.querySelector('#lobby-missions [data-chapter="${nextChapter}"]')`,
+        );
+      };
+      await finishChapter('siyuan-code', 'siyuan-key');
+      await click(storyPage, '[data-lobby-tab="warehouse"]');
+      await click(storyPage, '.archive-story > summary');
+      await click(storyPage, '[data-chapter-story="siyuan-code"]');
+      await until(storyPage, 'document.querySelector("#story-dialog").open');
+      await click(storyPage, '#story-skip');
+      await click(storyPage, '[data-lobby-tab="prepare"]');
+      await click(storyPage, '#start');
+      await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
+      await searchEvidence(storyPage, 'marked-campus-map');
+      await searchEvidence(storyPage, 'siyuan-key');
+      await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
+      await finishChapter('siyuan-key', 'soothe-monster');
+      await screenshot(storyPage, '11-chapter-three-unlocked');
+      await click(storyPage, '#start');
+      await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
+      await searchEvidence(storyPage, 'soothe-charm', '18-third-chapter-search');
+      await searchEvidence(storyPage, 'complete-record');
+      await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
+      await finishChapter('soothe-monster', 'soothe-monster');
+      pass(
+        'All three chapters: notebook/stele → map/key → charm/record → extraction → ending-gated cloud unlock and archive replay',
+      );
+
+      await click(storyPage, '[data-lobby-tab="shop"]');
+      const initialBalance = await evaluate(
+        storyPage,
+        'Number(document.querySelector("#shop-balance").textContent)',
+      );
+      assert(initialBalance >= 170, 'duplicate collectibles funded the shop through settlement');
+      for (const itemId of ['bandage', 'yellow-bike', 'thick-down-jacket']) {
+        await click(storyPage, `[data-shop-buy="${itemId}"]`);
+        await until(
+          storyPage,
+          'document.querySelector("#shop-status").dataset.state === "success"',
+        );
+        await until(
+          storyPage,
+          `document.querySelector('[data-shop-item="${itemId}"] [data-shop-stock]').textContent === '1'`,
+        );
+      }
+      const afterPurchase = initialBalance - 160;
+      assert.equal(
+        await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
+        afterPurchase,
+      );
+      assert.equal(
+        await evaluate(
+          storyPage,
+          'document.querySelector("[data-shop-buy=thick-down-jacket]").disabled',
+        ),
+        true,
+      );
+      await screenshot(storyPage, '12-shop-purchases');
+      await command('Fetch.enable', { patterns: [{ urlPattern: '*/api/save' }] }, storyPage.id);
+      await click(storyPage, '[data-shop-buy="bandage"]');
+      await until(storyPage, 'document.querySelector("#shop-status").dataset.state === "error"');
+      assert.equal(
+        await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
+        afterPurchase,
+        'failed cloud save keeps balance',
+      );
+      assert.equal(
+        await evaluate(
+          storyPage,
+          'document.querySelector("[data-shop-item=bandage] [data-shop-stock]").textContent',
+        ),
+        '1',
+        'failed cloud save grants no item',
+      );
+      await command('Fetch.disable', {}, storyPage.id);
       await evaluate(
         storyPage,
-        `document.querySelector('[data-chapter-story="${expectedChapter}"]') !== null`,
-      ),
-      false,
-      'ending must close before chapter unlock',
-    );
-    await click(storyPage, '#story-skip');
-    await until(storyPage, `!!document.querySelector('[data-chapter-story="${expectedChapter}"]')`);
-    await click(storyPage, '#next');
-    await until(
-      storyPage,
-      `!!document.querySelector('#lobby-missions [data-chapter="${nextChapter}"]')`,
-    );
-  };
-  await finishChapter('siyuan-code', 'siyuan-key');
-  await click(storyPage, '[data-lobby-tab="warehouse"]');
-  await click(storyPage, '[data-chapter-story="siyuan-code"]');
-  await until(storyPage, 'document.querySelector("#story-dialog").open');
-  await click(storyPage, '#story-skip');
-  await click(storyPage, '[data-lobby-tab="prepare"]');
-  await click(storyPage, '#start');
-  await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
-  await searchEvidence(storyPage, 'marked-campus-map');
-  await searchEvidence(storyPage, 'siyuan-key');
-  await until(storyPage, 'document.querySelector("#quest-count").textContent === "2 / 2"');
-  await finishChapter('siyuan-key', 'soothe-monster');
-  await screenshot(storyPage, '11-chapter-three-unlocked');
-  pass(
-    'Authored story flow: notebook search → stele prerequisite and story → extraction → ending-gated cloud unlock → archive replay → chapter two evidence → chapter three',
-  );
+        'document.querySelector("[data-shop-buy=bandage]").click(); document.querySelector("[data-shop-buy=bandage]").click()',
+      );
+      await until(storyPage, 'document.querySelector("#shop-status").dataset.state === "success"');
+      assert.equal(
+        await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
+        afterPurchase - 10,
+        'double click buys exactly one',
+      );
+      await command('Page.reload', {}, storyPage.id);
+      await until(
+        storyPage,
+        'typeof globalThis.testScene === "undefined" && document.querySelector("#game-load-status")?.dataset.state === "ready"',
+      );
+      if (await evaluate(storyPage, 'document.querySelector("#prologue-skip").checkVisibility()'))
+        await click(storyPage, '#prologue-skip');
+      assert.equal(
+        await evaluate(storyPage, 'document.querySelector("#story-dialog").open'),
+        false,
+        'completed third chapter does not reopen its ending on reload',
+      );
+      await click(storyPage, '[data-lobby-tab="shop"]');
+      assert.equal(
+        await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
+        afterPurchase - 10,
+        'wallet persists on reload',
+      );
+      assert.equal(
+        await evaluate(
+          storyPage,
+          'document.querySelector("[data-shop-item=bandage] [data-shop-stock]").textContent',
+        ),
+        '2',
+        'purchases persist on reload',
+      );
+      await click(storyPage, '#shop-prepare');
+      await evaluate(
+        storyPage,
+        `document.querySelectorAll('#loadout input').forEach(input => { if (input.closest('label').textContent.match(/创可贴|小黄车|羽绒服/)) { input.checked = true; input.dispatchEvent(new Event('change')); } })`,
+      );
+      assert.equal(
+        await evaluate(storyPage, 'document.querySelector("#loadout-slots").textContent'),
+        '已选 6 / 6 格（含初始武器）',
+      );
+      await consent(storyPage);
+      await click(storyPage, '#start');
+      await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
+      await attachScene(storyPage);
+      await click(storyPage, '#inventory [data-item-id="bandage"] button');
+      assert.equal(
+        await evaluate(
+          storyPage,
+          'testScene.services.inventory.getCarriedItems().filter(i => i.itemId === "bandage").length',
+        ),
+        2,
+        'full health does not consume healing',
+      );
+      await evaluate(storyPage, 'testScene.services.controller.applyDamage(20)');
+      await click(storyPage, '#inventory [data-item-id="bandage"] button');
+      assert.equal(
+        await evaluate(storyPage, 'testScene.services.controller.getView().health'),
+        90,
+        'purchased bandage heals',
+      );
+      await click(storyPage, '#inventory [data-item-id="yellow-bike"] button');
+      assert.equal(
+        await evaluate(storyPage, 'testScene.services.controller.getMoveSpeedMultiplier()'),
+        1.3,
+        'purchased bike applies speed',
+      );
+      await click(storyPage, '#inventory [data-item-id="thick-down-jacket"] button');
+      await evaluate(storyPage, 'testScene.services.controller.applyDamage(20)');
+      assert.equal(
+        await evaluate(storyPage, 'testScene.services.controller.getView().health'),
+        90,
+        'purchased jacket shield absorbs damage',
+      );
+      await until(
+        storyPage,
+        '!document.querySelector("#inventory [data-item-id=yellow-bike]") && !document.querySelector("#inventory [data-item-id=thick-down-jacket]")',
+      );
+      await screenshot(storyPage, '13-purchased-items-used');
+      await abandon(storyPage);
+      pass(
+        'Standalone shop: balance, all three purchases, insufficient funds, failed save rollback, duplicate click, cloud reload, carry-in, healing, speed and shield effects',
+      );
+    }
 
-  await click(storyPage, '[data-lobby-tab="shop"]');
-  const initialBalance = await evaluate(
-    storyPage,
-    'Number(document.querySelector("#shop-balance").textContent)',
-  );
-  assert(initialBalance >= 170, 'duplicate collectibles funded the shop through settlement');
-  for (const itemId of ['bandage', 'yellow-bike', 'thick-down-jacket']) {
-    await click(storyPage, `[data-shop-buy="${itemId}"]`);
-    await until(storyPage, 'document.querySelector("#shop-status").dataset.state === "success"');
-    await until(
-      storyPage,
-      `document.querySelector('[data-shop-item="${itemId}"] [data-shop-stock]').textContent === '1'`,
+    await click(host, '#mode-room');
+    await until(host, '!document.querySelector("#network-create").disabled');
+    await click(host, '#network-create');
+    await until(host, '/^[0-9]{6}$/.test(document.querySelector("#room-state-title").textContent)');
+    const code = await evaluate(host, 'document.querySelector("#room-state-title").textContent');
+    const guest = await newPage('guest');
+    await click(guest, '#mode-room');
+    await until(guest, '!document.querySelector("#network-join").disabled');
+    await evaluate(guest, `document.querySelector('#network-room').value=${JSON.stringify(code)}`);
+    await click(guest, '#network-join');
+    await until(host, 'document.querySelector("#room-count").textContent.startsWith("2 /")');
+    await consent(host);
+    assert.equal(
+      await evaluate(host, 'document.querySelector("#network-start").disabled'),
+      true,
+      'host waits for guest readiness',
     );
-  }
-  const afterPurchase = initialBalance - 160;
-  assert.equal(
-    await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
-    afterPurchase,
-  );
-  assert.equal(
-    await evaluate(
-      storyPage,
-      'document.querySelector("[data-shop-buy=thick-down-jacket]").disabled',
-    ),
-    true,
-  );
-  await screenshot(storyPage, '12-shop-purchases');
-  await command('Fetch.enable', { patterns: [{ urlPattern: '*/api/save' }] }, storyPage.id);
-  await click(storyPage, '[data-shop-buy="bandage"]');
-  await until(storyPage, 'document.querySelector("#shop-status").dataset.state === "error"');
-  assert.equal(
-    await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
-    afterPurchase,
-    'failed cloud save keeps balance',
-  );
-  assert.equal(
-    await evaluate(
-      storyPage,
-      'document.querySelector("[data-shop-item=bandage] [data-shop-stock]").textContent',
-    ),
-    '1',
-    'failed cloud save grants no item',
-  );
-  await command('Fetch.disable', {}, storyPage.id);
-  await evaluate(
-    storyPage,
-    'document.querySelector("[data-shop-buy=bandage]").click(); document.querySelector("[data-shop-buy=bandage]").click()',
-  );
-  await until(storyPage, 'document.querySelector("#shop-status").dataset.state === "success"');
-  assert.equal(
-    await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
-    afterPurchase - 10,
-    'double click buys exactly one',
-  );
-  await command('Page.reload', {}, storyPage.id);
-  await until(
-    storyPage,
-    'typeof globalThis.testScene === "undefined" && document.querySelector("#game-load-status")?.dataset.state === "ready"',
-  );
-  if (await evaluate(storyPage, 'document.querySelector("#prologue-skip").checkVisibility()'))
-    await click(storyPage, '#prologue-skip');
-  await click(storyPage, '[data-lobby-tab="shop"]');
-  assert.equal(
-    await evaluate(storyPage, 'Number(document.querySelector("#shop-balance").textContent)'),
-    afterPurchase - 10,
-    'wallet persists on reload',
-  );
-  assert.equal(
-    await evaluate(
-      storyPage,
-      'document.querySelector("[data-shop-item=bandage] [data-shop-stock]").textContent',
-    ),
-    '2',
-    'purchases persist on reload',
-  );
-  await click(storyPage, '#shop-prepare');
-  await evaluate(
-    storyPage,
-    `document.querySelectorAll('#loadout input').forEach(input => { if (input.closest('label').textContent.match(/创可贴|小黄车|羽绒服/)) { input.checked = true; input.dispatchEvent(new Event('change')); } })`,
-  );
-  assert.equal(
-    await evaluate(storyPage, 'document.querySelector("#loadout-slots").textContent'),
-    '已选 5 / 6 格',
-  );
-  await consent(storyPage);
-  await click(storyPage, '#start');
-  await until(storyPage, 'document.querySelector("#app").dataset.phase === "active"');
-  await attachScene(storyPage);
-  await click(storyPage, '#inventory [data-item-id="bandage"] button');
-  assert.equal(
-    await evaluate(
-      storyPage,
-      'testScene.services.inventory.getCarriedItems().filter(i => i.itemId === "bandage").length',
-    ),
-    2,
-    'full health does not consume healing',
-  );
-  await evaluate(storyPage, 'testScene.services.controller.applyDamage(20)');
-  await click(storyPage, '#inventory [data-item-id="bandage"] button');
-  assert.equal(
-    await evaluate(storyPage, 'testScene.services.controller.getView().health'),
-    90,
-    'purchased bandage heals',
-  );
-  await click(storyPage, '#inventory [data-item-id="yellow-bike"] button');
-  assert.equal(
-    await evaluate(storyPage, 'testScene.services.controller.getMoveSpeedMultiplier()'),
-    1.3,
-    'purchased bike applies speed',
-  );
-  await click(storyPage, '#inventory [data-item-id="thick-down-jacket"] button');
-  await evaluate(storyPage, 'testScene.services.controller.applyDamage(20)');
-  assert.equal(
-    await evaluate(storyPage, 'testScene.services.controller.getView().health'),
-    90,
-    'purchased jacket shield absorbs damage',
-  );
-  await until(
-    storyPage,
-    '!document.querySelector("#inventory [data-item-id=yellow-bike]") && !document.querySelector("#inventory [data-item-id=thick-down-jacket]")',
-  );
-  await screenshot(storyPage, '13-purchased-items-used');
-  await abandon(storyPage);
-  pass(
-    'Standalone shop: balance, all three purchases, insufficient funds, failed save rollback, duplicate click, cloud reload, carry-in, healing, speed and shield effects',
-  );
-
-  await click(host, '#mode-room');
-  await until(host, '!document.querySelector("#network-create").disabled');
-  await click(host, '#network-create');
-  await until(host, '/^[0-9]{6}$/.test(document.querySelector("#room-state-title").textContent)');
-  const code = await evaluate(host, 'document.querySelector("#room-state-title").textContent');
-  const guest = await newPage('guest');
-  await click(guest, '#mode-room');
-  await until(guest, '!document.querySelector("#network-join").disabled');
-  await evaluate(guest, `document.querySelector('#network-room').value=${JSON.stringify(code)}`);
-  await click(guest, '#network-join');
-  await until(host, 'document.querySelector("#room-count").textContent.startsWith("2 /")');
-  assert.equal(
-    await evaluate(host, 'document.querySelector("#network-start").disabled'),
-    true,
-    'host waits for guest readiness',
-  );
-  await consent(guest);
-  await click(guest, '#network-ready');
-  await until(host, '!document.querySelector("#network-start").disabled');
-  assert.equal(await evaluate(guest, 'document.querySelector("#room-settings").disabled'), true);
-  await evaluate(
-    host,
-    `(() => { const select = document.querySelector('#network-capacity'); select.value = '2'; select.dispatchEvent(new Event('change')); })()`,
-  );
-  await until(guest, 'document.querySelector("#room-count").textContent === "2 / 2 人"');
-  await until(host, 'document.querySelector("#network-start").disabled');
-  await until(
-    guest,
-    'document.querySelector("#network-ready").getAttribute("aria-pressed") === "false"',
-  );
-  await evaluate(
-    host,
-    `(() => { const select = document.querySelector('#network-admission'); select.value = 'closed'; select.dispatchEvent(new Event('change')); })()`,
-  );
-  await until(guest, 'document.querySelector("#network-admission").value === "closed"');
-  await until(host, '/ms/.test(document.querySelector("#network-quality").textContent)');
-  await click(guest, '#network-ready');
-  await until(host, '!document.querySelector("#network-start").disabled');
-  pass(
-    'Room rules: host-only capacity and admission, synchronized changes, readiness reset and live latency',
-  );
-  assert(
+    await consent(guest);
+    await click(guest, '#network-ready');
+    await until(host, '!document.querySelector("#network-start").disabled');
+    assert.equal(await evaluate(guest, 'document.querySelector("#room-settings").disabled'), true);
     await evaluate(
       host,
-      `(() => { const box = document.querySelector('#network-start').getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()`,
-    ),
-    'room launch button stays inside the desktop frame',
-  );
-  await screenshot(host, '04-room-ready');
-  await click(host, '#network-start');
-  for (const page of [host, guest])
-    await until(
-      page,
-      'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#room-page").hidden',
+      `(() => { const select = document.querySelector('#network-capacity'); select.value = '2'; select.dispatchEvent(new Event('change')); })()`,
     );
-  const hostId = host.frames.find((frame) => frame.type === 'welcome').playerId;
-  for (const page of [host, guest]) {
-    assert.equal(await evaluate(page, 'document.querySelector("#team-status").hidden'), false);
-    assert.equal(await evaluate(page, 'document.querySelectorAll("#team-players li").length'), 2);
-    assert.equal(await evaluate(page, 'document.querySelector("#room-settings").disabled'), true);
-    if (await evaluate(page, 'document.querySelector("#tutorial-skip").checkVisibility()'))
-      await click(page, '#tutorial-skip');
+    await until(guest, 'document.querySelector("#room-count").textContent === "2 / 2 人"');
+    await until(host, 'document.querySelector("#network-start").disabled');
+    await until(
+      guest,
+      'document.querySelector("#network-ready").getAttribute("aria-pressed") === "false"',
+    );
+    await evaluate(
+      host,
+      `(() => { const select = document.querySelector('#network-admission'); select.value = 'closed'; select.dispatchEvent(new Event('change')); })()`,
+    );
+    await until(guest, 'document.querySelector("#network-admission").value === "closed"');
+    await until(host, '/ms/.test(document.querySelector("#network-quality").textContent)');
+    await click(guest, '#network-ready');
+    await until(host, '!document.querySelector("#network-start").disabled');
+    pass(
+      'Room rules: host-only capacity and admission, synchronized changes, readiness reset and live latency',
+    );
+    assert(
+      await evaluate(
+        host,
+        `(() => { const box = document.querySelector('#network-start').getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()`,
+      ),
+      'room launch button stays inside the desktop frame',
+    );
+    await screenshot(host, '04-room-ready');
+    await click(host, '#network-start');
+    for (const page of [host, guest])
+      await until(
+        page,
+        'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#room-page").hidden',
+      );
+    const hostId = host.frames.find((frame) => frame.type === 'welcome').playerId;
+    for (const page of [host, guest]) {
+      assert.equal(await evaluate(page, 'document.querySelector("#team-status").hidden'), false);
+      assert.equal(await evaluate(page, 'document.querySelectorAll("#team-players li").length'), 2);
+      assert.equal(await evaluate(page, 'document.querySelector("#room-settings").disabled'), true);
+      if (await evaluate(page, 'document.querySelector("#tutorial-skip").checkVisibility()'))
+        await click(page, '#tutorial-skip');
+      await attachScene(page);
+      await until(
+        page,
+        'testScene.lastRaidId === testScene.services.controller.getView().raidId && testScene.view.teammates.size === 1',
+      );
+    }
+    const chestLayout = 'testScene.searchPoints.map(({id,x,y}) => ({id,x,y}))';
+    assert.deepEqual(
+      await evaluate(host, chestLayout),
+      await evaluate(guest, chestLayout),
+      'room members render the same seeded chest layout',
+    );
+    const roomBefore = guest.frames.findLast(
+      (frame) => frame.type === 'room-state' && frame.started,
+    );
+    const hostX = roomBefore.players.find((player) => player.playerId === hostId).position.x;
+    await move(host);
+    await delay(500);
+    const roomAfter = guest.frames.findLast(
+      (frame) => frame.type === 'room-state' && frame.started,
+    );
+    assert(
+      roomAfter.players.find((player) => player.playerId === hostId).position.x > hostX,
+      'peer receives actual server movement',
+    );
+    await screenshot(host, '05-room-game');
+    await abandon(host);
+    await until(guest, 'testScene.teammates.size === 0 && testScene.view.teammates.size === 0');
+    await click(host, '#next');
+    await until(host, '!document.querySelector("#room-page").hidden');
+    assert.equal(
+      await evaluate(host, 'document.querySelector("#network-start").disabled'),
+      true,
+      'wait for remaining player to finish',
+    );
+    await abandon(guest);
+    await click(guest, '#next');
+    await until(guest, '!document.querySelector("#network-ready").disabled');
+    await click(guest, '#network-ready');
+    await until(host, '!document.querySelector("#network-start").disabled');
+    await click(host, '#network-start');
+    for (const page of [host, guest])
+      await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await abandon(host);
+    await abandon(guest);
+    await click(host, '#next');
+    await click(guest, '#next');
+    await click(host, '.room-transfer');
+    await click(host, '#confirm-ok');
+    await until(guest, '!document.querySelector("#network-start").hidden');
+    await until(host, '!document.querySelector("#network-ready").hidden');
+    pass('Host transfer updates permissions in both browsers');
+    await click(host, '#network-leave');
+    await click(host, '#close-room');
+    await click(host, '#mode-solo');
+    await click(host, '#start');
+    await until(host, 'document.querySelector("#app").dataset.phase === "active"');
+    await abandon(host);
+    pass(
+      'Two accounts: join → ready → start together → sync movement → finish → next round → return to solo',
+    );
+
+    const mobile = await newPage('mobile', { mobile: true });
+    await consent(mobile);
+    await click(mobile, '#start');
+    await until(
+      mobile,
+      'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#timer").textContent !== "10:00"',
+    );
+    assert.equal(await evaluate(mobile, 'document.documentElement.dataset.touch'), 'true');
+    assert(await evaluate(mobile, 'document.querySelector("#game-canvas").clientHeight > 100'));
+    await click(mobile, '#tutorial-skip');
+    await attachScene(mobile);
+    const mobileCamera = await evaluate(mobile, 'testScene.view.cameraInfo()');
+    const mobilePosition = await evaluate(mobile, '({...testScene.position})');
+    await touchDrag(mobile, '.touch-stick', 24, 0);
+    const mobileMoved = await evaluate(mobile, '({...testScene.position})');
+    assert(
+      Math.hypot(mobileMoved.x - mobilePosition.x, mobileMoved.y - mobilePosition.y) > 5,
+      'mobile stick moves the player',
+    );
+    assert.equal(
+      await evaluate(mobile, 'testScene.view.cameraInfo()'),
+      mobileCamera,
+      'left joystick does not rotate camera',
+    );
+    await touchDrag(mobile, '.touch-aim', 15, 5);
+    await touchDrag(mobile, '[data-touch-action="SPACE"]', 0, 0);
+    assert.equal(
+      await evaluate(mobile, 'testScene.view.cameraInfo()'),
+      mobileCamera,
+      'aim stick and attack do not rotate camera',
+    );
+    await touchDrag(mobile, '#game-canvas', 20, 40);
+    assert.notEqual(
+      await evaluate(mobile, 'testScene.view.cameraInfo()'),
+      mobileCamera,
+      'empty map drag rotates camera',
+    );
+    await screenshot(mobile, '06-mobile-game');
+    pass(
+      'Portrait touch device: landscape layout, movement and aim sticks, attack isolation and map camera drag',
+    );
+
+    const failed = await newPage('missing', { failAsset: true });
+    await consent(failed);
+    assert.equal(await evaluate(failed, 'document.querySelector("#start").disabled'), true);
+    assert.equal(await evaluate(failed, 'document.querySelector("#reload-game").hidden'), false);
+    assert.equal(
+      await evaluate(failed, 'document.querySelector("#app").dataset.phase'),
+      'preparing',
+    );
+    await screenshot(failed, '07-load-error');
+    pass('Missing sprite: visible recovery action and no raid started');
   }
-  const roomBefore = guest.frames.findLast((frame) => frame.type === 'room-state' && frame.started);
-  const hostX = roomBefore.players.find((player) => player.playerId === hostId).position.x;
-  await move(host);
-  await delay(500);
-  const roomAfter = guest.frames.findLast((frame) => frame.type === 'room-state' && frame.started);
-  assert(
-    roomAfter.players.find((player) => player.playerId === hostId).position.x > hostX,
-    'peer receives actual server movement',
-  );
-  await screenshot(host, '05-room-game');
-  await abandon(host);
-  await click(host, '#next');
-  await until(host, '!document.querySelector("#room-page").hidden');
-  assert.equal(
-    await evaluate(host, 'document.querySelector("#network-start").disabled'),
-    true,
-    'wait for remaining player to finish',
-  );
-  await abandon(guest);
-  await click(guest, '#next');
-  await until(guest, '!document.querySelector("#network-ready").disabled');
-  await click(guest, '#network-ready');
-  await until(host, '!document.querySelector("#network-start").disabled');
-  await click(host, '#network-start');
-  for (const page of [host, guest])
-    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
-  await abandon(host);
-  await abandon(guest);
-  await click(host, '#next');
-  await click(guest, '#next');
-  await click(host, '.room-transfer');
-  await click(host, '#confirm-ok');
-  await until(guest, '!document.querySelector("#network-start").hidden');
-  await until(host, '!document.querySelector("#network-ready").hidden');
-  pass('Host transfer updates permissions in both browsers');
-  await click(host, '#network-leave');
-  await click(host, '#close-room');
-  await click(host, '#mode-solo');
-  await click(host, '#start');
-  await until(host, 'document.querySelector("#app").dataset.phase === "active"');
-  await abandon(host);
-  pass(
-    'Two accounts: join → ready → start together → sync movement → finish → next round → return to solo',
-  );
-
-  const mobile = await newPage('mobile', { mobile: true });
-  await consent(mobile);
-  await click(mobile, '#start');
-  await until(
-    mobile,
-    'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#timer").textContent !== "10:00"',
-  );
-  assert.equal(await evaluate(mobile, 'document.documentElement.dataset.touch'), 'true');
-  assert(await evaluate(mobile, 'document.querySelector("#game-canvas").clientHeight > 100'));
-  await screenshot(mobile, '06-mobile-game');
-  pass('Portrait touch device: landscape layout and working solo launch');
-
-  const failed = await newPage('missing', { failAsset: true });
-  await consent(failed);
-  assert.equal(await evaluate(failed, 'document.querySelector("#start").disabled'), true);
-  assert.equal(await evaluate(failed, 'document.querySelector("#reload-game").hidden'), false);
-  assert.equal(await evaluate(failed, 'document.querySelector("#app").dataset.phase'), 'preparing');
-  await screenshot(failed, '07-load-error');
-  pass('Missing sprite: visible recovery action and no raid started');
 
   const errors = [...pages.values()].flatMap((page) =>
     page.errors.map((error) => ({ page: page.name, error })),

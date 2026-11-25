@@ -1,7 +1,11 @@
+import { bindRaidInventory } from './modules/ui/raid-inventory';
+import { RAID_INVENTORY_CAPACITIES } from './modules/inventory/inventory-sections';
+import './raid-hud.css';
 import './style.css';
 import './mobile-layout.css';
 import './archive-browser.css';
 import './friends.css';
+import './immersive.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { createGame } from './app/create-game';
 import {
@@ -53,7 +57,7 @@ import {
 import { exportCodexImage } from './modules/ui/codex';
 import { renderArchiveBrowser } from './modules/ui/archive-browser';
 import { createTutorial, renderTutorial, tutorialStore } from './modules/ui/tutorial';
-import { WorldScene } from './scenes/world-scene';
+import { FormalWorldScene as WorldScene } from './scenes/formal-world-scene';
 import { contains } from './modules/world/movement';
 import { activeMap, upcomingMap } from './config/play-map';
 import { EventBus } from './shared/events/game-events';
@@ -298,6 +302,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
 
   const notify = (message: string) => {
     element('notice').textContent = message;
+    if (['active', 'extracting'].includes(app.dataset.phase ?? '')) showMapToast(message);
   };
   // R15 好友与私聊：面板随大厅挂载；切到「好友」页签时刷新，可见期间每 6 秒轮询未读。
   const friendsPanel = createFriendsPanel({
@@ -389,7 +394,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       notify('检测到上次未结束的探索，已按中断失败处理；未带入仓库的物品不受影响。');
     }
     const events = new EventBus();
-    const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
+    const inventory = new ReferenceInventory(
+      events,
+      RAID_RULES.bagCapacity,
+      ITEM_DEFINITIONS,
+      RAID_INVENTORY_CAPACITIES,
+    );
     const controller = new RaidController(
       inventory,
       save,
@@ -398,7 +408,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       ITEM_DEFINITIONS,
       Date.now,
       () => crypto.randomUUID(),
-      () => activeQuestChapter(save.view().unlockedChapterIds).id,
+      () => activeQuestChapter(save.view().unlockedChapterIds)?.id ?? null,
     );
     const migrate = element<HTMLButtonElement>('account-import-legacy');
     migrate.hidden = localStorage.getItem(FORMAL_SAVE_KEY) === null;
@@ -512,7 +522,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       network,
       controller: activeController,
       inventory: activeInventory,
-      questChapter: () => activeQuestChapter(save.view().unlockedChapterIds).id,
+      inventoryCapacities: RAID_INVENTORY_CAPACITIES,
+      questChapter: () => activeQuestChapter(save.view().unlockedChapterIds)?.id ?? null,
       events,
       notify,
       touch,
@@ -529,9 +540,17 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         notify(message);
         render();
       },
-      onFrame: (interaction, progress) => {
+      onFrame: (interaction, progress, prompt) => {
         interacted = interaction;
         searchProgress = progress;
+        const feedback = element('key-prompt');
+        feedback.hidden =
+          !prompt || !!document.querySelector('dialog[open]') || app.dataset.bagOpen === 'true';
+        feedback.style.setProperty('--prompt-progress', String(Math.max(0, Math.min(1, progress))));
+        if (prompt) {
+          element('key-prompt-key').textContent = prompt.key;
+          element('key-prompt-label').textContent = prompt.label;
+        }
         if (performance.now() - renderedAt > 80) {
           render();
           renderedAt = performance.now();
@@ -541,6 +560,83 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let rulesOpen = false;
     let mapOpen = false;
     let storyOpen = false;
+    const raidSettings = element<HTMLDialogElement>('raid-settings');
+    const raidInventory = bindRaidInventory();
+    let exitToLobby = false;
+    let displayedValue = 0;
+    let valueFlashTimer: number | undefined;
+    let explorationStarting = false;
+    const inputLifetime = new AbortController();
+    const toggleInventory = () => {
+      const phase = activeController.getView().phase;
+      if (
+        !['active', 'extracting'].includes(phase) ||
+        document.querySelector('dialog[open]') ||
+        roomOpen
+      )
+        return;
+      scene.clearInteractions();
+      raidInventory.setOpen(!raidInventory.isOpen());
+      if (!raidInventory.isOpen()) scene.captureMouse();
+    };
+    element('toggle-inventory').onclick = toggleInventory;
+    element('open-raid-settings').onclick = () => {
+      if (raidSettings.open || !['active', 'extracting'].includes(activeController.getView().phase))
+        return;
+      raidInventory.setOpen(false);
+      scene.clearInteractions();
+      activeController.pause();
+      element('raid-settings-slot').append(settings);
+      raidSettings.showModal();
+      render();
+    };
+    element('resume-raid').onclick = () => {
+      raidSettings.close();
+      render();
+      scene.captureMouse();
+    };
+    raidSettings.addEventListener('close', () => {
+      element('lobby-settings-slot').append(settings);
+      queueMicrotask(render);
+    });
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (
+          !element('prologue').hidden ||
+          !['active', 'extracting'].includes(activeController.getView().phase)
+        )
+          return;
+        if (event.repeat && (event.key === 'Tab' || event.key === 'Escape')) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        // Native dialog cancellation owns Esc; never open a second surface on the same event.
+        if (document.querySelector('dialog[open]') || roomOpen) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (event.key !== 'Tab' && event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        if (event.key === 'Tab') toggleInventory();
+        else if (raidInventory.isOpen()) {
+          scene.clearInteractions();
+          raidInventory.setOpen(false);
+          scene.captureMouse();
+        } else element('open-raid-settings').click();
+      },
+      { capture: true, signal: inputLifetime.signal },
+    );
+    const releaseInventoryRender = events.on('InventoryChanged', () => queueMicrotask(render));
+    const raidCodex = element<HTMLDialogElement>('raid-codex');
+    element('hud-codex').onclick = () => {
+      renderArchiveBrowser(element('raid-archive-browser'), save.view());
+      raidCodex.showModal();
+    };
+    element('close-raid-codex').onclick = () => raidCodex.close();
+    raidCodex.addEventListener('close', () => queueMicrotask(render));
     let pendingEnding: { raidId: string; chapterId: string } | null = null;
     let roomOpen = false;
     // F04：新手引导。只读局内状态与玩家位置，不写任何玩法数据。
@@ -575,7 +671,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         value: view.value,
         threshold: view.threshold,
         inExtractionZone: view.inExtractionZone,
-        bagCount: inventory.getCarriedItems().length,
+        bagCount: inventory.getCarriedItems().filter((item) => item.origin.kind === 'raid-loot')
+          .length,
         interacted,
         moved: tutorialMoved,
         nowMs: performance.now(),
@@ -595,12 +692,23 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const active = view.phase === 'active' || view.phase === 'extracting';
       app.dataset.mobile = String(mobile());
       element('rotate-phone').hidden = true;
-      if (active && (rulesOpen || mapOpen || storyOpen || roomOpen)) {
+      if (
+        active &&
+        (rulesOpen || mapOpen || storyOpen || roomOpen || document.querySelector('dialog[open]'))
+      ) {
         if (!activeController.isPaused()) {
           activeController.pause();
           scene.clearInteractions();
         }
-      } else if (!rulesOpen && !mapOpen && !storyOpen && !roomOpen) activeController.resume();
+      } else if (
+        scene.canResume() &&
+        !rulesOpen &&
+        !mapOpen &&
+        !storyOpen &&
+        !roomOpen &&
+        !document.querySelector('dialog[open]')
+      )
+        activeController.resume();
     };
     let roomTrigger = 'open-room';
     let gameScroll = 0;
@@ -633,13 +741,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
 
     const preparation = element('preparation');
     const preparationHome = preparation.parentElement!;
+    const riskConsentLabel = element('risk-consent').closest('label')!;
+    const riskConsentAnchor = document.createComment('risk consent home');
+    riskConsentLabel.before(riskConsentAnchor);
     const onResize = () => {
       scene.clearInteractions();
       render();
     };
     const disposeLayout = bindMobileLayout(app, () => queueMicrotask(onResize));
     const disposeStage = bindStage(() => queueMicrotask(onResize));
-    // Establish the logical landscape box before Phaser measures its canvas.
+    // Establish the logical landscape box before the renderer measures its canvas.
     const game = createGame(scene);
     element('mobile-fullscreen').onclick = () => {
       void requestLandscape();
@@ -699,11 +810,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     for (const button of document.querySelectorAll<HTMLButtonElement>('[data-v19-close]')) {
       button.onclick = () => button.closest('dialog')?.close();
     }
-    element('mobile-bag').onclick = () => {
-      scene.clearInteractions();
-      const target = element('mobile-bag').getAttribute('aria-controls')!;
-      app.scrollTo({ top: element(target).offsetTop - 12, behavior: 'smooth' });
-    };
+    element('mobile-bag').onclick = toggleInventory;
     const campusMap = element<HTMLDialogElement>('campus-map-dialog');
     element('open-campus-map').onclick = () => {
       if (campusMap.open) return;
@@ -782,8 +889,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     );
     // 每局只弹一次的剧情键：`${raidId}:${itemId}` 为线索，`${raidId}:ending` 为结尾。
     const storyShownPerRaid = new Set<string>();
+    events.on('StoryDiscovered', ({ raidId, locationId, chapterId, title, text }) => {
+      if (activeQuestChapter(save.view().unlockedChapterIds)?.id !== chapterId) return;
+      const key = `${raidId}:site:${locationId}`;
+      if (storyShownPerRaid.has(key)) return;
+      storyShownPerRaid.add(key);
+      story.open({ kind: 'discovery', title, text }, chapterContentById(chapterId));
+    });
     events.on('ItemPicked', ({ raidId, item }) => {
       const chapterId = questChapterForEvidence(item.itemId);
+      if (activeQuestChapter(save.view().unlockedChapterIds)?.id !== chapterId) return;
       const step = stepForEvidence(item.itemId, chapterContentById(chapterId));
       if (!step) return;
       const key = `${raidId}:${item.itemId}`;
@@ -814,6 +929,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const prepTarget =
         roomOpen && lobby.isJoined() ? element('room-preparation-slot') : preparationHome;
       if (preparation.parentElement !== prepTarget) prepTarget.append(preparation);
+      if (roomOpen && lobby.isJoined()) {
+        if (riskConsentLabel.parentElement !== element('room-preparation-slot'))
+          element('room-preparation-slot').append(riskConsentLabel);
+      } else if (riskConsentLabel.previousSibling !== riskConsentAnchor) {
+        riskConsentAnchor.after(riskConsentLabel);
+      }
       element<HTMLSelectElement>('starter-weapon').disabled = lobby.isLocked();
       element<HTMLInputElement>('risk-consent').disabled = lobby.isLocked();
       const loadout = element<HTMLDivElement>('loadout');
@@ -824,7 +945,20 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         .forEach((control) => {
           control.disabled = lobby.isLocked();
         });
-      const view = activeController.getView();
+      let view = activeController.getView();
+      if (exitToLobby && view.phase === 'failed') {
+        exitToLobby = false;
+        activeController.prepareNext();
+        view = activeController.getView();
+      }
+      const inRaid = view.phase === 'active' || view.phase === 'extracting';
+      element('toggle-inventory').hidden = !inRaid;
+      element('open-raid-settings').hidden = !inRaid;
+      if (!inRaid) {
+        raidInventory.setOpen(false);
+        if (raidSettings.open) raidSettings.close();
+        if (raidCodex.open) raidCodex.close();
+      }
       const lighting = scene.getLightingStatus();
       const musicState = sound.getMusicState();
       for (const soundButton of document.querySelectorAll<HTMLButtonElement>(
@@ -845,6 +979,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const playable = !paused && (view.phase === 'active' || view.phase === 'extracting');
       touch.setEnabled(playable);
       app.dataset.phase = view.phase;
+      const immersive = view.phase !== 'preparing' && !roomOpen && element('prologue').hidden;
+      document.documentElement.classList.toggle('raid-immersive', immersive);
+      if (!inRaid && !explorationStarting) scene.releaseMouse();
       document.documentElement.classList.toggle(
         'lobby-open',
         view.phase === 'preparing' && !roomOpen,
@@ -910,7 +1047,20 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const seconds = Math.ceil(view.remainingMs / 1000);
       element('timer').textContent =
         `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-      element('loot-value').textContent = String(view.value);
+      if (view.value !== displayedValue) {
+        displayedValue = view.value;
+        element('loot-value').textContent = String(view.value);
+        element('raid-value').classList.remove('value-flash');
+        void element('raid-value').offsetWidth;
+        element('raid-value').classList.add('value-flash');
+        window.clearTimeout(valueFlashTimer);
+        valueFlashTimer = window.setTimeout(
+          () => element('raid-value').classList.remove('value-flash'),
+          600,
+        );
+      }
+      element('battery-compact').textContent =
+        `电量 ${lighting.battery}%${lighting.enabled ? '' : ' · 关'}`;
       element<HTMLProgressElement>('value-progress').value = view.value;
       element('battery').textContent =
         `${lighting.battery}% · ${lighting.enabled ? '开启' : '关闭'}`;
@@ -933,7 +1083,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element<HTMLProgressElement>('interaction-progress').value =
         view.phase === 'extracting' ? view.extractionProgress : searchProgress;
       element('prep-view').hidden = !shouldShowPrepView(view.phase);
-      element('inventory-panel').hidden = !playable;
+
       element('result-panel').hidden = !['settling', 'success', 'failed'].includes(view.phase);
       element<HTMLButtonElement>('start').disabled = !canStartRaid({
         busy: view.isBusy || !sceneReady || buyingItem !== null,
@@ -951,6 +1101,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('mode-solo').setAttribute('aria-pressed', String(!lobby.isJoined()));
       element('mode-room').setAttribute('aria-pressed', String(lobby.isJoined()));
       // F02：按钮不再因为「不在区域 / 价值不足」直接禁用，否则点了没有任何反馈。
+      element('extract').hidden = !inRaid || !view.inExtractionZone;
       element<HTMLButtonElement>('extract').disabled = !playable || view.phase === 'extracting';
       element('extract').textContent =
         view.phase === 'extracting'
@@ -976,7 +1127,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const archive = save.view();
       const activeChapter = activeQuestChapter(archive.unlockedChapterIds);
       renderQuestPanel(
-        questProgress(carried, view.raidId, activeChapter.id, view.steleInvestigated),
+        activeChapter
+          ? questProgress(carried, view.raidId, activeChapter.id, view.steleInvestigated)
+          : null,
       );
       const signature = JSON.stringify([carried, activeInventory.getEquipment()]);
       if (signature !== lastInventory) {
@@ -1000,7 +1153,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         view.phase === 'preparing' && !view.isBusy && !lobby.isLocked(),
       );
       element('archive-detail').textContent = archive.unlockedChapterIds.length
-        ? `已完成 ${archive.unlockedChapterIds.length} 章；当前任务：${activeChapter.title}；图鉴 ${archive.codexIds.length} 种。`
+        ? `已完成 ${archive.unlockedChapterIds.length} 章；${activeChapter ? `当前任务：${activeChapter.title}` : '全部剧情已完成，可自由探索'}；图鉴 ${archive.codexIds.length} 种。`
         : archive.codexIds.length
           ? `已点亮 ${archive.codexIds.length} 种图鉴；带回本局手记、调查明湖石碑并成功撤离后，阅读结尾可解锁下一章。`
           : '成功撤离后，物品和图鉴会保存到当前账号的云端仓库。';
@@ -1029,39 +1182,30 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           checkbox.dataset.bagSlots = String(definition?.bagSlots ?? 1);
           checkbox.checked = selectedIds.has(item.instanceId);
           checkbox.disabled = lobby.isLocked();
-          checkbox.addEventListener('change', () => {
-            const selected = Array.from(
-              loadout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked'),
-            );
-            const slots = selected.reduce(
-              (sum, entry) => sum + Number(entry.dataset.bagSlots ?? 1),
-              0,
-            );
-            if (slots > RAID_RULES.bagCapacity) {
-              checkbox.checked = false;
-              notify(`带入物品最多占 ${RAID_RULES.bagCapacity} 格。`);
-              return;
-            }
-            element('loadout-slots').textContent = `已选 ${slots} / ${RAID_RULES.bagCapacity} 格`;
-          });
+          checkbox.addEventListener('change', () => syncLoadoutSlots(checkbox));
           const text = document.createElement('span');
           text.textContent = `${definition?.name ?? item.itemId} · 占 ${definition?.bagSlots ?? 1} 格`;
           row.append(checkbox, text);
           loadout.append(row);
         }
-        const slots = supplies
-          .filter((item) => selectedIds.has(item.instanceId))
-          .reduce((total, item) => total + (ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1), 0);
-        element('loadout-slots').textContent = `已选 ${slots} / ${RAID_RULES.bagCapacity} 格`;
+        syncLoadoutSlots();
         lastWarehouse = warehouseSignature;
       }
       const settlement = view.result ?? (view.phase === 'preparing' ? archive.lastResult : null);
-      const endingReady = settlement !== null && chapterUnlockGranted(settlement, activeChapter.id);
-      renderChapterUnlock(element('quest-unlock'), endingReady, activeChapter.id);
+      const endingReady =
+        activeChapter !== null &&
+        settlement !== null &&
+        chapterUnlockGranted(settlement, activeChapter.id);
+      renderChapterUnlock(element('quest-unlock'), endingReady, activeChapter?.id ?? null);
       // R07：成功撤离但证据不齐时，说明本章为什么还没解锁。
-      renderChapterLock(element('quest-lock'), settlement, activeChapter.id);
+      renderChapterLock(element('quest-lock'), settlement, activeChapter?.id ?? null);
       // 先播放本章结尾，关闭后按原有存档规则解锁下一章。
-      if (endingReady && settlement && (view.phase === 'success' || view.phase === 'preparing')) {
+      if (
+        activeChapter &&
+        endingReady &&
+        settlement &&
+        (view.phase === 'success' || view.phase === 'preparing')
+      ) {
         const key = `${settlement.raidId}:ending`;
         if (!storyShownPerRaid.has(key)) {
           storyShownPerRaid.add(key);
@@ -1073,7 +1217,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       if (codexSignature !== lastCodex) {
         renderCodexPanel(element('codex-list'), element('story-archive'), archive);
         renderLobbyMissions(element('lobby-missions'), archive.unlockedChapterIds);
-        renderPrepGoals(element('prep-goals'), activeChapter.id);
+        renderPrepGoals(element('prep-goals'), activeChapter?.id ?? null);
         lastCodex = codexSignature;
       }
     }
@@ -1083,15 +1227,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       equipment: ReturnType<typeof inventory.getEquipment>,
     ): void {
       const equippedIds = new Set(Object.values(equipment).map((item) => item.instanceId));
-      const bagItems = items.filter((item) => !equippedIds.has(item.instanceId));
-      element('bag-count').textContent =
-        `${bagItems.length} / ${RAID_RULES.bagCapacity} · 装备 ${equippedIds.size}`;
       const list = element('inventory');
       list.replaceChildren();
       if (!items.length) {
         const li = document.createElement('li');
         li.className = 'empty';
         li.textContent = '还没有物资，用手电照亮附近，寻找物资箱。';
+        li.hidden = true;
         list.append(li);
       }
       for (const item of items) {
@@ -1101,17 +1243,29 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         }
         const li = document.createElement('li');
         li.dataset.itemId = item.itemId;
+        li.dataset.instanceId = item.instanceId;
         const label = document.createElement('span');
         label.textContent = definition.name;
         const sub = document.createElement('small');
         sub.textContent = equippedIds.has(item.instanceId)
-          ? '已装备 · 不占背包格'
+          ? '已装备 · 带入物 · 占道具格'
           : item.origin.kind === 'carry-in'
             ? '带入物 · 不计本局价值'
             : itemValueFor(definition) === null
               ? '本局搜得 · 价值待定'
               : `本局搜得 · ${itemValueFor(definition)} 价值`;
         label.append(sub);
+        const purpose = document.createElement('small');
+        purpose.textContent =
+          SHOP_EFFECTS[item.itemId] ??
+          (definition.kind === 'healing'
+            ? `恢复 ${HEALING_AMOUNTS[item.itemId] ?? 0} 点生命`
+            : definition.kind === 'weapon'
+              ? '携带时按空格攻击'
+              : definition.kind === 'quest'
+                ? '章节任务证据'
+                : '探索藏品');
+        label.append(purpose);
         li.append(label);
         if (definition.kind === 'healing') {
           const use = document.createElement('button');
@@ -1119,7 +1273,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           use.textContent = '使用';
           use.onclick = () => {
             const state = activeController.getView();
-            if (state.phase !== 'active' && state.phase !== 'extracting') {
+            if (
+              activeController.isPaused() ||
+              (state.phase !== 'active' && state.phase !== 'extracting')
+            ) {
               return;
             }
             const amount = HEALING_AMOUNTS[item.itemId];
@@ -1191,7 +1348,32 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         li.append(drop);
         list.append(li);
       }
+      raidInventory.render(items);
     }
+
+    function syncLoadoutSlots(changed?: HTMLInputElement): void {
+      const choices = [
+        ...element('loadout').querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked'),
+      ];
+      const weaponSlots = element<HTMLSelectElement>('starter-weapon').value ? 1 : 0;
+      let slots =
+        weaponSlots + choices.reduce((sum, entry) => sum + Number(entry.dataset.bagSlots ?? 1), 0);
+      if (slots > RAID_INVENTORY_CAPACITIES.tools) {
+        if (changed?.checked) {
+          changed.checked = false;
+          slots -= Number(changed.dataset.bagSlots ?? 1);
+        } else {
+          for (const choice of choices.reverse()) {
+            if (slots <= RAID_INVENTORY_CAPACITIES.tools) break;
+            choice.checked = false;
+            slots -= Number(choice.dataset.bagSlots ?? 1);
+          }
+        }
+        notify('带入道具最多 6 格，初始武器占 1 格。');
+      }
+      element('loadout-slots').textContent = `已选 ${slots} / 6 格（含初始武器）`;
+    }
+    element('starter-weapon').onchange = () => syncLoadoutSlots();
 
     element('risk-consent').onchange = render;
     element('shop-prepare').onclick = () =>
@@ -1247,9 +1429,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         ),
       ).map((input) => input.value);
       const starterWeapon = element<HTMLSelectElement>('starter-weapon').value;
+      explorationStarting = true;
       const starting = activeController.start(selected, starterWeapon || undefined);
       render();
-      const result = await starting;
+      scene.captureMouse();
+      const result = await starting.catch(() => ({ ok: false }));
+      explorationStarting = false;
       notify(
         result.ok
           ? '探索开始。当前物资价值达到 100 后，回到南侧撤离点。'
@@ -1260,11 +1445,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         element<HTMLButtonElement>('start').blur();
         app.scrollTo(0, 0);
         window.scrollTo(0, 0);
+      } else {
+        scene.releaseMouse();
       }
       return result.ok;
     }
     element('reload-game').onclick = () => location.reload();
     element('mode-room').onclick = () => element('open-room').click();
+    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-open-room]')) {
+      button.onclick = () => element('open-room').click();
+    }
     element('mode-solo').onclick = () => {
       if (controller.getView().phase !== 'preparing') return;
       if (lobby.isJoined()) lobby.leave();
@@ -1288,20 +1478,24 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       }
       render();
     };
-    element('abandon').onclick = async () => {
-      if (
-        !(await confirmDialog.ask({
-          title: '放弃本次探索？',
-          message: '本局携带物（包括从仓库带入的物品）将全部损失。',
-          confirmText: '放弃探索',
+    element('abandon').onclick = () => {
+      void confirmDialog
+        .ask({
+          title: '放弃本次探索并返回大厅？',
+          message: '本局全部携带物（含带入道具）将损失；未带入的仓库物品与图鉴保留。',
+          confirmText: '放弃并返回大厅',
+          cancelText: '继续探索',
           tone: 'danger',
-        }))
-      ) {
-        return;
-      }
-      activeController.abandon();
-      sound.setMusic(false);
-      render();
+        })
+        .then((confirmed) => {
+          if (!confirmed) return;
+          exitToLobby = true;
+          raidSettings.close();
+          activeController.resume();
+          activeController.abandon();
+          sound.setMusic(false);
+          render();
+        });
     };
     element('next').onclick = () => {
       activeController.prepareNext();
@@ -1491,18 +1685,30 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       });
     }
     render();
+    let disposed = false;
+    const dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      inputLifetime.abort();
+      releaseInventoryRender();
+      window.clearTimeout(valueFlashTimer);
+      save.close();
+      lobby.dispose();
+      disposeStage();
+      network.close();
+      sound.dispose();
+      disposeLayout();
+      controller.dispose();
+      touch.dispose();
+      game.destroy();
+      document.documentElement.classList.remove('raid-immersive');
+      unlock();
+    };
+    window.addEventListener('pagehide', dispose, { once: true });
     if (import.meta.hot) {
       import.meta.hot.dispose(() => {
-        save.close();
-        lobby.dispose();
-        disposeStage();
-        network.close();
-        sound.dispose();
-        disposeLayout();
-        controller.dispose();
-        touch.dispose();
-        game.destroy(true);
-        unlock();
+        window.removeEventListener('pagehide', dispose);
+        dispose();
       });
     }
   }

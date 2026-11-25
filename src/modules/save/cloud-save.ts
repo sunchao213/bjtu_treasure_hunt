@@ -87,8 +87,12 @@ export class CloudSave implements SavePort {
   reset(): Promise<void> {
     return this.update((next) => next.reset());
   }
-  beginRaid(raidId: string, ids: readonly string[]): Promise<readonly ItemInstance[]> {
-    return this.update((next) => next.beginRaid(raidId, ids));
+  beginRaid(
+    raidId: string,
+    ids: readonly string[],
+    reservedSlots = 0,
+  ): Promise<readonly ItemInstance[]> {
+    return this.update((next) => next.beginRaid(raidId, ids, reservedSlots));
   }
   finalizeRaid(result: RaidResult): Promise<void> {
     return this.update((next) => next.finalizeRaid(result));

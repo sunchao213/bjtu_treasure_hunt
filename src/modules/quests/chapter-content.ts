@@ -194,12 +194,12 @@ export const THIRD_CHAPTER: ChapterContent = {
       stepId: 'step-3-complete-record',
       stepNumber: 3,
       title: '线索三 · 完整记录',
-      locationId: 'south-extraction-point',
+      locationId: 'complete-record-point',
       requiresEvidence: [EVIDENCE_SOOTHE_CHARM, EVIDENCE_COMPLETE_RECORD],
       stepBody:
         '护符与前两章的证据在记录册里对应上了。你终于明白：思源机制原本用于保存记忆，' +
         '却因为长期无人理解与整理，把未被记录的情绪当成噪声清除。' +
-        '你带着护符和完整记录穿过南门，册页第一次没有出现新的红点，而是安静地翻回第一页。',
+        '完整的一页在记录台上慢慢显形。你把它收入背包，准备带着护符一起从南门离开。',
     },
   ],
 };
@@ -244,6 +244,11 @@ export const STORY_LOCATION_ANCHORS: Readonly<Record<string, StoryLocationAnchor
     anchorId: 'siyuan-key-point',
   },
   'garden-sos': { placeName: '芳华园', kind: 'loot-zone', anchorId: 'east-garden' },
+  'complete-record-point': {
+    placeName: '中心广场记录台',
+    kind: 'point',
+    anchorId: 'complete-record-point',
+  },
 };
 
 /** 图鉴条目描述：所有可入仓物品都有对应说明。 */
@@ -298,8 +303,8 @@ const EVIDENCE_STEP_LOCATION: Readonly<Record<string, { chapterId: string; index
   [EVIDENCE_FEATHER]: { chapterId: QUEST_CHAPTER_ID, index: 1 },
   [EVIDENCE_CAMPUS_MAP]: { chapterId: SECOND_CHAPTER_ID, index: 0 },
   [EVIDENCE_SIYUAN_KEY]: { chapterId: SECOND_CHAPTER_ID, index: 1 },
-  [EVIDENCE_SOOTHE_CHARM]: { chapterId: THIRD_CHAPTER_ID, index: 0 },
-  [EVIDENCE_COMPLETE_RECORD]: { chapterId: THIRD_CHAPTER_ID, index: 1 },
+  [EVIDENCE_SOOTHE_CHARM]: { chapterId: THIRD_CHAPTER_ID, index: 1 },
+  [EVIDENCE_COMPLETE_RECORD]: { chapterId: THIRD_CHAPTER_ID, index: 2 },
 };
 
 export function steleStoryBeat(): string {

@@ -45,7 +45,7 @@ export class RaidController implements RaidControllerPort {
     definitions: Readonly<Record<string, ItemDefinition>>,
     private readonly clock: () => number = Date.now,
     private readonly newId: () => string = () => crypto.randomUUID(),
-    private readonly questChapterId: () => string = () => QUEST_CHAPTER_ID,
+    private readonly questChapterId: () => string | null = () => QUEST_CHAPTER_ID,
   ) {
     this.rules = structuredClone(rules);
     this.definitions = structuredClone(definitions);
@@ -72,7 +72,7 @@ export class RaidController implements RaidControllerPort {
     this.saveError = false;
     const raidId = this.newId();
     try {
-      const loadout = await this.save.beginRaid(raidId, loadoutIds);
+      const loadout = await this.save.beginRaid(raidId, loadoutIds, starterWeaponId ? 1 : 0);
       const starterWeapon = starterWeaponId
         ? [
             {

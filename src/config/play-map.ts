@@ -1,6 +1,7 @@
 import type { Point, Rect } from '../shared/types/game';
+import formal from './formal-campus.json';
+import { reachableGround } from '../modules/world/reachable-ground';
 import { WORLD } from './world-config';
-import tiledText from '../../public/assets/maps/campus-night/campus.tmj?raw';
 
 export interface MapZone extends Rect {
   readonly points?: readonly Point[];
@@ -8,6 +9,7 @@ export interface MapZone extends Rect {
 
 export interface PlayMap {
   readonly id: 'campus' | 'generated';
+  readonly canSpawn?: (point: Point) => boolean;
   readonly title: string;
   readonly imageKey: string;
   readonly hasStory: boolean;
@@ -30,6 +32,7 @@ export interface PlayMap {
   readonly lootZones: typeof WORLD.lootZones;
   readonly enemyRoutes: typeof WORLD.enemyRoutes;
   readonly stone: Point | null;
+  readonly chapterThreePoints?: typeof formal.chapterThreePoints;
   readonly questChest: typeof WORLD.questChest | null;
   readonly chapterTwoPoints: typeof WORLD.chapterTwoPoints | null;
 }
@@ -58,26 +61,21 @@ interface TiledDocument {
 }
 
 const CAMPUS_MAP: PlayMap = {
+  ...formal,
   id: 'campus',
-  title: '海淀夜巡',
-  imageKey: 'campus-base',
+  title: '南部校园夜巡',
+  imageKey: 'campus-3d-overview',
   hasStory: true,
-  width: WORLD.width,
-  height: WORLD.height,
-  playerRadius: WORLD.playerRadius,
-  playerSpeed: WORLD.playerSpeed,
-  spawn: WORLD.spawn,
-  extraction: WORLD.extraction,
-  extractions: [WORLD.extraction],
-  obstacles: WORLD.obstacles,
-  lamps: WORLD.lamps,
-  gates: WORLD.gates,
-  buildings: WORLD.buildings,
-  lootZones: WORLD.lootZones,
-  enemyRoutes: WORLD.enemyRoutes,
-  stone: WORLD.stone,
-  questChest: WORLD.questChest,
-  chapterTwoPoints: WORLD.chapterTwoPoints,
+  extractions: [formal.extraction],
+  enemyRoutes: formal.enemyRoutes.map((route) => ({
+    ...route,
+    kind: route.kind === 'hug' ? ('hug' as const) : ('patrol' as const),
+  })),
+  gates: formal.gates.map((gate) => ({
+    ...gate,
+    role: gate.role === 'extraction' ? ('extraction' as const) : ('landmark' as const),
+  })),
+  canSpawn: reachableGround(formal),
 };
 
 function layer(map: TiledDocument, name: string): TiledLayer {
@@ -167,79 +165,24 @@ export function playMapFromTiled(
   };
 }
 
-const tiled = playMapFromTiled(JSON.parse(tiledText) as TiledDocument);
-const columnCount = 3;
-const rowCount = 2;
-const lootZones = Array.from({ length: columnCount * rowCount }, (_, index) => {
-  const column = index % columnCount;
-  const row = Math.floor(index / columnCount);
-  const spanWidth = (tiled.width - 80) / columnCount;
-  const spanHeight = (tiled.height - 100) / rowCount;
-  return {
-    id: `generated-${column}-${row}`,
-    x: 40 + column * spanWidth,
-    y: 50 + row * spanHeight,
-    width: spanWidth,
-    height: spanHeight,
-  };
-});
-
-const GENERATED_MAP: PlayMap = {
-  id: 'generated',
-  title: '生成校园',
-  imageKey: 'generated-campus',
-  hasStory: false,
-  playerRadius: WORLD.playerRadius,
-  playerSpeed: WORLD.playerSpeed,
-  lamps: [],
-  buildings: [],
-  lootZones,
-  enemyRoutes: WORLD.enemyRoutes,
-  stone: null,
-  questChest: null,
-  chapterTwoPoints: null,
-  gates: tiled.extractions.map((zone, index) => ({
-    x: zone.x + zone.width / 2,
-    y: zone.y + zone.height / 2,
-    name: `撤离点 ${index + 1}`,
-    role: 'extraction' as const,
-  })),
-  ...tiled,
-};
-
-const MAPS = [CAMPUS_MAP, GENERATED_MAP] as const;
-let raidCount = 0;
-let current: PlayMap = CAMPUS_MAP;
-
+// Keep the Tiled parser for archived resources; production always uses the 3D district.
 export function activeMap(): PlayMap {
-  return current;
+  return CAMPUS_MAP;
 }
-
 export function upcomingMap(): PlayMap {
-  return MAPS[raidCount % MAPS.length] ?? CAMPUS_MAP;
+  return CAMPUS_MAP;
 }
-
-/** The next raid uses this map, then the following raid switches. */
 export function beginRaidMap(): PlayMap {
-  current = upcomingMap();
-  raidCount += 1;
-  return current;
+  return CAMPUS_MAP;
 }
-
-/** Prep screen shows the map the next raid will use, without consuming it. */
 export function useCampusMap(): PlayMap {
-  current = CAMPUS_MAP;
-  return current;
+  return CAMPUS_MAP;
 }
-
 export function previewUpcomingMap(): PlayMap {
-  current = upcomingMap();
-  return current;
+  return CAMPUS_MAP;
 }
-
 export function resetMapRotation(): void {
-  raidCount = 0;
-  current = CAMPUS_MAP;
+  /* One production map, no rotation state. */
 }
 
 export function zoneContains(zone: MapZone, point: Point): boolean {
@@ -266,6 +209,6 @@ export function zoneContains(zone: MapZone, point: Point): boolean {
   return inside;
 }
 
-export function inExtraction(point: Point, map: PlayMap = current): boolean {
+export function inExtraction(point: Point, map: PlayMap = CAMPUS_MAP): boolean {
   return map.extractions.some((zone) => zoneContains(zone, point));
 }

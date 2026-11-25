@@ -1,0 +1,315 @@
+/* Compact HUD: DOM overlays share the game viewport without reserving a sidebar. */
+html:not([data-touch='true']) #app:not([data-phase='preparing']) main {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  max-width: none;
+}
+html:not([data-touch='true']) #app:not([data-phase='preparing']) .play-layout {
+  height: 100%;
+}
+html:not([data-touch='true']) #app:not([data-phase='preparing']) .map-panel {
+  display: grid;
+  grid-template-rows: 48px minmax(0, 1fr) 42px;
+  height: 100%;
+}
+#app:not([data-phase='preparing']) #notice {
+  display: none;
+}
+.map-panel {
+  position: relative;
+}
+.map-viewport {
+  min-height: 0;
+  overflow: hidden;
+}
+html:not([data-touch='true']) #app:not([data-phase='preparing']) #game-canvas {
+  height: 100%;
+  min-height: 0;
+}
+.map-top {
+  align-items: center;
+}
+.map-actions svg,
+#open-raid-settings svg {
+  vertical-align: middle;
+}
+.raid-value {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  color: #f1d68e;
+  font-size: 14px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.raid-value.value-flash {
+  animation: raid-value-flash 600ms ease-out;
+}
+@keyframes raid-value-flash {
+  0% {
+    color: #fff3bf;
+    text-shadow: 0 0 18px #f5c45d;
+  }
+  100% {
+    color: #f1d68e;
+    text-shadow: none;
+  }
+}
+.battery-compact {
+  color: #b9ceb8;
+  font-size: 11px;
+}
+.backpack-button {
+  position: absolute;
+  z-index: 12;
+  left: 20px;
+  bottom: 16px;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  filter: drop-shadow(0 4px 4px #000b);
+}
+.backpack-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.backpack-button kbd {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
+  padding: 2px 4px;
+  font-size: 9px;
+}
+.raid-inventory {
+  position: absolute;
+  z-index: 11;
+  left: 16px;
+  bottom: 80px;
+  width: 224px;
+  max-height: calc(100% - 96px);
+  display: flex;
+  flex-direction: column;
+  color: #eef5ff;
+  scrollbar-width: thin;
+}
+.inventory-scroll {
+  overflow: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.inventory-art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 880 / 1355;
+  flex-shrink: 0;
+}
+.inventory-skin {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.75;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.item-grid {
+  position: absolute;
+  left: 4.4%;
+  width: 91.4%;
+  height: 38.2%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 4.5% 3%;
+}
+.bag-grid {
+  top: 11%;
+}
+.tools-grid {
+  top: 60.1%;
+}
+.item-slot {
+  min-width: 0;
+  min-height: 0;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #edf5fa;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.item-slot:hover {
+  background: #a4caff20;
+}
+.item-slot[aria-pressed='true'] {
+  outline: 2px solid #ffe18b;
+  outline-offset: -3px;
+  background: #a4caff20;
+}
+.item-slot svg {
+  width: 58%;
+  height: 58%;
+  display: block;
+  flex-shrink: 0;
+}
+.item-slot small {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 9px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rarity-uncommon {
+  color: #a2e4c1;
+}
+.rarity-epic {
+  color: #d7b5ff;
+}
+.rarity-legendary {
+  color: #ffe18b;
+}
+.slot-continuation {
+  font-size: 10px;
+  color: #bcd0de;
+}
+.slot-count {
+  position: absolute;
+  right: 5%;
+  z-index: 1;
+  font-size: 10px;
+  color: #e3efff;
+}
+.bag-slots {
+  top: 5%;
+}
+.tools-slots {
+  top: 55.8%;
+}
+.inventory-details {
+  flex-shrink: 0;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid #6e99c4;
+  background: #10223deb;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.inventory-details p {
+  margin: 0;
+}
+.inventory-details #inventory {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inventory-details #inventory li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+}
+.inventory-details #inventory li > span {
+  flex-basis: 100%;
+}
+.inventory-details #inventory small {
+  display: block;
+  color: #bcd0de;
+  font-size: 10px;
+}
+.inventory-details .mini {
+  padding: 4px 12px;
+  font-size: 11px;
+}
+.settings-links {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0;
+}
+.abandon-button {
+  margin-top: 20px;
+  border-color: #bf6f68;
+  color: #ffb9aa;
+}
+.raid-settings {
+  width: 520px;
+  max-width: calc(100vw - 28px);
+}
+.raid-settings .rules-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.raid-settings .rules-header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.raid-settings .rules-header button {
+  width: auto;
+  margin: 0;
+}
+.raid-settings .rules-content {
+  overflow: auto;
+  max-height: 450px;
+}
+.raid-settings .abandon-button {
+  margin-top: 0;
+}
+html:not([data-touch='true']) #mobile-fullscreen {
+  display: none;
+}
+#result-panel {
+  position: absolute;
+  z-index: 14;
+  left: 50%;
+  top: 50%;
+  width: min(420px, 80%);
+  transform: translate(-50%, -50%);
+  padding: 22px;
+  background: #102e30f2;
+  border: 1px solid #d4b069;
+}
+#result-panel h2 {
+  margin-top: 0;
+}
+#app:not([data-phase='preparing']) .interaction {
+  min-height: 0;
+  padding: 6px 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .raid-value.value-flash {
+    animation: none;
+  }
+}
+
+html:not([data-touch='true']) #app:not([data-phase='preparing']) #game-page {
+  height: 100%;
+}
+.map-viewport #result-panel:not([hidden]) {
+  position: absolute;
+  max-height: 85%;
+  box-shadow: 0 12px 40px #0009;
+}
+.item-slot img {
+  width: 58%;
+  height: 58%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+#app[data-bag-open='true'] .tutorial-card {
+  display: none;
+}

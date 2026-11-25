@@ -1,0 +1,39 @@
+{
+  "retrievedAt": "2026-11-20",
+  "website": "https://map.bjtu.edu.cn/",
+  "permission": "用户在本次会话中明确确认网站资源复用已有授权，并要求制作南门样板。",
+  "finding": "已检查的主地图由 JPG 瓦片显示；对应南门 VR 由 Pano2VR 六面 JPG 分块显示。这两条展示路径未发现可导出的建筑网格。",
+  "marker": {
+    "title": "南门",
+    "panoramaTitle": "东校区南门",
+    "x": 14763,
+    "y": 13052,
+    "url": "https://map.bjtu.edu.cn/xml/gadgets/3/14_12.xml"
+  },
+  "map": {
+    "localFile": "south-gate-map.jpg",
+    "tileSize": 256,
+    "version": "20260624",
+    "tileUrlPattern": "https://map.bjtu.edu.cn/mapdata/zoom{level}/{column}_{row}.jpg?v=20260624",
+    "sample": { "level": 2, "columns": [27, 30], "rows": [24, 26] },
+    "usage": "12 张瓦片拼成 1024×768 参考图，仅用于建模，不作为三维表面贴图或游戏底图。"
+  },
+  "panorama": {
+    "localFile": "south-gate-panorama.jpg",
+    "previewUrl": "https://map.bjtu.edu.cn/qj/bjdzx93/preview.jpg",
+    "configUrl": "https://map.bjtu.edu.cn/qj/bjdzx93/pano.xml?ts=10484515",
+    "generator": "Pano2VR 7.1.9",
+    "node": "node82",
+    "tileUrlPattern": "tiles/node82/cf_%c/l_%l/c_%x/tile_%y.jpg",
+    "cubeFaceLevels": [2957, 1478, 739, 369],
+    "tileSize": 510,
+    "overlap": 1,
+    "usage": "校门外观参考，没有把全景图片冒充为可自由移动的三维模型。"
+  },
+  "output": {
+    "kind": "reference-reconstruction",
+    "geometry": "本项目通过 Blender 脚本重建，游戏尺度下的简化表达；非官网原模型，非测绘级还原。",
+    "textures": "三张自制 256×256 PNG，嵌入 GLB。",
+    "schoolSeal": "门顶为普通圆形装饰，未声明为精确校徽。"
+  }
+}

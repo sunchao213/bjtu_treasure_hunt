@@ -8,7 +8,7 @@ import {
   shouldDropPatrolLoot,
 } from '../../src/modules/world/night-systems';
 import { COMBAT_RULES } from '../../src/config/combat-config';
-import { WORLD } from '../../src/config/world-config';
+import WORLD from '../../src/config/formal-campus.json';
 
 const bounds = { x: 0, y: 0, width: 3600, height: 2400 };
 // Behavior tests control position and isolate one enemy; spawning has separate tests.
@@ -56,7 +56,7 @@ describe('night lighting', () => {
     expect(light.flashlightReveals({ x: 130, y: 100 }, player, 0, [])).toBe(false);
   });
   it('clips visibility at walls and distinguishes ambient visibility from search light', () => {
-    const light = new NightLighting();
+    const light = new NightLighting(LAMPS);
     const player = { x: 100, y: 100 };
     const wall = [{ x: 130, y: 50, width: 20, height: 100 }];
     expect(light.visible({ x: 200, y: 100 }, player, 0, [])).toBe(true);

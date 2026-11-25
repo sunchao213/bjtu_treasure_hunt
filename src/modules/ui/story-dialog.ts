@@ -19,6 +19,7 @@ import { createTypewriter, toSegments, type StorySegment } from './typewriter';
  */
 
 export type StoryView =
+  | { readonly kind: 'discovery'; readonly title: string; readonly text: string }
   | { readonly kind: 'step'; readonly step: ChapterStep }
   | { readonly kind: 'ending' }
   | { readonly kind: 'full-chapter' };
@@ -29,6 +30,8 @@ export function storySegments(
   chapter: ChapterContent = FIRST_CHAPTER,
 ): readonly StorySegment[] {
   switch (view.kind) {
+    case 'discovery':
+      return toSegments(view.title, view.text);
     case 'step':
       return toSegments(view.step.title, view.step.stepBody);
     case 'ending':
@@ -54,6 +57,7 @@ export function stepForEvidence(
   const index = questChapterById(chapter.chapterId).evidence.findIndex(
     (entry) => entry.itemId === itemId,
   );
+  if (chapter.chapterId === 'soothe-monster' && index >= 0) return chapter.steps[index + 1];
   return index < 0 ? undefined : chapter.steps[index];
 }
 

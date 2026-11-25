@@ -1,0 +1,867 @@
+import { COMBAT_RULES } from '../../config/combat-config';
+import { ITEM_DEFINITIONS, itemValueFor, RAID_RULES } from '../../config/game-config';
+import { activeMap, inExtraction } from '../../config/play-map';
+import { facingFromDirection } from '../../campus-3d/animation';
+import type { WorldFrame } from '../../campus-3d/world-frame';
+import type { EventBus } from '../../shared/events/game-events';
+import type {
+  InventoryPort,
+  ItemInstance,
+  Point,
+  RaidControllerPort,
+} from '../../shared/types/game';
+import type { NetworkSession, PlayerSnapshot } from '../network/network-session';
+import {
+  occupiedSlots,
+  sectionCanFit,
+  type InventoryCapacities,
+} from '../inventory/inventory-sections';
+import {
+  hasCurrentRaidNotebook,
+  hasEvidence,
+  isQuestComplete,
+  prerequisiteHint,
+  questChapterById,
+  QUEST_CHAPTER_ID,
+} from '../quests/quest-service';
+import { evidenceStoryBeat, steleStoryBeat } from '../quests/chapter-content';
+import { isTouchLayout } from '../ui/mobile-layout';
+import type { SoundManager } from '../ui/sound-manager';
+import { SearchInteraction } from './search-interaction';
+import { generateLootSpawns, questSpawnPlan, roundRandom, type LootSpawn } from './loot-spawns';
+import { movePlayer } from './movement';
+import {
+  STORY_APPROACHES,
+  storyDirection,
+  storyTriggers,
+  type StoryTrigger,
+} from './story-triggers';
+import { THIRD_CHAPTER } from '../quests/chapter-content';
+import {
+  NightCombat,
+  NightLighting,
+  distance,
+  lineOfSight,
+  findEnemySpawnPosition,
+  shouldDropPatrolLoot,
+  type Enemy,
+} from './night-systems';
+
+export interface KeyPrompt {
+  readonly key: 'E' | 'Q';
+  readonly label: string;
+}
+export interface FormalWorldServices {
+  displayName?: string;
+  controller: RaidControllerPort;
+  inventory: InventoryPort;
+  inventoryCapacities?: InventoryCapacities;
+  questChapter?: () => string | null;
+  events: EventBus;
+  notify(message: string): void;
+  sound: SoundManager;
+  network?: NetworkSession | null;
+  onFrame(interaction: string, progress: number, prompt?: KeyPrompt | null): void;
+}
+export interface WorldInput {
+  move: Point;
+  aim: number;
+  interact: boolean;
+  attack: boolean;
+  hug: boolean;
+  flashlight: boolean;
+  refill: boolean;
+  flare: boolean;
+}
+
+/** Production gameplay owns the account's existing controller and inventory. No trial save. */
+export class FormalWorld {
+  position: Point = { ...activeMap().spawn };
+  aim = -Math.PI / 2;
+  readonly lighting = new NightLighting();
+  combat = new NightCombat();
+  readonly search: SearchInteraction;
+  searchPoints: LootSpawn[] = [];
+  readonly ground = new Map<string, { item: ItemInstance; position: Point }>();
+  readonly teammates = new Map<
+    string,
+    { id: string; name: string; position: Point; aim: number; moving: boolean; target: Point }
+  >();
+  private lastRaidId: string | null = null;
+  private networkInputElapsed = 0;
+  private previousInteract = false;
+  private previousAttack = false;
+  private previousLight = false;
+  private previousRefill = false;
+  private previousFlare = false;
+  private moving = false;
+  private hurtThisFrame = false;
+  private hurtUntil = 0;
+  private attackUntil = 0;
+  private hitStopMs = 0;
+  private interaction = '准备好后，开始本次校园探索';
+  private keyPrompt: KeyPrompt | null = null;
+  private alertAnchor: { id: string; x: number; y: number } | null = null;
+  private banner: { text: string; untilMs: number } | null = null;
+  private releaseDamage: () => void;
+  private readonly discovered = new Set<string>();
+  private readonly investigatedSites = new Set<string>();
+  private storyCharmEarned = false;
+
+  constructor(
+    readonly services: FormalWorldServices,
+    private readonly clock = Date.now,
+  ) {
+    this.search = new SearchInteraction(RAID_RULES.searchDurationMs, clock);
+    this.releaseDamage = services.events.on('DamageTaken', ({ amount, health }) => {
+      this.search.cancel();
+      this.hurtThisFrame = true;
+      this.hurtUntil = this.clock() + 500;
+      this.combat.onPlayerDamaged();
+      services.sound.play('behit');
+      services.notify(`受到 ${amount} 点伤害，当前生命 ${health}；搜索和撤离读条已中断。`);
+    });
+  }
+  private questChapterId() {
+    return this.services.questChapter ? this.services.questChapter() : QUEST_CHAPTER_ID;
+  }
+  clearInteractions(_preserveMouse = false): void {
+    // Rendering adapters may keep start-gesture capture while resetting the new raid.
+    void _preserveMouse;
+    this.search.cancel();
+    this.previousInteract =
+      this.previousAttack =
+      this.previousLight =
+      this.previousRefill =
+      this.previousFlare =
+        false;
+    for (const enemy of this.combat.enemies) enemy.hugProgress = 0;
+  }
+  getLightingStatus() {
+    return {
+      battery: Math.round(this.lighting.battery),
+      enabled: this.lighting.enabled,
+      spareBatteries: this.lighting.spareBatteries,
+      flares: this.lighting.flareCount,
+    };
+  }
+  syncRemotePlayers(players: readonly PlayerSnapshot[]): void {
+    const self = this.services.network?.getPlayerId();
+    const ids = new Set<string>();
+    for (const player of players) {
+      if (player.playerId === self) {
+        if (this.services.network?.getRoomState()?.started) this.position = { ...player.position };
+        continue;
+      }
+      if (!player.connected || player.finished) continue;
+      ids.add(player.playerId);
+      const existing = this.teammates.get(player.playerId);
+      if (existing) {
+        existing.target = { ...player.position };
+        existing.aim = player.aim;
+        existing.name = player.displayName;
+      } else
+        this.teammates.set(player.playerId, {
+          id: player.playerId,
+          name: player.displayName,
+          position: { ...player.position },
+          target: { ...player.position },
+          aim: player.aim,
+          moving: false,
+        });
+    }
+    for (const id of this.teammates.keys()) if (!ids.has(id)) this.teammates.delete(id);
+  }
+  removeRemotePlayer(id: string) {
+    this.teammates.delete(id);
+  }
+  clearRemotePlayers() {
+    this.teammates.clear();
+  }
+  drop(instanceId: string): void {
+    if (!['active', 'extracting'].includes(this.services.controller.getView().phase)) return;
+    const removed = this.services.inventory.remove(instanceId);
+    if (!removed.ok) return;
+    this.spawnLoot(removed.value, this.position);
+    this.services.notify('物品已放在脚边。按 E 拾回；丢弃和重拾不会累计刷分。');
+  }
+  private spawnLoot(item: ItemInstance, position: Point): void {
+    if (!this.ground.has(item.instanceId))
+      this.ground.set(item.instanceId, { item, position: { ...position } });
+  }
+  private resetRaid(raidId: string | null): void {
+    this.lastRaidId = raidId;
+    this.position = { ...activeMap().spawn };
+    this.aim = -Math.PI / 2;
+    const round = this.services.network?.getRoomState()?.roundId;
+    this.combat = new NightCombat(roundRandom(round ?? raidId ?? 'preparing'));
+    this.lighting.reset();
+    this.search.reset();
+    this.ground.clear();
+    this.clearInteractions(true);
+    this.discovered.clear();
+    this.investigatedSites.clear();
+    this.storyCharmEarned = false;
+    if (raidId && this.questChapterId() === 'soothe-monster') {
+      const help = activeMap().chapterThreePoints!.help;
+      const enemy = this.combat.enemies.find((e) => e.kind === 'hug')!;
+      Object.assign(enemy, {
+        id: 'story-garden-help',
+        position: { x: help.x, y: help.y },
+        home: { x: help.x, y: help.y },
+        route: [{ x: help.x, y: help.y }],
+        waypoint: 0,
+      });
+    }
+    this.hurtUntil = this.attackUntil = this.hitStopMs = 0;
+    const chapterId = this.questChapterId();
+    const chapter = chapterId === null ? null : questChapterById(chapterId);
+    this.searchPoints = raidId
+      ? generateLootSpawns(
+          roundRandom(round ?? raidId),
+          questSpawnPlan(this.questChapterId()),
+        ).filter(
+          (p) =>
+            p.itemId === 'torn-notebook' || !chapter?.evidence.some((e) => e.itemId === p.itemId),
+        )
+      : [];
+    this.banner = null;
+    const players = this.services.network?.getRoomState()?.players;
+    if (players) this.syncRemotePlayers(players);
+  }
+  tick(deltaMs: number, input: WorldInput): void {
+    const controller = this.services.controller;
+    const view = controller.getView();
+    if (view.raidId !== this.lastRaidId) this.resetRaid(view.raidId);
+    this.alertAnchor = null;
+    this.keyPrompt = null;
+    for (const remote of this.teammates.values()) {
+      remote.moving = distance(remote.position, remote.target) > 0.5;
+      const t = 1 - Math.exp(-deltaMs / 55);
+      remote.position = {
+        x: remote.position.x + (remote.target.x - remote.position.x) * t,
+        y: remote.position.y + (remote.target.y - remote.position.y) * t,
+      };
+    }
+    const playable = !controller.isPaused() && ['active', 'extracting'].includes(view.phase);
+    this.moving = false;
+    this.hitStopMs = Math.max(0, this.hitStopMs - deltaMs);
+    if (playable) {
+      this.aim = input.aim;
+      const map = activeMap();
+      this.moving = Math.hypot(input.move.x, input.move.y) > 0.1;
+      if (this.moving) this.search.cancel();
+      this.networkInputElapsed += deltaMs;
+      if (this.networkInputElapsed >= 50) {
+        this.networkInputElapsed %= 50;
+        this.services.network?.sendInput(input.move, this.aim, [
+          ...(input.interact ? ['interact' as const] : []),
+          ...(input.attack ? ['attack' as const] : []),
+          ...(input.hug ? ['hug' as const] : []),
+        ]);
+      }
+      if (
+        !(this.services.network?.isInRoom() && this.services.network.getRoomState()?.started) &&
+        this.hitStopMs <= 0
+      ) {
+        this.position = movePlayer(
+          this.position,
+          input.move,
+          deltaMs,
+          map.playerSpeed * controller.getMoveSpeedMultiplier(),
+          map.playerRadius,
+          { x: 30, y: 35, width: map.width - 60, height: map.height - 70 },
+          map.obstacles,
+        );
+      }
+      this.lighting.tick(deltaMs);
+      if (input.flashlight && !this.previousLight) this.lighting.toggle();
+      if (input.refill && !this.previousRefill) this.lighting.refill();
+      if (input.flare && !this.previousFlare) this.lighting.deploy(this.position);
+      if (input.attack && this.hitStopMs <= 0) {
+        this.search.cancel();
+        const weapon =
+          this.services.inventory.getEquipment().primary ??
+          this.services.inventory
+            .getCarriedItems()
+            .find((i) => ITEM_DEFINITIONS[i.itemId]?.kind === 'weapon');
+        if (weapon && ITEM_DEFINITIONS[weapon.itemId]?.kind === 'weapon') {
+          const baton = weapon.itemId === 'stun-baton';
+          const stats = baton
+            ? COMBAT_RULES.player.attack.weapons.stunBaton
+            : COMBAT_RULES.player.attack.weapons.trainingBat;
+          const before = this.combat.attackCooldown;
+          const dead = this.combat.attack(
+            this.position,
+            this.aim,
+            map.obstacles,
+            stats.damage,
+            baton ? 'stun-baton' : 'training-bat',
+          );
+          if (before <= 0 && this.combat.attackCooldown > 0) {
+            this.attackUntil = this.clock() + COMBAT_RULES.player.attack.swingMs + 140;
+            this.services.sound.play('hit');
+            if (this.combat.attackHit) this.hitStopMs = COMBAT_RULES.feedback.playerAttackHitStopMs;
+          }
+          for (const enemy of dead)
+            if (view.raidId) {
+              this.services.events.emit('EnemyDefeated', {
+                raidId: view.raidId,
+                enemyId: enemy.id,
+              });
+              if (enemy.kind === 'patrol' && shouldDropPatrolLoot())
+                this.spawnLoot(
+                  {
+                    instanceId: `${view.raidId}:enemy:${enemy.id}`,
+                    itemId: 'school-badge',
+                    origin: { kind: 'raid-loot', obtainedInRaidId: view.raidId },
+                  },
+                  enemy.position,
+                );
+            }
+        } else if (!this.previousAttack) this.services.notify('未携带武器，无法攻击。');
+      }
+      const combat = this.combat.update(
+        deltaMs,
+        this.position,
+        this.lighting.enabled,
+        input.hug && !input.attack,
+        !this.moving,
+        map.obstacles,
+        { x: 30, y: 35, width: map.width - 60, height: map.height - 70 },
+      );
+      this.combat.updateSpawns(deltaMs, () =>
+        findEnemySpawnPosition(this.position, this.aim, this.lighting, this.combat.enemies),
+      );
+      if (combat.damage) controller.applyDamage(combat.damage);
+      if (combat.calmed.length) this.services.notify('抱抱成功，怪物平静约 30 秒。');
+      if (this.questChapterId() === 'soothe-monster') {
+        const helper = this.combat.enemies.find((e) => e.id === 'story-garden-help');
+        if (
+          helper &&
+          distance(helper.position, this.position) < 145 &&
+          lineOfSight(this.position, helper.position, map.obstacles) &&
+          !this.discovered.has('garden-sos')
+        )
+          this.discover(
+            'garden-sos',
+            THIRD_CHAPTER.steps[0]!.title,
+            THIRD_CHAPTER.steps[0]!.stepBody,
+          );
+        if (helper?.state === 'calmed' && !this.storyCharmEarned && view.raidId) {
+          this.storyCharmEarned = true;
+          const item: ItemInstance = {
+            instanceId: `${view.raidId}:story-soothe-charm`,
+            itemId: 'soothe-charm',
+            origin: { kind: 'raid-loot', obtainedInRaidId: view.raidId },
+          };
+          const result = this.services.inventory.addLoot(item);
+          if (!result.ok) {
+            this.spawnLoot(item, helper.position);
+            this.services.notify('安抚成功，护符留在求助者脚边；整理背包后按 E 拾取。');
+          } else this.services.notify('求助者平静下来，把仍有余温的护符交给了你。');
+        }
+      }
+      controller.setExtractionPresence(inExtraction(this.position));
+      if (!controller.isPaused())
+        this.interact(input.interact && !input.attack && !this.hurtThisFrame);
+      this.previousInteract = input.interact;
+      this.previousAttack = input.attack;
+      this.previousLight = input.flashlight;
+      this.previousRefill = input.refill;
+      this.previousFlare = input.flare;
+    } else {
+      this.search.cancel();
+      this.interaction = controller.isPaused()
+        ? '已暂停 · 关闭设置或当前弹窗后继续'
+        : '准备好后，开始本次校园探索';
+    }
+    this.hurtThisFrame = false;
+    this.services.sound.setLoop('footsteps', playable && this.moving);
+    this.services.sound.setLoop('alarm', playable && view.health > 0 && view.health < 20);
+    if (playable && !controller.isPaused()) {
+      const site = this.storyMarkers().find(
+        (p) =>
+          p.status === 'active' &&
+          STORY_APPROACHES[p.id] &&
+          distance(p, this.position) < 125 &&
+          lineOfSight(this.position, p, activeMap().obstacles),
+      );
+      if (site) this.discover(site.id, site.title, STORY_APPROACHES[site.id]!);
+    }
+    controller.tick();
+    this.services.onFrame(
+      this.nearbyHug()
+        ? this.interaction
+        : this.banner && this.clock() < this.banner.untilMs
+          ? this.banner.text
+          : this.interaction,
+      this.nearbyHug()
+        ? this.nearbyHug()!.hugProgress / COMBAT_RULES.hug.calmHoldDurationMs
+        : this.search.progress(),
+      this.keyPrompt,
+    );
+  }
+  frame(): WorldFrame {
+    const map = activeMap();
+    const view = this.services.controller.getView();
+    return {
+      storyMarkers: this.storyMarkers(),
+      extraction: {
+        ready: view.value >= view.threshold,
+        active: view.phase === 'extracting',
+        progress: view.extractionProgress,
+      },
+      position: { ...this.position },
+      facing: facingFromDirection({ x: Math.cos(this.aim), y: Math.sin(this.aim) }),
+      moving: this.moving,
+      action:
+        view.health <= 0
+          ? 'death'
+          : this.clock() < this.hurtUntil
+            ? 'hurt'
+            : this.clock() < this.attackUntil
+              ? 'attack'
+              : this.moving
+                ? 'walk'
+                : 'idle',
+      chests: this.searchPoints,
+      teammates: [...this.teammates.values()],
+      opened: this.searchPoints.filter((p) => this.search.isOpened(p.id)).map((p) => p.id),
+      ground: [...this.ground.values()],
+      prompt: this.interaction,
+      searchProgress: this.search.progress(),
+      target: this.alertAnchor?.id ?? null,
+      visibleChests: this.searchPoints
+        .filter((p) => this.lighting.flashlightReveals(p, this.position, this.aim, map.obstacles))
+        .map((p) => p.id),
+      night: {
+        enabled: true,
+        flashlight: this.lighting.enabled && this.lighting.battery > 0,
+        battery: this.lighting.battery,
+        spareBatteries: this.lighting.spareBatteries,
+        flareCount: this.lighting.flareCount,
+        aim: this.aim,
+        flares: this.lighting.flares,
+      },
+      combat: {
+        enabled: true,
+        enemies: this.combat.enemies,
+        visibleEnemies: this.combat.enemies
+          .filter((e) => this.lighting.visible(e.position, this.position, this.aim, map.obstacles))
+          .map((e) => e.id),
+        swing: this.combat.swingMs,
+        cooldown: this.combat.attackCooldown,
+        invulnerable: this.combat.invulnerability > 0,
+        hit: this.combat.attackHit,
+        weapon: this.combat.currentWeaponId,
+        bagCount: this.services.inventory.getCarriedItems().length,
+        uses: this.combat.weaponUsesRemaining,
+      },
+    };
+  }
+  dispose(): void {
+    this.releaseDamage();
+    this.teammates.clear();
+  }
+  private nearbyHug(): Enemy | undefined {
+    const hug = this.requestingHug();
+    return hug && distance(hug.position, this.position) < COMBAT_RULES.hug.calmRange
+      ? hug
+      : undefined;
+  }
+  private discover(locationId: string, title: string, text: string): void {
+    const raidId = this.services.controller.getView().raidId;
+    const chapterId = this.questChapterId();
+    if (!raidId || chapterId === null || this.discovered.has(locationId)) return;
+    this.discovered.add(locationId);
+    this.services.events.emit('StoryDiscovered', {
+      raidId,
+      locationId,
+      chapterId,
+      title,
+      text,
+    });
+  }
+
+  storyMarkers(): StoryTrigger[] {
+    const view = this.services.controller.getView();
+    return storyTriggers(
+      this.questChapterId(),
+      this.services.inventory.getCarriedItems(),
+      view.raidId,
+    ).map((marker) => {
+      const helper =
+        marker.kind === 'help' && this.combat.enemies.find((e) => e.id === 'story-garden-help');
+      return helper && helper.state !== 'dead' ? { ...marker, ...helper.position } : marker;
+    });
+  }
+
+  storyObjective(): { title: string; hint: string } {
+    const chapterId = this.questChapterId();
+    if (chapterId === null)
+      return { title: '自由探索', hint: '全部剧情已完成，搜集物资并安全撤离' };
+    const markers = this.storyMarkers();
+    const target = markers.find((p) => p.status === 'active');
+    if (!target) return { title: '思源记录册', hint: '开始探索，寻找校园中的剧情线索' };
+    const chapter = questChapterById(chapterId);
+    const evidence = chapter.evidence.find(
+      (e) => !hasEvidence(this.services.inventory.getCarriedItems(), e.itemId, this.lastRaidId),
+    );
+    const dropped =
+      evidence &&
+      [...this.ground.values()].find(
+        (d) =>
+          d.item.itemId === evidence.itemId &&
+          d.item.origin.kind === 'raid-loot' &&
+          d.item.origin.obtainedInRaidId === this.lastRaidId,
+      );
+    const point = dropped?.position ?? target;
+    return {
+      title: dropped ? `拾回${evidence.label}` : target.title,
+      hint: `${storyDirection(this.position, point)} · ${Math.round(distance(this.position, point) / 32)} 米 · ${dropped ? '按 E 拾回证据' : target.action}`,
+    };
+  }
+
+  private storyInteraction(held: boolean): boolean {
+    const view = this.services.controller.getView();
+    const items = this.services.inventory.getCarriedItems();
+    const markers = this.storyMarkers();
+    const near = markers
+      .filter(
+        (p) =>
+          p.kind !== 'exit' &&
+          distance(p, this.position) < 85 &&
+          lineOfSight(this.position, p, activeMap().obstacles),
+      )
+      .sort((a, b) => distance(a, this.position) - distance(b, this.position))[0];
+    if (!near || near.kind === 'chest' || near.kind === 'stele') return false;
+    if (near.status === 'inactive') {
+      this.interaction = `${near.title} · 线索会在对应章节开启`;
+      return true;
+    }
+    if (near.kind === 'help') {
+      const helper = this.combat.enemies.find((e) => e.id === 'story-garden-help');
+      if (
+        helper &&
+        !this.storyCharmEarned &&
+        (helper.mutated || helper.state === 'dead' || helper.state === 'mutation-warning')
+      ) {
+        this.interaction = '求助信号中断 · 停住按 E 再次呼唤求助者';
+        this.keyPrompt = { key: 'E', label: '再次呼唤' };
+        if (held && !this.previousInteract && !this.moving) {
+          const point = activeMap().chapterThreePoints!.help;
+          Object.assign(helper, {
+            position: { x: point.x, y: point.y },
+            state: 'patrol',
+            health: COMBAT_RULES.hug.health,
+            timer: 0,
+            cooldown: 0,
+            hugProgress: 0,
+            calmHitCount: 0,
+            mutated: false,
+          });
+          this.services.notify('求助者重新回应了你。靠近并停住，长按 Q 安抚。');
+        }
+        return true;
+      }
+      this.interaction =
+        near.status === 'done'
+          ? '芳华园求助者 · 已安抚，前往中心广场记录台'
+          : '芳华园求助者 · 靠近并停住，长按 Q 安抚';
+      return true;
+    }
+    this.search.cancel();
+    this.interaction = `${near.title} · ${near.status === 'done' ? '本局已调查' : near.status === 'locked' ? `先取得本局${questChapterById(near.chapterId).evidence[0].label}` : near.action}`;
+    if (near.status === 'done') return true;
+    if (this.investigatedSites.has(near.id)) {
+      this.interaction = `${near.title} · 已取走证据，请拾回丢下的证据`;
+      return true;
+    }
+    this.keyPrompt = { key: 'E', label: near.status === 'locked' ? '查看线索' : '调查' };
+    if (!held || this.previousInteract || this.moving) return true;
+    if (near.status === 'locked') {
+      this.discover(`${near.id}:locked`, `${near.title} · 缺少线索`, this.interaction);
+      return true;
+    }
+    const itemId =
+      near.kind === 'board'
+        ? 'marked-campus-map'
+        : near.kind === 'door'
+          ? 'siyuan-key'
+          : 'complete-record';
+    const item: ItemInstance = {
+      instanceId: `${view.raidId}:${near.id}`,
+      itemId,
+      origin: { kind: 'raid-loot', obtainedInRaidId: view.raidId! },
+    };
+    const fits = this.services.inventoryCapacities
+      ? sectionCanFit(items, item, ITEM_DEFINITIONS, this.services.inventoryCapacities)
+      : occupiedSlots(items, ITEM_DEFINITIONS) < RAID_RULES.bagCapacity;
+    if (!fits) {
+      this.services.notify('背包已满，请先腾出空间再调查。');
+      return true;
+    }
+    if (this.services.inventory.addLoot(item).ok) {
+      this.investigatedSites.add(near.id);
+      this.services.events.emit('LocationInteracted', {
+        raidId: view.raidId!,
+        locationId: near.id,
+      });
+      this.services.sound.play('pick');
+    }
+    return true;
+  }
+
+  private requestingHug(): Enemy | undefined {
+    return this.combat.enemies
+      .filter(
+        (enemy) =>
+          enemy.kind === 'hug' &&
+          enemy.state === 'request' &&
+          distance(enemy.position, this.position) <= COMBAT_RULES.hug.loseTargetRange &&
+          lineOfSight(this.position, enemy.position, activeMap().obstacles),
+      )
+      .sort((a, b) => distance(a.position, this.position) - distance(b.position, this.position))[0];
+  }
+
+  private hugInstruction(hug: Enemy): string {
+    const action = isTouchLayout() ? '长按抱抱按钮' : '长按 Q';
+    const inRange = distance(hug.position, this.position) < COMBAT_RULES.hug.calmRange;
+    const instruction = inRange
+      ? `${this.moving ? '停住后' : ''}${action}安抚抱抱怪`
+      : '靠近抱抱怪，再停住长按抱抱';
+    return `${instruction} · 剩余 ${Math.ceil(hug.timer / 1000)} 秒 · 抱满 1.5 秒平静约 30 秒`;
+  }
+
+  private interact(held: boolean): void {
+    const view = this.services.controller.getView();
+    if (view.phase !== 'active' && view.phase !== 'extracting') {
+      this.search.cancel();
+      return;
+    }
+    const carried = this.services.inventory.getCarriedItems();
+    const equippedIds = new Set(
+      Object.values(this.services.inventory.getEquipment()).map((item) => item.instanceId),
+    );
+    const chapterId = this.questChapterId();
+    const chapter = chapterId === null ? null : questChapterById(chapterId);
+    const bagFull = this.services.inventoryCapacities
+      ? occupiedSlots(carried, ITEM_DEFINITIONS, 'bag') >= this.services.inventoryCapacities.bag
+      : carried.filter((item) => !equippedIds.has(item.instanceId)).length >=
+        RAID_RULES.bagCapacity;
+    const hug = this.nearbyHug();
+    if (hug) {
+      this.search.cancel();
+      this.interaction = this.hugInstruction(hug);
+      this.keyPrompt = { key: 'Q', label: '安抚' };
+      return;
+    }
+    const loot = [...this.ground.values()]
+      .filter(
+        (drop) =>
+          distance(drop.position, this.position) < 70 &&
+          lineOfSight(this.position, drop.position, activeMap().obstacles),
+      )
+      .sort((a, b) => distance(a.position, this.position) - distance(b.position, this.position))[0];
+    if (loot) {
+      this.search.cancel();
+      const lootFits = this.services.inventoryCapacities
+        ? sectionCanFit(carried, loot.item, ITEM_DEFINITIONS, this.services.inventoryCapacities)
+        : occupiedSlots(carried, ITEM_DEFINITIONS) +
+            (ITEM_DEFINITIONS[loot.item.itemId]?.bagSlots ?? 1) <=
+          RAID_RULES.bagCapacity;
+      if (!lootFits) {
+        const sectionName =
+          loot.item.origin.kind === 'carry-in' && this.services.inventoryCapacities
+            ? '道具栏'
+            : '背包';
+        this.interaction = `${sectionName}已满 · ${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}留在地上，先腾出空间再拾取`;
+        return;
+      }
+      this.interaction = `按 E 拾取：${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}`;
+      this.keyPrompt = { key: 'E', label: '拾取' };
+      if (held && !this.previousInteract) {
+        // Carry-in drops retain provenance: only the inventory transfer method may reinsert them.
+        const result = this.services.inventory.addLoot(loot.item);
+        if (result.ok) {
+          this.services.sound.play('pick');
+          this.ground.delete(loot.item.instanceId);
+          this.banner = {
+            text: `已拾回：${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}`,
+            untilMs: this.clock() + 2600,
+          };
+        }
+        this.services.notify(result.ok ? '已拾回物品。' : '背包已满或来源无效，请先腾出空间。');
+      }
+      return;
+    }
+    if (this.storyInteraction(held)) return;
+    const chest = this.searchPoints.find(
+      (point) =>
+        !this.search.isOpened(point.id) &&
+        distance(point, this.position) < 60 &&
+        this.lighting.flashlightReveals(point, this.position, this.aim, activeMap().obstacles),
+    );
+    if (chest) {
+      this.alertAnchor = { id: chest.id, x: chest.x, y: chest.y };
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapterId);
+      if (prerequisite !== null) {
+        this.search.cancel();
+        this.interaction = prerequisite;
+        return;
+      }
+      // 满包时不启动搜索进度：否则每次 2 秒读条失败重来，玩家只看得到进度条循环。
+      if (bagFull) {
+        this.search.cancel();
+        this.interaction = '背包已满 · 先丢弃或替换物品再搜索';
+        if (held && !this.previousInteract) {
+          this.services.notify('背包已满，搜索点保留在原地；丢弃或替换物品后可以重新搜索。');
+        }
+        return;
+      }
+      this.interaction =
+        chest.id === activeMap().questChest?.id ? '思源楼前手记宝箱 · 长按 E 搜索' : '长按 E 搜索';
+      this.keyPrompt = { key: 'E', label: '搜索' };
+      if (!held || this.moving || view.phase !== 'active') {
+        this.search.cancel();
+        return;
+      }
+      const wasSearching = this.search.current() === chest.id;
+      this.search.begin(chest.id);
+      if (!wasSearching) {
+        this.services.sound.play('box');
+      }
+      if (this.search.progress() >= 1 && view.raidId) {
+        const item: ItemInstance = {
+          instanceId: `${view.raidId}:${chest.id}`,
+          itemId: chest.itemId,
+          origin: { kind: 'raid-loot', obtainedInRaidId: view.raidId },
+        };
+        const result = this.search.finish(item, (entry) => this.services.inventory.addLoot(entry));
+        if (result.ok) {
+          this.services.events.emit('LocationInteracted', {
+            raidId: view.raidId,
+            locationId: chest.id,
+          });
+          // RaidController derives questComplete from the authoritative raid state.
+        }
+        if (result.ok) {
+          const definition = ITEM_DEFINITIONS[chest.itemId];
+          const beat = isQuestComplete(
+            this.services.inventory.getCarriedItems(),
+            view.raidId,
+            chapterId,
+            view.steleInvestigated,
+          )
+            ? chapter?.completeHint
+            : evidenceStoryBeat(chest.itemId);
+          const pickup =
+            beat ??
+            `已拾取：${definition?.name ?? chest.itemId}${
+              definition && itemValueFor(definition) !== null
+                ? `（本局价值 ${itemValueFor(definition)}）`
+                : ''
+            }`;
+          this.banner = { text: pickup, untilMs: this.clock() + (beat === null ? 3200 : 6000) };
+          this.services.notify('搜索完成，物资进入本局背包。');
+        } else {
+          this.banner = {
+            text: '背包已满 · 先丢弃或替换物品再搜索',
+            untilMs: this.clock() + 3200,
+          };
+          this.services.notify('背包已满，搜索点已保留；丢弃或替换物品后可以重新搜索。');
+        }
+      }
+      return;
+    }
+    const stele = activeMap().stone;
+    if (chapter?.id === QUEST_CHAPTER_ID && stele) {
+      const steleDistance = distance(stele, this.position);
+      if (steleDistance < 78 && lineOfSight(this.position, stele, activeMap().obstacles)) {
+        this.search.cancel();
+        if (!hasCurrentRaidNotebook(carried, view.raidId)) {
+          this.interaction = '明湖石碑 · 先取得本局残缺手记';
+          this.keyPrompt = { key: 'E', label: '查看石碑' };
+          if (held && !this.previousInteract && !this.moving)
+            this.discover(
+              'minghu-stele:locked',
+              '明湖石碑 · 模糊的刻痕',
+              '石碑背面有一处浅刻痕，手电照过时像有字浮现。你还读不懂它——先到思源楼前寻找残缺手记，再回来调查。',
+            );
+          return;
+        }
+        if (view.steleInvestigated) {
+          this.interaction = '明湖石碑 · 已调查';
+          return;
+        }
+        if (bagFull) {
+          this.interaction = '背包已满 · 调查后无法收取异常羽毛';
+          return;
+        }
+        this.interaction = '按 E 调查明湖石碑';
+        this.keyPrompt = { key: 'E', label: '调查' };
+        if (
+          held &&
+          !this.previousInteract &&
+          !this.moving &&
+          view.phase === 'active' &&
+          view.raidId
+        ) {
+          if (this.services.controller.investigateStele()) {
+            const feather = this.services.inventory.addLoot({
+              instanceId: `${view.raidId}:anomalous-feather`,
+              itemId: 'anomalous-feather',
+              origin: { kind: 'raid-loot', obtainedInRaidId: view.raidId },
+            });
+            if (!feather.ok) {
+              this.services.notify('背包已满或羽毛已存在，请先整理背包。');
+              return;
+            }
+            this.services.events.emit('SteleInvestigated', { raidId: view.raidId });
+            this.banner = { text: steleStoryBeat(), untilMs: this.clock() + 6000 };
+            this.services.notify('明湖石碑调查完成。');
+          }
+        }
+        return;
+      }
+    }
+    if (view.inExtractionZone) {
+      this.search.cancel();
+      this.interaction =
+        view.phase === 'extracting'
+          ? '正在撤离 · 请留在区域内'
+          : view.value >= view.threshold
+            ? '按 E 开始撤离 · 保持 5 秒'
+            : `撤离未解锁 · 还差 ${view.threshold - view.value} 价值`;
+      if (held && !this.previousInteract && view.phase === 'active') {
+        const result = this.services.controller.startExtraction();
+        if (result.ok) {
+          this.services.sound.play('home');
+        }
+        if (!result.ok) {
+          this.services.notify('本局携带价值不足，先搜索物资再回来。');
+        }
+      }
+    } else {
+      const lamp = activeMap().lamps.find((source) => distance(source, this.position) < 55);
+      if (lamp && this.lighting.battery < 99) {
+        this.interaction = '灯站充电';
+        if (held && !this.moving && !this.hurtThisFrame) {
+          this.search.begin(`charge:${lamp.x}`);
+          if (this.search.progress() >= 1) {
+            this.lighting.charge();
+            this.search.cancel();
+            this.services.notify('手电筒已充满。');
+          }
+        } else {
+          this.search.cancel();
+        }
+      } else {
+        this.search.cancel();
+        const request = this.requestingHug();
+        this.interaction = request ? this.hugInstruction(request) : '校园夜巡';
+      }
+    }
+  }
+}

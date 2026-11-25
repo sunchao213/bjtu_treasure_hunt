@@ -126,7 +126,11 @@ export interface InventoryPort {
 
 /** Persist begin before play, and acknowledge settlement before reporting success. */
 export interface SavePort {
-  beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]>;
+  beginRaid(
+    raidId: string,
+    loadoutIds: readonly string[],
+    reservedSlots?: number,
+  ): Promise<readonly ItemInstance[]>;
   finalizeRaid(result: RaidResult): Promise<void>;
   unlockChapter(chapterId: string): Promise<void>;
   purchaseItem?(itemId: string): ActionResult<ItemInstance> | Promise<ActionResult<ItemInstance>>;

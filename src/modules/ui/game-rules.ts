@@ -8,7 +8,7 @@ export function gameRulesMarkup(): string {
         <button id="close-rules" class="rules-close" aria-label="关闭游戏规则" title="关闭">${iconSvg('close', { size: 24 })}</button></header>
       <div class="rules-content">
         <section><h2>搜集物资，活着撤离</h2>
-          <p>每局 ${RAID_RULES.durationMs / 60_000} 分钟，初始生命 ${RAID_RULES.maxHealth}，背包 ${RAID_RULES.bagCapacity} 格。搜到并仍携带的本局物资价值达到 <strong>${RAID_RULES.threshold}</strong> 后，回到南门撤离点申请撤离。</p>
+          <p>每局 ${RAID_RULES.durationMs / 60_000} 分钟，初始生命 ${RAID_RULES.maxHealth}，背包 6 格、带入道具另有 6 格（初始武器占 1 格，小黄车占 2 格）。搜到并仍携带的本局物资价值达到 <strong>${RAID_RULES.threshold}</strong> 后，回到南门撤离点申请撤离。</p>
           <p>物资箱每局在可到达的区域随机生成。只有开启且有电的手电筒直接照亮箱子时才会显露；环境微光、灯站和照明棒不能发现箱子。照亮后靠近并停住并长按 E ${RAID_RULES.searchDurationMs / 1000} 秒搜索。移动、松开按键、移开手电或受伤会中断搜索；背包已满时箱内物品保留。</p></section>
         <section><h2>物品价值</h2><dl class="rarity-values">
           <div><dt><i class="rarity-dot common"></i>普通</dt><dd>${RAID_RULES.values.common}</dd></div>
@@ -26,12 +26,13 @@ export function gameRulesMarkup(): string {
         <section><h2>思源密码线索</h2><p>在思源楼前打开固定宝箱取得本局残缺手记，携带手记前往明湖石碑调查并收取异常羽毛。成功撤离时同时带回本局手记与异常羽毛，即可解锁第一章。</p></section>
         <section><h2>操作</h2><dl class="rules-controls">
           <div><dt><kbd>W A S D</kbd> / 方向键</dt><dd>移动</dd></div>
-          <div><dt>鼠标指向</dt><dd>手电与攻击朝向</dd></div>
-          <div><dt><kbd>E</kbd></dt><dd>搜索 / 拾取 / 抱抱 / 充电 / 撤离</dd></div>
+          <div><dt>鼠标 / 滚轮</dt><dd>进入探索即可转动视角 / 缩放；人物与手电朝向镜头前方。Esc 释放鼠标，Tab 打开背包后可点击画面内按钮。</dd></div>
+          <div><dt><kbd>Tab</kbd> / <kbd>Esc</kbd></dt><dd>背包 / 设置；背包不暂停，设置暂停</dd></div>
+          <div><dt><kbd>E</kbd></dt><dd>搜索 / 拾取 / 调查 / 充电 / 撤离</dd></div>
           <div><dt><kbd>Q</kbd></dt><dd>安抚抱抱怪</dd></div>
           <div><dt><kbd>Space</kbd></dt><dd>近身攻击</dd></div>
           <div><dt><kbd>L</kbd> / <kbd>R</kbd> / <kbd>G</kbd></dt><dd>手电开关 / 换电池 / 放照明棒</dd></div>
-        </dl><p>手机页面始终按横屏排版；支持的浏览器会在开始探索时进入全屏并锁定横屏，不支持时自动旋转页面。可点击顶部“全屏”重试。左摇杆移动，右侧瞄准摇杆控制手电与攻击方向，松手后保留朝向；右侧按钮执行对应操作。顶部可查看价值、电量、背包和规则，背包打开期间计时继续。局内打开规则、校园图或图鉴会暂停计时与敌人行动，并中断当前读条；关闭后继续。刷新仍按失败处理。</p></section>
+        </dl><p>手机页面始终按横屏排版；支持的浏览器会在开始探索时进入全屏并锁定横屏，不支持时自动旋转页面。可点击顶部“全屏”重试。左摇杆移动，右侧瞄准摇杆控制手电与攻击方向，松手后保留朝向；右侧按钮执行对应操作。顶部可查看价值、电量和设置；左下角点击背包图标管理物品，背包打开期间计时继续。局内打开设置、规则、校园图或图鉴会暂停计时与敌人行动，并中断当前读条；关闭后继续。刷新仍按失败处理。</p></section>
       </div>
       <footer class="rules-footer"><button id="rules-continue" class="primary">进入校园</button></footer>
     </dialog>`;

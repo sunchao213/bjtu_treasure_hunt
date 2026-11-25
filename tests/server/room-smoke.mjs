@@ -9,7 +9,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const geometry = JSON.parse(await readFile('src/config/campus-geometry.json', 'utf8'));
+const geometry = JSON.parse(await readFile('src/config/formal-campus.json', 'utf8'));
 
 const directory = await mkdtemp(join(tmpdir(), 'bjtu-room-test-'));
 const listener = net.createServer();
@@ -48,7 +48,7 @@ async function waitFor(fn, description) {
   }
   throw Error(`Timeout: ${description}\n${logs}`);
 }
-async function connect(index) {
+async function connect(index, protocol = 2) {
   const displayName = `注册昵称${index}`;
   const response = await fetch(`${base}/api/auth/register`, {
     method: 'POST',
@@ -106,9 +106,18 @@ async function connect(index) {
       if (opcode === 1) peer.messages.push(JSON.parse(payload.toString()));
     }
   });
+  if (protocol !== 2) {
+    const rejected = await request(peer, { type: 'hello', protocol }, (m) => m.type === 'error');
+    assert.equal(
+      rejected.code,
+      'PROTOCOL_MISMATCH',
+      'old map clients cannot join the new protocol',
+    );
+    return peer;
+  }
   const welcome = await request(
     peer,
-    { type: 'hello', protocol: 1, sessionId: 'ignored', displayName: '伪造昵称' },
+    { type: 'hello', protocol: 2, sessionId: 'ignored', displayName: '伪造昵称' },
     (m) => m.type === 'welcome',
   );
   peer.id = welcome.playerId;
@@ -294,6 +303,29 @@ try {
     'same round delivered to all members',
   );
   const spawns = new Map(started.players.map((player) => [player.playerId, player.position]));
+  for (const { position: point } of started.players) {
+    assert(point.x - geometry.playerRadius >= geometry.bounds.x);
+    assert(point.y - geometry.playerRadius >= geometry.bounds.y);
+    assert(point.x + geometry.playerRadius <= geometry.bounds.x + geometry.bounds.width);
+    assert(point.y + geometry.playerRadius <= geometry.bounds.y + geometry.bounds.height);
+    assert(
+      !geometry.obstacles.some(
+        (wall) =>
+          point.x + geometry.playerRadius > wall.x &&
+          point.x - geometry.playerRadius < wall.x + wall.width &&
+          point.y + geometry.playerRadius > wall.y &&
+          point.y - geometry.playerRadius < wall.y + wall.height,
+      ),
+      'every seat clears shared collision geometry',
+    );
+    for (const { position: other } of started.players) {
+      if (other === point) continue;
+      assert(
+        Math.hypot(point.x - other.x, point.y - other.y) >= geometry.playerRadius * 2,
+        'spawn bodies do not overlap',
+      );
+    }
+  }
   assert.equal(
     new Set(started.players.map((player) => JSON.stringify(player.position))).size,
     10,
@@ -456,6 +488,7 @@ try {
   for (const peer of members.slice(1)) send(peer, { type: 'leave-room' });
   await delay(100);
   assert.equal((await request(host, { type: 'join-room', roomId })).code, 'ROOM_NOT_FOUND');
+  await connect('legacy', 1);
   console.log(
     'Room smoke passed: random six-digit codes, concurrent ten-player capacity, registered nicknames, host-only start, ready/cancel, synchronized rounds, next round, host transfer, room isolation and empty-room cleanup.',
   );

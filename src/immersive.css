@@ -1,0 +1,304 @@
+/* Raid-only viewport and HUD. Lobby/auth retain their 1280×720 stage. */
+html.raid-immersive:not([data-touch='true']) #stage {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+html.raid-immersive #stage > #app {
+  padding: 0;
+  overflow: hidden;
+}
+html.raid-immersive #stage #app #game-page,
+html.raid-immersive #stage #app #game-page main,
+html.raid-immersive #stage #app .play-layout,
+html.raid-immersive #stage #app .map-panel,
+html.raid-immersive #stage #app .map-viewport {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+html.raid-immersive #stage #app #game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+html.raid-immersive #stage #app .mobile-toolbar {
+  display: none;
+}
+html.raid-immersive:not([data-touch='true']) #stage dialog[open] {
+  transform: translate(-50%, -50%);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+}
+html.raid-immersive:not([data-touch='true']) #stage .story-dialog[open] {
+  width: 100vw;
+  height: 100dvh;
+  max-width: 100vw;
+  max-height: 100dvh;
+}
+html.raid-immersive #stage #app .raid-settings .rules-content {
+  max-height: calc(100dvh - 190px);
+}
+html.raid-immersive #stage #app .map-viewport {
+  --hud-top: max(16px, var(--safe-top, 0px));
+  --hud-right: max(16px, var(--safe-right, 0px));
+  --hud-bottom: max(12px, var(--safe-bottom, 0px));
+  --hud-left: max(16px, var(--safe-left, 0px));
+  --minimap-size: 164px;
+  --minimap-top: calc(var(--hud-top) + 64px);
+  --interaction-bottom: var(--hud-bottom);
+}
+html.raid-immersive #stage #app .raid-hud-left {
+  position: absolute;
+  top: var(--hud-top);
+  left: var(--hud-left);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: clamp(220px, 27%, 330px);
+  pointer-events: none;
+}
+html.raid-immersive #stage #app .raid-location,
+html.raid-immersive #stage #app .map-hud-right,
+html.raid-immersive #stage #app .raid-value,
+html.raid-immersive #stage #app .interaction {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #101c26b8;
+  text-shadow: 0 1px 3px #000;
+  font-size: 12px;
+  pointer-events: none;
+}
+html.raid-immersive #stage #app .raid-location {
+  order: 0;
+  align-self: flex-start;
+}
+html.raid-immersive #stage #app .raid-location b {
+  font-weight: 500;
+}
+html.raid-immersive #stage #app .raid-location em {
+  margin-left: 10px;
+  font-size: 10px;
+  font-style: normal;
+  color: #b5c7c4;
+}
+html.raid-immersive #stage #app .raid-hud-left .formal-story-objective,
+html.raid-immersive #stage #app .raid-hud-left .tutorial-card,
+html.raid-immersive #stage #app .raid-hud-left .team-status {
+  position: static;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  flex-shrink: 0;
+}
+html.raid-immersive #stage #app .raid-hud-left .formal-story-objective {
+  order: 1;
+}
+html.raid-immersive #stage #app .raid-hud-left .tutorial-card {
+  order: 2;
+}
+html.raid-immersive #stage #app .raid-hud-left .team-status {
+  order: 3;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  background: #101c26b8;
+  border-radius: 6px;
+}
+html.raid-immersive #stage #app .team-status ul {
+  flex-wrap: wrap;
+  overflow: visible;
+  gap: 4px 12px;
+}
+html.raid-immersive #stage #app .map-hud-right {
+  position: absolute;
+  top: var(--hud-top);
+  right: var(--hud-right);
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 10px;
+  width: 288px;
+}
+html.raid-immersive #stage #app .map-hud-right em {
+  margin: 0 5px;
+  font-style: normal;
+  opacity: 0.5;
+}
+html.raid-immersive #stage #app .raid-value {
+  top: var(--hud-top);
+  margin: 0;
+  color: #f1d68e;
+}
+html.raid-immersive #stage #app .campus-map-button {
+  top: var(--minimap-top);
+  right: var(--hud-right);
+  width: var(--minimap-size);
+  height: var(--minimap-size);
+}
+html.raid-immersive #stage #app .formal-camera-controls {
+  top: calc(var(--minimap-top) + var(--minimap-size) + 10px);
+  right: var(--hud-right);
+  z-index: 7;
+}
+html.raid-immersive #stage #app .interaction {
+  position: absolute;
+  bottom: var(--interaction-bottom);
+  left: 50%;
+  z-index: 7;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(640px, calc(100% - 200px));
+  min-height: 0;
+}
+html.raid-immersive #stage #app #interaction-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html.raid-immersive #stage #app .interaction progress {
+  flex: 0 0 70px;
+}
+html.raid-immersive #stage #app .interaction button {
+  flex-shrink: 0;
+}
+html.raid-immersive #stage #app :is(.map-hud-right, .interaction) button {
+  pointer-events: auto;
+}
+html.raid-immersive #stage #app .key-prompt {
+  bottom: calc(var(--hud-bottom) + 60px);
+}
+html.raid-immersive #stage #app .map-toast {
+  bottom: calc(var(--hud-bottom) + 190px);
+}
+html.raid-immersive[data-touch='true'] #stage #app .map-viewport {
+  --hud-top: max(6px, var(--safe-top, 0px));
+  --hud-right: max(8px, var(--safe-right, 0px));
+  --hud-left: max(8px, var(--safe-left, 0px));
+  --minimap-size: clamp(76px, calc(var(--game-height) * 0.24), 112px);
+  --minimap-top: calc(var(--hud-top) + 48px);
+  --interaction-bottom: calc(var(--hud-bottom) + 100px);
+}
+html.raid-immersive[data-touch='true'] #stage #app .raid-hud-left {
+  width: min(240px, 29%);
+  gap: 4px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .map-hud-right {
+  width: 260px;
+  padding: 4px 8px;
+  font-size: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 8px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .map-hud-right > span:first-child {
+  grid-column: 1;
+  white-space: nowrap;
+}
+html.raid-immersive[data-touch='true'] #stage #app .map-hud-right .battery-compact {
+  grid-column: 1;
+}
+html.raid-immersive[data-touch='true'] #stage #app #open-raid-settings {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+html.raid-immersive[data-touch='true'] #stage #app .raid-value {
+  font-size: 11px;
+  padding: 6px 8px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .formal-camera-controls {
+  gap: 4px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .formal-camera-controls button {
+  padding: 6px;
+  min-height: 36px;
+  font-size: 10px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .interaction {
+  max-width: calc(100% - 540px);
+  padding: 4px 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px 6px;
+  font-size: 10px;
+}
+html.raid-immersive[data-touch='true'] #stage #app #interaction-label {
+  flex-basis: 100%;
+  text-align: center;
+}
+html.raid-immersive[data-touch='true'] #stage #app .map-toast {
+  bottom: calc(var(--hud-bottom) + 168px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(350px, calc(100% - 540px));
+}
+html.raid-immersive[data-touch='true'] #stage #app .raid-location {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .raid-hud-left .formal-story-objective {
+  padding: 5px 8px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .formal-story-objective strong {
+  font-size: 11px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .formal-story-objective small {
+  font-size: 10px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .raid-hud-left .tutorial-card {
+  padding: 5px 8px;
+}
+html.raid-immersive[data-touch='true'] #stage #app .tutorial-keys {
+  display: none;
+}
+html.raid-immersive[data-touch='true'] #stage #app .tutorial-meta,
+html.raid-immersive[data-touch='true'] #stage #app .tutorial-card p {
+  margin: 0 0 2px;
+}
+html.raid-immersive[data-touch='true'][data-compact='true'] #stage #app .tutorial-meta {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+}
+html.raid-immersive[data-touch='true'][data-compact='true'] #stage #app .tutorial-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 6px;
+  align-items: center;
+}
+html.raid-immersive[data-touch='true'][data-compact='true'] #stage #app .tutorial-card h3 {
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0;
+}
+html.raid-immersive[data-touch='true'][data-compact='true'] #stage #app #tutorial-body,
+html.raid-immersive[data-touch='true'][data-compact='true'] #stage #app .tutorial-actions {
+  grid-column: 1 / -1;
+}
+html.raid-immersive[data-touch='true'][data-compact='true']
+  #stage
+  #app
+  .tutorial-meta
+  > span:last-child {
+  display: none;
+}
+html.raid-immersive[data-touch='true'][data-compact='true'] #stage #app .tutorial-card p {
+  font-size: 9px;
+  line-height: 1.3;
+}

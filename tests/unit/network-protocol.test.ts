@@ -56,7 +56,7 @@ describe('online protocol boundary', () => {
   });
 
   it('rejects malformed or unsupported messages', () => {
-    expect(isClientMessage({ type: 'hello', protocol: 2, sessionId: 'x', displayName: 'x' })).toBe(
+    expect(isClientMessage({ type: 'hello', protocol: 1, sessionId: 'x', displayName: 'x' })).toBe(
       false,
     );
     expect(

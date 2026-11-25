@@ -1,4 +1,4 @@
-export const NETWORK_PROTOCOL_VERSION = 1 as const;
+export const NETWORK_PROTOCOL_VERSION = 2 as const;
 export const ROOM_CAPACITY = 10;
 export const ROOM_CHAT_LIMIT = 160;
 export const isRoomCode = (value: unknown): value is string =>

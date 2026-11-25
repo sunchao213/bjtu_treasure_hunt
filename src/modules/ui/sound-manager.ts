@@ -37,9 +37,9 @@ export class SoundManager {
   private disposed = false;
   private settings: AudioSettings = { volume: 0.8, brightness: 1 };
 
-  constructor() {
+  constructor(private readonly settingsKey = KEY) {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = localStorage.getItem(this.settingsKey);
       if (raw) this.settings = { ...this.settings, ...JSON.parse(raw) };
     } catch {
       /* defaults */
@@ -88,7 +88,7 @@ export class SoundManager {
     this.settings = { ...this.settings, ...next };
     this.applyVolume();
     try {
-      localStorage.setItem(KEY, JSON.stringify(this.settings));
+      localStorage.setItem(this.settingsKey, JSON.stringify(this.settings));
     } catch {
       /* ignore */
     }

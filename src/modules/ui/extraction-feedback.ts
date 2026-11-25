@@ -35,7 +35,7 @@ export function refusalText(
     return valueGapText(view.value, view.threshold);
   }
   if (error === 'INVALID_STATE') {
-    if (paused) return '已暂停 · 关闭规则或校园图后再申请撤离';
+    if (paused) return '已暂停 · 关闭设置或当前弹窗后再申请撤离';
     if (view.phase === 'extracting') return '正在撤离 · 请留在南门区域内';
     return '当前状态不能撤离，请稍后再试';
   }
