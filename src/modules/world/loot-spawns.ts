@@ -13,7 +13,12 @@ export interface LootSpawn extends Point {
 const CHEST_LOOT = [
   { itemId: 'window-seat', upperBound: 0.3 },
   { itemId: 'morning-coffee', upperBound: 0.6 },
-  { itemId: 'school-badge', upperBound: 0.9 },
+  { itemId: 'school-badge', upperBound: 0.82 },
+  { itemId: 'quick-note-card', upperBound: 0.86 },
+  { itemId: 'simple-detector', upperBound: 0.9 },
+  { itemId: 'star-compass', upperBound: 0.92 },
+  { itemId: 'silent-cloak', upperBound: 0.94 },
+  { itemId: 'reflective-filter', upperBound: 0.945 },
   { itemId: 'roller-skates', upperBound: 0.98 },
   { itemId: 'hunter-binoculars', upperBound: 0.998 },
   { itemId: 'strange-veined-ginkgo-leaf', upperBound: 1 },

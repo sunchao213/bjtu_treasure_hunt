@@ -83,13 +83,25 @@ export class NightLighting {
   enabled = true;
   spareBatteries = 2;
   flareCount = 2;
+  private flashlightRangeMultiplier = 1;
   flares: (LightSource & { remainingMs: number })[] = [];
   reset(): void {
     this.battery = 100;
     this.enabled = true;
     this.spareBatteries = 2;
     this.flareCount = 2;
+    this.flashlightRangeMultiplier = 1;
     this.flares = [];
+  }
+  setFlashlightRangeMultiplier(multiplier: number): boolean {
+    if (!Number.isFinite(multiplier) || multiplier <= this.flashlightRangeMultiplier) {
+      return false;
+    }
+    this.flashlightRangeMultiplier = multiplier;
+    return true;
+  }
+  flashlightRange(): number {
+    return 310 * this.flashlightRangeMultiplier;
   }
   tick(deltaMs: number): void {
     const elapsed = Math.max(0, Math.min(deltaMs, 100));
@@ -140,7 +152,7 @@ export class NightLighting {
     return (
       this.enabled &&
       this.battery > 0 &&
-      distance(target, player) <= 310 &&
+      distance(target, player) <= this.flashlightRange() &&
       Math.abs(angleDifference(angleBetween(player, target), aim)) <= Math.PI / 5 &&
       lineOfSight(player, target, walls)
     );
@@ -157,7 +169,7 @@ export class NightLighting {
     if (
       this.enabled &&
       this.battery > 0 &&
-      distance(target, player) <= 310 &&
+      distance(target, player) <= this.flashlightRange() &&
       Math.abs(angleDifference(angleBetween(player, target), aim)) <= Math.PI / 5 &&
       lineOfSight(player, target, walls)
     ) {
@@ -171,7 +183,30 @@ export class NightLighting {
 
 export type EnemyState =
   'patrol' | 'chase' | 'windup' | 'request' | 'calmed' | 'mutation-warning' | 'stunned' | 'dead';
-export type CombatWeaponId = 'training-bat' | 'stun-baton';
+export type CombatWeaponId =
+  | 'training-bat'
+  | 'stun-baton'
+  | 'folding-ruler'
+  | 'long-broom'
+  | 'window-breaker'
+  | 'night-watch-spear';
+
+const COMBAT_WEAPON_CONFIGS = {
+  'training-bat': COMBAT_RULES.player.attack.weapons.trainingBat,
+  'stun-baton': COMBAT_RULES.player.attack.weapons.stunBaton,
+  'folding-ruler': COMBAT_RULES.player.attack.weapons.foldingRuler,
+  'long-broom': COMBAT_RULES.player.attack.weapons.longBroom,
+  'window-breaker': COMBAT_RULES.player.attack.weapons.windowBreaker,
+  'night-watch-spear': COMBAT_RULES.player.attack.weapons.nightWatchSpear,
+} as const;
+
+export function isCombatWeaponId(itemId: string): itemId is CombatWeaponId {
+  return Object.hasOwn(COMBAT_WEAPON_CONFIGS, itemId);
+}
+
+export function combatWeaponConfig(weaponId: CombatWeaponId) {
+  return COMBAT_WEAPON_CONFIGS[weaponId];
+}
 /** Patrol animals share duck combat numbers. The field only picks a sprite. */
 export const PATROL_SPECIES = ['duck', 'cat', 'swan'] as const;
 export type PatrolSpecies = (typeof PATROL_SPECIES)[number];
@@ -451,10 +486,7 @@ export class NightCombat {
     weaponId: CombatWeaponId = 'training-bat',
   ): Enemy[] {
     this.attackHit = false;
-    const weapon =
-      weaponId === 'stun-baton'
-        ? COMBAT_RULES.player.attack.weapons.stunBaton
-        : COMBAT_RULES.player.attack.weapons.trainingBat;
+    const weapon = combatWeaponConfig(weaponId);
     if (weaponId !== this.currentWeaponId) {
       this.currentWeaponId = weaponId;
       this.weaponUsesRemaining = weapon.maxUses;
@@ -559,8 +591,12 @@ export class NightCombat {
     stationary: boolean,
     walls: readonly Rect[],
     bounds: Rect,
+    detectionMultiplier = 1,
   ): { damage: number; calmed: Enemy[] } {
     const dt = Math.max(0, Math.min(deltaMs, 100));
+    const detectionScale = Number.isFinite(detectionMultiplier)
+      ? Math.max(0.1, Math.min(1, detectionMultiplier))
+      : 1;
     this.tick(dt);
     let damage = 0;
     const calmed: Enemy[] = [];
@@ -665,7 +701,7 @@ export class NightCombat {
           : lightOn
             ? COMBAT_RULES.enemy.patrol.detectionLightRange
             : COMBAT_RULES.enemy.patrol.detectionDarkRange;
-      if (sight && d < detectionRange) {
+      if (sight && d < detectionRange * detectionScale) {
         enemy.state = 'chase';
         enemy.timer = COMBAT_RULES.enemy.chaseMemoryMs;
       } else if (enemy.state === 'chase') {

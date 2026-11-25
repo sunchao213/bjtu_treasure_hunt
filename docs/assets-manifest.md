@@ -7,7 +7,7 @@
 | 地图标记、角色与交互效果 | src/scenes/world-scene.ts                                       | 本次项目代码绘制                                        | 地图标记、角色和动态交互效果由场景绘制                                                   |
 | 宝箱精灵表               | public/assets/props/treasure-chest.png                          | 用户提供的宝箱动画图                                    | 6 帧透明精灵条；闭合帧用于地图显示，开启帧用于搜查成功动画                               |
 | 字体                     | 用户设备系统字体                                                | Microsoft YaHei／系统字体栈                             | 不分发字体文件                                                                           |
-| 道具像素图标             | public/assets/items/icons/*.png                                 | 用户提供的 16 张像素图已转换                            | 128×128 RGBA；仓库、详情与图鉴共用；转换方法见该目录 README                              |
+| 道具像素图标             | public/assets/items/icons/*.png                                 | 现有像素图标与项目新增的辅助道具、武器图标              | 128×128 RGBA；仓库、详情与商店共用；转换方法见该目录 README                              |
 | 怪物原始精灵表           | public/assets/characters/monster-animals-source.png             | 用户提供的 `怪物动物像素动画精灵表.png`                 | 鸭子、松鼠及变异松鼠动画源图；作者、许可和署名信息待用户补充，当前仅限本地开发，不得发布 |
 | 怪物处理动画条           | public/assets/characters/processed/*.png                        | scripts/prepare_monster_sprites.py 基于用户提供源图处理 | 统一 176×176 RGBA 帧、底部中心锚点；发布前必须确认源素材再分发授权                       |
 

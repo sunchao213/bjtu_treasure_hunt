@@ -68,6 +68,18 @@ describe('night lighting', () => {
     expect(light.illuminated({ x: 120, y: 100 }, player, 0, [])).toBe(false);
     expect(light.illuminated(LAMPS[0]!, player, 0, [])).toBe(true);
   });
+  it('extends the flashlight search range for a reflective filter and resets it', () => {
+    const light = new NightLighting();
+    const player = { x: 100, y: 100 };
+    expect(light.flashlightRange()).toBe(310);
+    expect(light.flashlightReveals({ x: 450, y: 100 }, player, 0, [])).toBe(false);
+    expect(light.setFlashlightRangeMultiplier(1.2)).toBe(true);
+    expect(light.flashlightRange()).toBe(372);
+    expect(light.flashlightReveals({ x: 450, y: 100 }, player, 0, [])).toBe(true);
+    expect(light.setFlashlightRangeMultiplier(1.2)).toBe(false);
+    light.reset();
+    expect(light.flashlightRange()).toBe(310);
+  });
   it('depletes, replaces, charges and resets batteries without a permanent softlock', () => {
     const light = new NightLighting();
     for (let i = 0; i < 1801; i++) {
@@ -349,6 +361,28 @@ describe('night combat', () => {
     narrow.attack(narrowPlayer, Math.PI / 2, [], 15, 'stun-baton');
     expect(narrow.attackHit).toBe(false);
     expect(target.health).toBe(70);
+  });
+  it('reduces enemy detection range while the silent cloak is active', () => {
+    const combat = isolatedCombat();
+    const enemy = combat.enemies[0]!;
+    const player = { x: enemy.position.x - 150, y: enemy.position.y };
+    combat.update(100, player, true, false, true, [], bounds, 0.5);
+    expect(enemy.state).toBe('patrol');
+    combat.update(100, player, true, false, true, [], bounds);
+    expect(enemy.state).toBe('chase');
+  });
+  it.each([
+    ['folding-ruler', 20, 55],
+    ['long-broom', 22, 100],
+    ['window-breaker', 55, 65],
+    ['night-watch-spear', 70, 145],
+  ] as const)('uses the configured %s weapon profile', (weaponId, damage, distance) => {
+    const combat = isolatedCombat();
+    const enemy = combat.enemies[0]!;
+    const player = { x: enemy.position.x - distance, y: enemy.position.y };
+    combat.attack(player, 0, [], damage, weaponId);
+    expect(enemy.health).toBe(70 - damage);
+    expect(combat.currentWeaponId).toBe(weaponId);
   });
   it('stuns mutated enemies for 600ms and respects the 75-unit attack range', () => {
     const combat = isolatedCombat('hug');
