@@ -67,6 +67,22 @@ describe('好友面板结构', () => {
     expect(markup).toContain('我的 UID');
     expect(markup).toContain('data-lobby-panel="friends"');
   });
+
+  it('把邀请管理与好友列表、私聊放在独立分区', () => {
+    const markup = friendsPanelMarkup();
+    expect(markup).toContain('aria-labelledby="friends-operations-title"');
+    expect(markup).toContain('aria-labelledby="friends-directory-title"');
+    expect(markup).toContain('aria-label="好友与私聊"');
+    expect(markup).toContain('data-friends-mode-option="invite"');
+    expect(markup).toContain('data-friends-mode-option="friends"');
+    expect(markup).toContain('id="friends-requests-list"');
+    expect(markup).toContain('id="friends-list"');
+    expect(markup).toContain('id="friends-chat"');
+    expect(markup).toContain('id="friends-chat-head" class="friends-chat-head" hidden');
+    expect(markup).toContain(
+      'id="friends-chat-status" class="friends-status" role="status" aria-live="polite" hidden',
+    );
+  });
 });
 
 describe('好友接口客户端', () => {
