@@ -4,26 +4,48 @@ import type { ActionResult, ItemInstance } from '../../shared/types/game';
 export class SearchInteraction {
   private target: string | null = null;
   private startedAtMs = 0;
+  private activeDurationMs: number;
+  private nextDurationMs: number | null = null;
   private readonly opened = new Set<string>();
   constructor(
     private readonly durationMs: number,
     private readonly clock: () => number = Date.now,
-  ) {}
+  ) {
+    this.activeDurationMs = durationMs;
+  }
 
-  begin(id: string): boolean {
+  /** Apply a one-shot duration to the next search that starts. */
+  setNextDuration(durationMs: number): boolean {
+    if (
+      this.target !== null ||
+      this.nextDurationMs !== null ||
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0
+    ) {
+      return false;
+    }
+    this.nextDurationMs = Math.min(this.durationMs, durationMs);
+    return true;
+  }
+
+  begin(id: string, applyNextDuration = true): boolean {
     if (this.opened.has(id)) {
       return false;
     }
     if (this.target !== id) {
       this.target = id;
       this.startedAtMs = this.clock();
+      this.activeDurationMs = applyNextDuration
+        ? (this.nextDurationMs ?? this.durationMs)
+        : this.durationMs;
+      if (applyNextDuration) this.nextDurationMs = null;
     }
     return true;
   }
   progress(): number {
     return this.target === null
       ? 0
-      : Math.min(1, (this.clock() - this.startedAtMs) / this.durationMs);
+      : Math.min(1, (this.clock() - this.startedAtMs) / this.activeDurationMs);
   }
   current(): string | null {
     return this.target;
@@ -37,9 +59,11 @@ export class SearchInteraction {
   }
   cancel(): void {
     this.target = null;
+    this.activeDurationMs = this.durationMs;
   }
   reset(): void {
     this.cancel();
+    this.nextDurationMs = null;
     this.opened.clear();
   }
 

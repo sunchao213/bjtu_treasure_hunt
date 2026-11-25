@@ -1449,6 +1449,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           checkbox.checked = carriedInstances.has(item.instanceId);
           checkbox.disabled = lobby.isLocked();
           checkbox.addEventListener('change', () => {
+            // 勾选武器时清空「初始武器」下拉，避免同一把武器既当初始又当带入（origin/main）
+            if (checkbox.checked && definition?.kind === 'weapon') {
+              element<HTMLSelectElement>('starter-weapon').value = '';
+            }
             if (checkbox.checked) {
               // 容量按「已带入格数 + 这一件」算，Set 还没有这件
               const next = carriedSlots() + Number(checkbox.dataset.bagSlots ?? 1);
@@ -1571,6 +1575,27 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
             const consumed = activeInventory.consumeUtility(item.instanceId, () => {
               const effect = UTILITY_EFFECTS[item.itemId];
               if (!effect) return false;
+              if (effect.searchDurationReductionMs !== undefined) {
+                return scene.activateSearchBoost(effect.searchDurationReductionMs);
+              }
+              if (effect.detectorDurationMs !== undefined) {
+                return scene.activateDetector(effect.detectorDurationMs);
+              }
+              if (effect.compassDurationMs !== undefined) {
+                return scene.activateCompass(effect.compassDurationMs);
+              }
+              if (
+                effect.stealthDurationMs !== undefined &&
+                effect.stealthDetectionMultiplier !== undefined
+              ) {
+                return scene.activateSilentCloak(
+                  effect.stealthDurationMs,
+                  effect.stealthDetectionMultiplier,
+                );
+              }
+              if (effect.flashlightRangeMultiplier !== undefined) {
+                return scene.activateReflectiveFilter(effect.flashlightRangeMultiplier);
+              }
               if (effect.speedMultiplier !== undefined) {
                 return activeController.activateSpeedBoost(
                   effect.speedMultiplier,

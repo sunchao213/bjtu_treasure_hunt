@@ -29,8 +29,10 @@ import {
   type Enemy,
   type EnemyState,
   angleBetween,
+  combatWeaponConfig,
   distance,
   findEnemySpawnPosition,
+  isCombatWeaponId,
   lineOfSight,
   shouldDropPatrolLoot,
 } from '../modules/world/night-systems';
@@ -228,6 +230,11 @@ export class WorldScene extends Phaser.Scene {
   private alerts?: Phaser.GameObjects.Graphics;
   private searchAlert?: Phaser.GameObjects.Text;
   private alertAnchor: { id: string; x: number; y: number } | null = null;
+  private detectorTargetId: string | null = null;
+  private detectorUntilMs = 0;
+  private compassUntilMs = 0;
+  private silentCloakUntilMs = 0;
+  private silentCloakDetectionMultiplier = 1;
   private readonly warningLabels = new Map<string, Phaser.GameObjects.Text>();
 
   constructor(private readonly services: SceneServices) {
@@ -267,6 +274,101 @@ export class WorldScene extends Phaser.Scene {
       spareBatteries: this.lighting.spareBatteries,
       flares: this.lighting.flareCount,
     };
+  }
+
+  activateSearchBoost(reductionMs: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    const duration = Math.max(250, RAID_RULES.searchDurationMs - reductionMs);
+    return this.search.setNextDuration(duration);
+  }
+
+  activateDetector(durationMs: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    if (this.detectorTargetId !== null && this.time.now < this.detectorUntilMs) return false;
+    const target = this.searchPoints
+      .filter((point) => !this.search.isOpened(point.id))
+      .sort((a, b) => distance(this.position, a) - distance(this.position, b))[0];
+    if (!target || !Number.isFinite(durationMs) || durationMs <= 0) return false;
+    this.detectorTargetId = target.id;
+    this.detectorUntilMs = this.time.now + durationMs;
+    return true;
+  }
+
+  activateCompass(durationMs: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    if (this.time.now < this.compassUntilMs) return false;
+    if (!this.compassQuestTarget() && !this.extractionTarget()) return false;
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return false;
+    this.compassUntilMs = this.time.now + durationMs;
+    return true;
+  }
+
+  activateSilentCloak(durationMs: number, detectionMultiplier: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    if (this.time.now < this.silentCloakUntilMs) return false;
+    if (
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0 ||
+      !Number.isFinite(detectionMultiplier) ||
+      detectionMultiplier <= 0
+    ) {
+      return false;
+    }
+    this.silentCloakUntilMs = this.time.now + durationMs;
+    this.silentCloakDetectionMultiplier = detectionMultiplier;
+    return true;
+  }
+
+  activateReflectiveFilter(multiplier: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    return this.lighting.setFlashlightRangeMultiplier(multiplier);
+  }
+
+  private detectionMultiplier(): number {
+    if (this.time.now >= this.silentCloakUntilMs) {
+      this.silentCloakDetectionMultiplier = 1;
+      return 1;
+    }
+    return this.silentCloakDetectionMultiplier;
+  }
+
+  private hasCurrentQuestEvidence(itemId: string): boolean {
+    const raidId = this.services.controller.getView().raidId;
+    return this.services.inventory
+      .getCarriedItems()
+      .some(
+        (item) =>
+          item.itemId === itemId &&
+          item.origin.kind === 'raid-loot' &&
+          item.origin.obtainedInRaidId === raidId,
+      );
+  }
+
+  private compassQuestTarget(): Point | null {
+    const view = this.services.controller.getView();
+    const pending = questChapterById(this.questChapterId()).evidence.find(
+      (entry) => !this.hasCurrentQuestEvidence(entry.itemId),
+    );
+    if (!pending) return null;
+    if (pending.itemId === 'anomalous-feather' && view.steleInvestigated) return null;
+    const stone = activeMap().stone;
+    if (pending.itemId === 'anomalous-feather' && stone) {
+      return { ...stone };
+    }
+    const target = this.searchPoints.find(
+      (point) => point.itemId === pending.itemId && !this.search.isOpened(point.id),
+    );
+    return target ? { x: target.x, y: target.y } : null;
+  }
+
+  private extractionTarget(): Point | null {
+    const zone = activeMap().extractions[0];
+    return zone ? { x: zone.x + zone.width / 2, y: zone.y + zone.height / 2 } : null;
   }
 
   clearInteractions(): void {
@@ -463,6 +565,8 @@ export class WorldScene extends Phaser.Scene {
       this.services.sound.play('behit');
       this.services.sound.setLoop('alarm', health > 0 && health < 20);
       this.hurtThisFrame = true;
+      this.silentCloakUntilMs = 0;
+      this.silentCloakDetectionMultiplier = 1;
       this.hurtFeedbackMs = COMBAT_RULES.feedback.playerHighlightMs;
       this.setPlayerAction('hurt', COMBAT_RULES.feedback.playerHighlightMs);
       this.cancelSearch();
@@ -674,7 +778,10 @@ export class WorldScene extends Phaser.Scene {
         this.services.notify('照明棒已部署，附近区域将保持可见 30 秒。');
       }
       if (down('SPACE')) {
+        // cancelSearch 内部已含 this.search.cancel()，且额外取消房战搜刮
         this.cancelSearch();
+        this.silentCloakUntilMs = 0;
+        this.silentCloakDetectionMultiplier = 1;
         const carriedItems = this.services.inventory.getCarriedItems();
         const equippedWeapon = this.services.inventory.getEquipment().primary;
         const weaponItem =
@@ -686,17 +793,15 @@ export class WorldScene extends Phaser.Scene {
             this.services.notify('未携带武器，无法攻击。');
           }
         } else {
-          const stunBaton = weaponItem.itemId === 'stun-baton';
-          const weapon = stunBaton
-            ? COMBAT_RULES.player.attack.weapons.stunBaton
-            : COMBAT_RULES.player.attack.weapons.trainingBat;
+          const weaponId = isCombatWeaponId(weaponItem.itemId) ? weaponItem.itemId : 'training-bat';
+          const weapon = combatWeaponConfig(weaponId);
           if (
-            stunBaton &&
-            this.combat.currentWeaponId === 'stun-baton' &&
+            weapon.maxUses !== null &&
+            this.combat.currentWeaponId === weaponId &&
             this.combat.weaponUsesRemaining === 0
           ) {
             if (!this.previousAttack) {
-              this.services.notify('电击器已用尽。');
+              this.services.notify(`${ITEM_DEFINITIONS[weaponId]?.name ?? weaponId}已用尽。`);
             }
             this.previousAttack = down('SPACE');
           }
@@ -706,7 +811,7 @@ export class WorldScene extends Phaser.Scene {
             this.aim,
             activeMap().obstacles,
             weapon.damage,
-            stunBaton ? 'stun-baton' : 'training-bat',
+            weaponId,
           );
           if (previousCooldown <= 0 && this.combat.attackCooldown > 0) {
             this.setPlayerAction('attack', COMBAT_RULES.player.attack.swingMs + 140);
@@ -748,6 +853,7 @@ export class WorldScene extends Phaser.Scene {
         !this.moving,
         activeMap().obstacles,
         this.bounds,
+        this.detectionMultiplier(),
       );
       const spawnedEnemies = this.combat.updateSpawns(deltaMs, () =>
         findEnemySpawnPosition(this.position, this.aim, this.lighting, this.combat.enemies),
@@ -781,6 +887,7 @@ export class WorldScene extends Phaser.Scene {
         true,
         activeMap().obstacles,
         this.bounds,
+        this.detectionMultiplier(),
       );
       const spawnedEnemies = this.combat.updateSpawns(deltaMs, () =>
         findEnemySpawnPosition(this.position, this.aim, this.lighting, this.combat.enemies),
@@ -1111,10 +1218,11 @@ export class WorldScene extends Phaser.Scene {
           : this.services.inventory
               .getCarriedItems()
               .find((item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon');
-      const swingWeapon =
-        carriedWeapon?.itemId === 'stun-baton'
-          ? COMBAT_RULES.player.attack.weapons.stunBaton
-          : COMBAT_RULES.player.attack.weapons.trainingBat;
+      const swingWeaponId =
+        carriedWeapon && isCombatWeaponId(carriedWeapon.itemId)
+          ? carriedWeapon.itemId
+          : 'training-bat';
+      const swingWeapon = combatWeaponConfig(swingWeaponId);
       this.flashlight.fillStyle(0xf2edbc, 0.35);
       this.flashlight.beginPath();
       this.flashlight.moveTo(this.position.x, this.position.y);
@@ -1559,7 +1667,7 @@ export class WorldScene extends Phaser.Scene {
       if (lamp && this.lighting.battery < 99) {
         this.interaction = '灯站充电';
         if (held && !this.moving && !this.hurtThisFrame) {
-          this.search.begin(`charge:${lamp.x}`);
+          this.search.begin(`charge:${lamp.x}`, false);
           if (this.search.progress() >= 1) {
             this.lighting.charge();
             this.cancelSearch();
@@ -1699,6 +1807,11 @@ export class WorldScene extends Phaser.Scene {
     this.previousRefill = false;
     this.previousFlare = false;
     this.services.touch.reset();
+    this.detectorTargetId = null;
+    this.detectorUntilMs = 0;
+    this.compassUntilMs = 0;
+    this.silentCloakUntilMs = 0;
+    this.silentCloakDetectionMultiplier = 1;
   }
 
   private createChestAnimations(): void {
@@ -1840,6 +1953,33 @@ export class WorldScene extends Phaser.Scene {
     this.services.sound.playHugCry();
   }
 
+  private drawDirectionArrow(target: Point, color: number): void {
+    if (!this.alerts) return;
+    const direction = angleBetween(this.position, target);
+    const base = {
+      x: this.position.x + Math.cos(direction) * 28,
+      y: this.position.y + Math.sin(direction) * 28,
+    };
+    const tip = {
+      x: this.position.x + Math.cos(direction) * 62,
+      y: this.position.y + Math.sin(direction) * 62,
+    };
+    const left = {
+      x: tip.x - Math.cos(direction - Math.PI / 6) * 14,
+      y: tip.y - Math.sin(direction - Math.PI / 6) * 14,
+    };
+    const right = {
+      x: tip.x - Math.cos(direction + Math.PI / 6) * 14,
+      y: tip.y - Math.sin(direction + Math.PI / 6) * 14,
+    };
+    this.alerts
+      .lineStyle(4, color, 0.95)
+      .strokeCircle(this.position.x, this.position.y, 24)
+      .lineBetween(base.x, base.y, tip.x, tip.y)
+      .lineBetween(tip.x, tip.y, left.x, left.y)
+      .lineBetween(tip.x, tip.y, right.x, right.y);
+  }
+
   private drawPlayAlerts(): void {
     for (const enemy of this.combat.enemies) {
       const label = this.warningLabels.get(enemy.id);
@@ -1856,6 +1996,32 @@ export class WorldScene extends Phaser.Scene {
     if (anchor && this.alerts) {
       this.alerts.lineStyle(3, 0xeed5a4, 0.95).strokeCircle(anchor.x, anchor.y, 26);
       this.alerts.lineStyle(2, 0xf0d9a6, 0.85).strokeCircle(anchor.x, anchor.y, 40);
+    }
+    const view = this.services.controller.getView();
+    const detectorTarget =
+      this.detectorTargetId !== null &&
+      this.time.now < this.detectorUntilMs &&
+      (view.phase === 'active' || view.phase === 'extracting')
+        ? this.searchPoints.find(
+            (point) => point.id === this.detectorTargetId && !this.search.isOpened(point.id),
+          )
+        : undefined;
+    if (detectorTarget) {
+      this.drawDirectionArrow(detectorTarget, 0x8de0bd);
+    } else if (this.detectorTargetId !== null) {
+      this.detectorTargetId = null;
+      this.detectorUntilMs = 0;
+    }
+    if (
+      this.time.now < this.compassUntilMs &&
+      (view.phase === 'active' || view.phase === 'extracting')
+    ) {
+      const questTarget = this.compassQuestTarget();
+      const extractionTarget = this.extractionTarget();
+      if (questTarget) this.drawDirectionArrow(questTarget, 0xf0d9a6);
+      if (extractionTarget) this.drawDirectionArrow(extractionTarget, 0xc2a2ee);
+    } else if (this.compassUntilMs !== 0) {
+      this.compassUntilMs = 0;
     }
     const showSearch = anchor !== null && this.keyPrompt?.label === '搜索';
     this.searchAlert?.setVisible(showSearch);

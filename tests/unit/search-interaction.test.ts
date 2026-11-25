@@ -68,4 +68,34 @@ describe('SearchInteraction', () => {
       error: 'INVALID_STATE',
     });
   });
+
+  it('applies a one-shot shortened duration to the next search', () => {
+    let now = 0;
+    const search = new SearchInteraction(2_000, () => now);
+    expect(search.setNextDuration(1_000)).toBe(true);
+    search.begin('library-west');
+    now = 999;
+    expect(search.finish(item, () => ({ ok: true, value: undefined }))).toEqual({
+      ok: false,
+      error: 'INVALID_STATE',
+    });
+    now = 1_000;
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(true);
+    expect(search.setNextDuration(1_000)).toBe(true);
+  });
+
+  it('does not spend the search duration on a non-search interaction', () => {
+    let now = 0;
+    const search = new SearchInteraction(2_000, () => now);
+    expect(search.setNextDuration(1_000)).toBe(true);
+    search.begin('charge-lamp', false);
+    now = 1_000;
+    expect(search.finish(item, () => ({ ok: true, value: undefined }))).toEqual({
+      ok: false,
+      error: 'INVALID_STATE',
+    });
+    search.begin('library-west');
+    now = 2_000;
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(true);
+  });
 });

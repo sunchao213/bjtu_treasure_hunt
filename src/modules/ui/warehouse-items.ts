@@ -57,6 +57,22 @@ const ICONS: Readonly<Record<string, WarehouseIcon>> = {
     path: 'M22 13H42V40L46 45V54H18V45L22 40Z M26 21H38 M27 29L37 25L29 35L38 32 M25 48H39',
     color: '#8ed0df',
   },
+  'folding-ruler': {
+    path: 'M12 20H55V32H12Z M20 20V32 M30 20V32 M40 20V32 M50 20V32 M18 43L29 36L40 43L51 36V54H18Z',
+    color: '#e0b878',
+  },
+  'long-broom': {
+    path: 'M42 9H49V92H42Z M24 84H67L75 101H16Z M19 101H72V111H19Z',
+    color: '#c59a6f',
+  },
+  'window-breaker': {
+    path: 'M25 53L38 13L48 16L35 56L50 101L38 105Z M31 12L51 18L47 30L27 24Z M34 73L50 68L56 88L40 93Z',
+    color: '#b9c3c5',
+  },
+  'night-watch-spear': {
+    path: 'M58 12L83 37L70 50L45 25Z M67 25L91 49L82 58L58 34Z M79 53L43 109L34 103L70 47Z M28 101L43 109L31 116L20 114Z',
+    color: '#e7cf86',
+  },
   bandage: {
     path: 'M12 32Q12 24 20 24H44Q52 24 52 32Q52 40 44 40H20Q12 40 12 32Z M22 27V37 M28 27V37 M34 27V37 M40 27V37',
     color: '#f0b8a1',
@@ -80,6 +96,26 @@ const ICONS: Readonly<Record<string, WarehouseIcon>> = {
   'roller-skates': {
     path: 'M10 17H39L47 28V40H25L21 50H13L18 38H10Z M25 50H53 M28 50A4 4 0 1 0 28 58A4 4 0 1 0 28 50Z M45 50A4 4 0 1 0 45 58A4 4 0 1 0 45 50Z',
     color: '#d4d9e6',
+  },
+  'quick-note-card': {
+    path: 'M14 10H50L56 16V54H14Z M22 23H46 M22 32H46 M22 41H38 M43 48L48 53L57 43',
+    color: '#e7d7a1',
+  },
+  'simple-detector': {
+    path: 'M16 18H48V48H16Z M22 24H42V42H22Z M28 30H36V36H28Z M50 27L58 32L50 37Z',
+    color: '#8bc9bb',
+  },
+  'star-compass': {
+    path: 'M32 7A25 25 0 1 0 32 57A25 25 0 1 0 32 7Z M32 13V51 M13 32H51 M32 17L38 32L32 47L26 32Z M32 2V8 M32 56V62',
+    color: '#f0d184',
+  },
+  'silent-cloak': {
+    path: 'M25 8H39L49 20V30L57 40V57H7V40L15 30V20Z M22 32H42 M20 42H44 M24 52H40',
+    color: '#b9a5d3',
+  },
+  'reflective-filter': {
+    path: 'M15 16H49L57 24V54H15Z M23 24H47V47H23Z M28 29L42 43 M42 29L28 43 M50 8V20 M44 14H56',
+    color: '#c4d8ef',
   },
   'marked-campus-map': {
     path: 'M8 16L24 10L40 16L56 10V48L40 54L24 48L8 54Z M24 10V48 M40 16V54 M29 29L35 35 M35 29L29 35',
@@ -154,12 +190,21 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   'silver-watch': '银色手表，传说收藏物；没有额外使用效果。',
   'training-bat': '近身攻击装备，携带时可以攻击敌人。',
   'stun-baton': '可使用 15 次，命中后短暂击晕敌人。',
+  'folding-ruler': '伤害 20，攻击速度快，攻击范围较宽，耐久无限。',
+  'long-broom': '伤害 22，攻击距离较远，攻击范围较窄，耐久无限。',
+  'window-breaker': '伤害 55，攻击力强，攻击速度较慢，耐久无限。',
+  'night-watch-spear': '伤害 70，攻击距离很远，攻击范围较窄，耐久无限。',
   bandage: '使用后恢复 10 点生命。',
   'yellow-bike': '使用后移动速度提升 30%，持续 5 秒。',
   'thick-down-jacket': '使用后获得 30 点护盾，持续 5 秒。',
   'strange-veined-ginkgo-leaf': '叶脉纹路异常的校园传说收藏物，计入本局携带价值。',
   'hunter-binoculars': '留有探索痕迹的史诗收藏物，计入本局携带价值。',
   'roller-skates': '使用后移动速度提升 15%，持续 5 秒。',
+  'quick-note-card': '使用后下一次搜索读条时间缩短 1 秒，使用后消耗。',
+  'simple-detector': '使用后显示最近一个未调查物资箱的方向，持续 8 秒，使用后消耗。',
+  'star-compass': '使用后同时指向最近主线调查点与南侧撤离点，持续 30 秒，使用后消耗。',
+  'silent-cloak': '使用后降低敌人发现范围，持续 8 秒；攻击或受伤会提前结束。',
+  'reflective-filter': '使用后手电照射范围提升 20%，持续本局。',
 };
 
 export function warehouseItemIcon(itemId: string): WarehouseIcon | null {
