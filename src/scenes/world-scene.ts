@@ -41,6 +41,7 @@ import {
   type EnemyState,
   angleBetween,
   distance,
+  enemyMaxHealth,
   findEnemySpawnPosition,
   lineOfSight,
   shouldDropPatrolLoot,
@@ -189,6 +190,7 @@ export class WorldScene extends Phaser.Scene {
   private readonly enemyDeathFinished = new Set<string>();
   private readonly enemyMutatedStates = new Map<string, boolean>();
   private readonly enemyLastPositions = new Map<string, Point>();
+  private readonly soundWaveSprites = new Map<string, Phaser.GameObjects.Sprite>();
   private readonly remotePlayerObjects = new Map<string, Phaser.GameObjects.Container>();
   private readonly remotePlayerTargets = new Map<string, RemotePlayerSnapshot>();
   private onlineSnapshot: GameSnapshot | null = null;
@@ -763,6 +765,7 @@ export class WorldScene extends Phaser.Scene {
         !this.moving,
         activeMap().obstacles,
         this.bounds,
+        this.services.controller.isInvulnerable?.() ?? false,
       );
       const spawnedEnemies = this.combat.updateSpawns(deltaMs, () =>
         findEnemySpawnPosition(this.position, this.aim, this.lighting, this.combat.enemies),
@@ -773,8 +776,14 @@ export class WorldScene extends Phaser.Scene {
       if (spawnedEnemies.length > 0) {
         this.services.notify(`远处出现了${spawnedEnemies.length}只新的怪物。`);
       }
+      if (combat.amplifierWindups.length > 0) {
+        this.services.sound.playAmplifierCharge?.();
+      }
       if (combat.damage) {
         this.services.controller.applyDamage(combat.damage);
+      }
+      if (combat.soundWaveHit) {
+        this.services.controller.applySoundWaveEffect?.();
       }
       if (combat.calmed.length > 0) {
         this.services.notify('抱抱成功，怪物平静约 30 秒，不会掉落物品。');
@@ -796,6 +805,7 @@ export class WorldScene extends Phaser.Scene {
         true,
         activeMap().obstacles,
         this.bounds,
+        this.services.controller.isInvulnerable?.() ?? false,
       );
       const spawnedEnemies = this.combat.updateSpawns(deltaMs, () =>
         findEnemySpawnPosition(this.position, this.aim, this.lighting, this.combat.enemies),
@@ -806,14 +816,21 @@ export class WorldScene extends Phaser.Scene {
       if (spawnedEnemies.length > 0) {
         this.services.notify(`远处出现了${spawnedEnemies.length}只新的怪物。`);
       }
+      if (combat.amplifierWindups.length > 0) {
+        this.services.sound.playAmplifierCharge?.();
+      }
       if (combat.damage) {
         this.services.controller.applyDamage(combat.damage);
+      }
+      if (combat.soundWaveHit) {
+        this.services.controller.applySoundWaveEffect?.();
       }
       if (combat.calmed.length > 0) {
         this.services.notify('抱抱成功，怪物平静约 30 秒，不会掉落物品。');
       }
     } else if (!playable) {
       this.services.sound.setLoop('footsteps', false);
+      this.services.sound.setTinnitus?.(false);
       this.search.cancel();
       if (view.health <= 0) {
         this.setPlayerAction('death', Number.POSITIVE_INFINITY);
@@ -826,6 +843,9 @@ export class WorldScene extends Phaser.Scene {
     }
     this.services.controller.tick();
     const current = this.services.controller.getView();
+    this.services.sound.setTinnitus?.(
+      playable && (current.statusEffects?.tinnitusRemainingMs ?? 0) > 0,
+    );
     const extractionFill = current.value >= current.threshold ? 0x77d4a8 : 0x667a77;
     const extractionStroke = current.value >= current.threshold ? 0x97ecc6 : 0x738984;
     for (const marker of this.extractionMarkers) {
@@ -1172,12 +1192,11 @@ export class WorldScene extends Phaser.Scene {
           .fillStyle(0x40202b)
           .fillRect(enemy.position.x - 18, enemy.position.y - 70, 36, 4);
         this.flashlight
-          .fillStyle(enemy.mutated ? 0xff4e68 : 0xe4ae6b)
+          .fillStyle(enemy.mutated ? 0xff4e68 : enemy.kind === 'amplifier' ? 0xff6b7d : 0xe4ae6b)
           .fillRect(
             enemy.position.x - 18,
             enemy.position.y - 70,
-            (36 * enemy.health) /
-              (enemy.kind === 'hug' ? COMBAT_RULES.hug.health : COMBAT_RULES.enemy.patrol.health),
+            (36 * Math.max(0, enemy.health)) / enemyMaxHealth(enemy.kind),
             4,
           );
         if (enemy.state === 'mutation-warning') {
@@ -1186,29 +1205,84 @@ export class WorldScene extends Phaser.Scene {
             .strokeCircle(enemy.position.x, enemy.position.y, 48);
         }
         if (enemy.state === 'windup') {
-          const warning = COMBAT_RULES.feedback.enemyWarning;
-          const direction = angleBetween(enemy.position, this.position);
-          const tip = {
-            x: enemy.position.x + Math.cos(direction) * warning.lineLength,
-            y: enemy.position.y + Math.sin(direction) * warning.lineLength,
-          };
-          const left = {
-            x: tip.x - Math.cos(direction - Math.PI / 6) * warning.arrowSize,
-            y: tip.y - Math.sin(direction - Math.PI / 6) * warning.arrowSize,
-          };
-          const right = {
-            x: tip.x - Math.cos(direction + Math.PI / 6) * warning.arrowSize,
-            y: tip.y - Math.sin(direction + Math.PI / 6) * warning.arrowSize,
-          };
-          this.flashlight
-            .lineStyle(3, 0xff5269, 0.8)
-            .strokeCircle(enemy.position.x, enemy.position.y, warning.ringRadius)
-            .lineStyle(warning.lineWidth, 0xff5269, 0.95)
-            .lineBetween(enemy.position.x, enemy.position.y, tip.x, tip.y)
-            .lineBetween(tip.x, tip.y, left.x, left.y)
-            .lineBetween(tip.x, tip.y, right.x, right.y);
+          if (enemy.kind === 'amplifier' && enemy.attackAngle !== undefined) {
+            const ampRules = COMBAT_RULES.enemy.amplifier;
+            const angle = enemy.attackAngle;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const halfWidth = ampRules.projectileWidth / 2;
+            const length = ampRules.projectileMaxDistance;
+            const perpX = -sin * halfWidth;
+            const perpY = cos * halfWidth;
+            const endX = enemy.position.x + cos * length;
+            const endY = enemy.position.y + sin * length;
+            const locked = Boolean(enemy.windupLocked);
+            const progress = Math.max(0, Math.min(1, 1 - enemy.timer / ampRules.windupMs));
+            this.flashlight.fillStyle(
+              locked ? 0xff2b43 : 0xff5a6a,
+              locked ? 0.3 + Math.sin(this.time.now / 50) * 0.08 : 0.14 + progress * 0.14,
+            );
+            this.flashlight.beginPath();
+            this.flashlight.moveTo(enemy.position.x + perpX, enemy.position.y + perpY);
+            this.flashlight.lineTo(endX + perpX, endY + perpY);
+            this.flashlight.lineTo(endX - perpX, endY - perpY);
+            this.flashlight.lineTo(enemy.position.x - perpX, enemy.position.y - perpY);
+            this.flashlight.closePath().fillPath();
+            this.flashlight
+              .lineStyle(locked ? 3 : 2, locked ? 0xffd2d6 : 0xff7b88, locked ? 0.95 : 0.72)
+              .lineBetween(enemy.position.x, enemy.position.y, endX, endY);
+          } else {
+            const warning = COMBAT_RULES.feedback.enemyWarning;
+            const direction = angleBetween(enemy.position, this.position);
+            const tip = {
+              x: enemy.position.x + Math.cos(direction) * warning.lineLength,
+              y: enemy.position.y + Math.sin(direction) * warning.lineLength,
+            };
+            const left = {
+              x: tip.x - Math.cos(direction - Math.PI / 6) * warning.arrowSize,
+              y: tip.y - Math.sin(direction - Math.PI / 6) * warning.arrowSize,
+            };
+            const right = {
+              x: tip.x - Math.cos(direction + Math.PI / 6) * warning.arrowSize,
+              y: tip.y - Math.sin(direction + Math.PI / 6) * warning.arrowSize,
+            };
+            this.flashlight
+              .lineStyle(3, 0xff5269, 0.8)
+              .strokeCircle(enemy.position.x, enemy.position.y, warning.ringRadius)
+              .lineStyle(warning.lineWidth, 0xff5269, 0.95)
+              .lineBetween(enemy.position.x, enemy.position.y, tip.x, tip.y)
+              .lineBetween(tip.x, tip.y, left.x, left.y)
+              .lineBetween(tip.x, tip.y, right.x, right.y);
+          }
         }
       }
+    }
+    const activeWaveIds = new Set(this.combat.soundWaves.map((wave) => wave.id));
+    for (const [waveId, sprite] of this.soundWaveSprites) {
+      if (!activeWaveIds.has(waveId)) {
+        sprite.destroy();
+        this.soundWaveSprites.delete(waveId);
+      }
+    }
+    for (const wave of this.combat.soundWaves) {
+      let sprite = this.soundWaveSprites.get(wave.id);
+      if (!sprite) {
+        sprite = this.add
+          .sprite(wave.position.x, wave.position.y, 'amplifier-wave', 0)
+          .setOrigin(0.5, 0.5)
+          .setDisplaySize(
+            COMBAT_RULES.enemy.amplifier.projectileWidth,
+            COMBAT_RULES.enemy.amplifier.projectileWidth,
+          );
+        if (this.anims.exists('amplifier-wave')) {
+          sprite.anims.play('amplifier-wave', true);
+        }
+        this.soundWaveSprites.set(wave.id, sprite);
+      }
+      sprite
+        .setPosition(wave.position.x, wave.position.y)
+        .setRotation(wave.angle)
+        .setDepth(this.entityDepth(wave.position.y) + 2);
     }
     for (const point of this.searchPoints) {
       this.chestObjects
@@ -1555,6 +1629,11 @@ export class WorldScene extends Phaser.Scene {
     this.presentActiveMap();
     this.lastRaidId = raidId;
     this.services.sound.setLoop('alarm', false);
+    this.services.sound.setTinnitus?.(false);
+    for (const sprite of this.soundWaveSprites.values()) {
+      sprite.destroy();
+    }
+    this.soundWaveSprites.clear();
     this.hurtFeedbackMs = 0;
     this.attackFeedbackMs = 0;
     this.hitStopMs = 0;
@@ -1751,12 +1830,17 @@ export class WorldScene extends Phaser.Scene {
     const mutatedPulse = isMutated ? 1 + Math.sin(this.time.now / 190) * 0.025 : 1;
     sprite.setScale(baseScale * mutatedPulse);
     const lastPosition = this.enemyLastPositions.get(enemy.id);
-    if (lastPosition && Math.abs(enemy.position.x - lastPosition.x) > 0.05) {
+    if (enemy.kind === 'amplifier' && windup && enemy.attackAngle !== undefined) {
+      const cos = Math.cos(enemy.attackAngle);
+      if (Math.abs(cos) > 0.05) sprite.setFlipX(cos < 0);
+    } else if (lastPosition && Math.abs(enemy.position.x - lastPosition.x) > 0.05) {
       sprite.setFlipX(enemy.position.x < lastPosition.x);
     }
-    sprite.setAlpha(windup ? 0.72 : calmed ? 0.78 : 1);
+    sprite.setAlpha(windup && enemy.kind !== 'amplifier' ? 0.72 : calmed ? 0.78 : 1);
     if (mutationWarning) {
       sprite.setTint(0xffb347);
+    } else if (enemy.kind === 'amplifier' && windup && enemy.windupLocked) {
+      sprite.setTint(0xffb5be);
     } else {
       sprite.clearTint();
     }

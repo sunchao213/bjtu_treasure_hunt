@@ -32,7 +32,12 @@ export interface PlayMap {
   }[];
   readonly buildings: readonly (typeof WORLD.buildings)[number][];
   readonly lootZones: typeof WORLD.lootZones;
-  readonly enemyRoutes: typeof WORLD.enemyRoutes;
+  readonly enemyRoutes: readonly {
+    readonly id: string;
+    readonly kind: 'patrol' | 'hug' | 'amplifier';
+    readonly route: readonly Point[];
+    readonly fixedPosition?: boolean;
+  }[];
   readonly stone: Point | null;
   readonly chapterThreePoints?: typeof formal.chapterThreePoints;
   readonly questChest: typeof WORLD.questChest | null;
@@ -72,7 +77,12 @@ const CAMPUS_MAP: PlayMap = {
   extractions: [formal.extraction],
   enemyRoutes: formal.enemyRoutes.map((route) => ({
     ...route,
-    kind: route.kind === 'hug' ? ('hug' as const) : ('patrol' as const),
+    kind:
+      route.kind === 'hug'
+        ? ('hug' as const)
+        : route.kind === 'amplifier'
+          ? ('amplifier' as const)
+          : ('patrol' as const),
   })),
   gates: formal.gates.map((gate) => ({
     ...gate,

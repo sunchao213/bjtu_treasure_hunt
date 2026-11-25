@@ -418,10 +418,17 @@ export class FormalWorld {
         !this.moving,
         map.obstacles,
         { x: 30, y: 35, width: map.width - 60, height: map.height - 70 },
+        controller.isInvulnerable?.() ?? false,
       );
       this.combat.updateSpawns(deltaMs, () =>
         findEnemySpawnPosition(this.position, this.aim, this.lighting, this.combat.enemies),
       );
+      if (combat.amplifierWindups.length > 0) {
+        this.services.sound.playAmplifierCharge?.();
+      }
+      if (combat.soundWaveHit) {
+        controller.applySoundWaveEffect?.();
+      }
       if (combat.damage) controller.applyDamage(combat.damage);
       if (combat.calmed.length) this.services.notify('抱抱成功，怪物平静约 30 秒。');
       if (this.questChapterId() === 'soothe-monster') {
@@ -468,6 +475,10 @@ export class FormalWorld {
     this.hurtThisFrame = false;
     this.services.sound.setLoop('footsteps', playable && this.moving);
     this.services.sound.setLoop('alarm', playable && view.health > 0 && view.health < 20);
+    const liveView = controller.getView();
+    this.services.sound.setTinnitus?.(
+      playable && (liveView.statusEffects?.tinnitusRemainingMs ?? 0) > 0,
+    );
     if (playable && !controller.isPaused()) {
       const site = this.storyMarkers().find(
         (p) =>
@@ -566,6 +577,10 @@ export class FormalWorld {
         visibleEnemies: this.combat.enemies
           .filter((e) => this.lighting.visible(e.position, this.position, this.aim, map.obstacles))
           .map((e) => e.id),
+        soundWaves: this.combat.soundWaves.map((wave) => ({
+          ...wave,
+          position: { ...wave.position },
+        })),
         swing: this.combat.swingMs,
         cooldown: this.combat.attackCooldown,
         invulnerable: this.combat.invulnerability > 0,
@@ -577,6 +592,7 @@ export class FormalWorld {
     };
   }
   dispose(): void {
+    this.services.sound.setTinnitus?.(false);
     this.releaseDamage();
     this.releaseItemConsumed();
     this.releaseShieldAbsorbed();

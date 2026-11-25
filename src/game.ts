@@ -18,6 +18,7 @@ import {
   RAID_RULES,
   UTILITY_EFFECTS,
 } from './config/game-config';
+import { COMBAT_RULES } from './config/combat-config';
 import { renderShop, SHOP_EFFECTS } from './modules/ui/shop';
 import { createFriendsPanel } from './modules/ui/friends-panel';
 import { SocialClient } from './modules/social/social-client';
@@ -453,6 +454,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let lastInventory = '';
     let lastWarehouse = '';
     let lastCodex = '';
+    let lastStatusMarkup = '';
     let renderedAt = 0;
     let interacted = '';
     let searchProgress = 0;
@@ -555,6 +557,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           element('key-prompt-key').textContent = prompt.key;
           element('key-prompt-label').textContent = prompt.label;
         }
+        syncStatusEffects(activeController.getView());
         if (performance.now() - renderedAt > 80) {
           render();
           renderedAt = performance.now();
@@ -935,11 +938,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       () => {
         storyOpen = true;
         controller.pause();
-        scene.clearInteractions();
+        scene.clearInteractions(true);
         render();
       },
       () => {
-        scene.clearInteractions();
+        scene.clearInteractions(true);
         storyOpen = false;
         render();
         const ending = pendingEnding;
@@ -983,6 +986,44 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         story.open({ kind: 'full-chapter' }, chapterContentById(chapterId));
       }
     });
+
+    function syncStatusEffects(view: ReturnType<typeof activeController.getView>): void {
+      const effects = view.statusEffects;
+      const inRaid = view.phase === 'active' || view.phase === 'extracting';
+      const pulseEl = element('sonic-pulse-overlay');
+      const pulseMs = inRaid ? (effects?.sonicPulseRemainingMs ?? 0) : 0;
+      if (pulseMs > 0) {
+        const ratio = Math.max(
+          0,
+          Math.min(1, pulseMs / COMBAT_RULES.enemy.amplifier.pulseFeedbackMs),
+        );
+        pulseEl.hidden = false;
+        pulseEl.style.setProperty('--sonic-pulse', ratio.toFixed(3));
+      } else if (!pulseEl.hidden) {
+        pulseEl.hidden = true;
+        pulseEl.style.setProperty('--sonic-pulse', '0');
+      }
+      const statusEl = element('status-effects');
+      const badges: string[] = [];
+      if (inRaid && effects) {
+        if (effects.slowRemainingMs > 0) {
+          badges.push(
+            `<span class="status-badge is-slow">减速 ${(effects.slowRemainingMs / 1000).toFixed(1)}s</span>`,
+          );
+        }
+        if (effects.tinnitusRemainingMs > 0) {
+          badges.push(
+            `<span class="status-badge is-tinnitus">耳鸣 ${(effects.tinnitusRemainingMs / 1000).toFixed(1)}s</span>`,
+          );
+        }
+      }
+      const markup = badges.join('');
+      if (markup !== lastStatusMarkup) {
+        lastStatusMarkup = markup;
+        statusEl.innerHTML = markup;
+        statusEl.hidden = badges.length === 0;
+      }
+    }
 
     function render(): void {
       syncOrientation();
@@ -1114,6 +1155,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('mobile-hud').textContent =
         `价值 ${view.value}/${view.threshold} · 手电 ${lighting.battery}%`;
       element('phase-label').textContent = phaseNames[view.phase];
+      syncStatusEffects(view);
       element('health').textContent = String(view.health);
       const seconds = Math.ceil(view.remainingMs / 1000);
       element('timer').textContent =

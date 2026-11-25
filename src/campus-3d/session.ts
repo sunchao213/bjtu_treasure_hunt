@@ -223,7 +223,9 @@ export class TrialSession {
       !this.moving,
       this.map.obstacles,
       this.map.bounds,
+      this.controller.isInvulnerable(),
     );
+    if (result.soundWaveHit) this.controller.applySoundWaveEffect();
     if (result.damage) this.controller.applyDamage(result.damage);
     for (const enemy of result.calmed) {
       this.spawnReward('gpa-charm', enemy, 'hug');
@@ -483,6 +485,11 @@ export class TrialSession {
                 this.lighting.visible(e.position, this.position, this.aim, this.map.obstacles),
             )
             .map((e) => e.id) ?? [],
+        soundWaves:
+          this.combat?.soundWaves.map((wave) => ({
+            ...wave,
+            position: { ...wave.position },
+          })) ?? [],
         swing: this.combat?.swingMs ?? 0,
         cooldown: this.combat?.attackCooldown ?? 0,
         invulnerable: (this.combat?.invulnerability ?? 0) > 0,

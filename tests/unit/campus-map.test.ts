@@ -40,10 +40,20 @@ describe('shared production 3D campus', () => {
       for (const p of generateLootSpawns(roundRandom(String(i))))
         expect(clearLootPosition(p)).toBe(true);
   });
-  it('starts all ten enemies on connected ground away from the spawn', () => {
+  it('starts all eleven enemies including the amplifier fixed on Siyuan forecourt lawn', () => {
     const enemies = createEnemies(roundRandom('enemies'));
-    expect(enemies).toHaveLength(10);
+    const otherSeed = createEnemies(roundRandom('enemies-2'));
+    expect(enemies).toHaveLength(11);
     expect(enemies.filter((e) => e.kind === 'hug')).toHaveLength(3);
+    const amplifier = enemies.find((e) => e.kind === 'amplifier')!;
+    const otherAmplifier = otherSeed.find((e) => e.kind === 'amplifier')!;
+    expect(amplifier.position).toEqual({ x: 1060, y: 1520 });
+    expect(otherAmplifier.position).toEqual({ x: 1060, y: 1520 });
+    const lawn = district.forecourt.lawn;
+    expect(amplifier.position.x).toBeGreaterThan(lawn.x);
+    expect(amplifier.position.x).toBeLessThan(lawn.x + lawn.width);
+    expect(amplifier.position.y).toBeGreaterThan(lawn.y);
+    expect(amplifier.position.y).toBeLessThan(lawn.y + lawn.height);
     expect(enemies.every((e) => activeMap().canSpawn!(e.position))).toBe(true);
   });
   it('keeps shared room chest positions and ordinary loot consistent across chapter progress', () => {

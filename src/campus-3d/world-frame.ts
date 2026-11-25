@@ -2,7 +2,7 @@ import type { ChestTier } from '../config/chest-config';
 import type { ChargingStation } from '../modules/world/charging-stations';
 import type { Point, ItemInstance } from '../shared/types/game';
 import type { UtilityItemEffectFrame } from '../config/item-effects';
-import type { Enemy } from '../modules/world/night-systems';
+import type { Enemy, SoundWave } from '../modules/world/night-systems';
 import type { Facing, PlayerAnimation } from './animation';
 import type { NightFrame } from './night';
 import type { StoryTrigger } from '../modules/world/story-triggers';
@@ -43,6 +43,7 @@ export interface WorldFrame {
     enabled: boolean;
     enemies: readonly Enemy[];
     visibleEnemies: readonly string[];
+    soundWaves?: readonly SoundWave[];
     swing: number;
     cooldown: number;
     invulnerable: boolean;

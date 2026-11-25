@@ -199,9 +199,10 @@ export function mountShell(root: HTMLElement): void {
         <section class="map-panel" aria-label="游戏地图">
           <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-sound-game" aria-pressed="false">开启声音</button><button id="mobile-room" aria-controls="room-page">房间</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
+          <div id="sonic-pulse-overlay" class="sonic-pulse-overlay" aria-hidden="true" hidden></div>
           <div class="raid-hud-left"><div class="raid-location"><span><i class="status-dot"></i><b id="phase-label">准备出发</b><em class="map-scene">海淀校区 · 夜巡</em></span></div>
           ${tutorialMarkup()}<div id="team-status" class="team-status" aria-label="队伍状态" hidden><span id="team-connection" class="network-quality"></span><ul id="team-players"></ul></div></div>
-          <span id="raid-value" class="raid-value" role="status" aria-live="polite">本局价值：<b id="loot-value">0</b> / ${RAID_RULES.threshold}</span><span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span id="battery-compact" class="battery-compact">电量 100%</span><button id="open-raid-settings" class="hud-button" aria-haspopup="dialog">${iconSvg('settings', { size: 16 })} 设置 <kbd>Esc</kbd></button></span>
+          <span id="raid-value" class="raid-value" role="status" aria-live="polite">本局价值：<b id="loot-value">0</b> / ${RAID_RULES.threshold}</span><div id="status-effects" class="status-effects" role="status" aria-live="polite" hidden></div><span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span id="battery-compact" class="battery-compact">电量 100%</span><button id="open-raid-settings" class="hud-button" aria-haspopup="dialog">${iconSvg('settings', { size: 16 })} 设置 <kbd>Esc</kbd></button></span>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
           <div id="key-prompt" class="key-prompt" hidden role="status">
             <div class="key-prompt-ring" aria-hidden="true"><span id="key-prompt-key" class="key-prompt-key">E</span></div>

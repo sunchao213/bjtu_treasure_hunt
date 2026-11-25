@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { COMBAT_RULES } from '../../src/config/combat-config';
 import { RAID_RULES, ITEM_DEFINITIONS } from '../../src/config/game-config';
 import { EventBus } from '../../src/shared/events/game-events';
 import { ReferenceInventory } from '../../src/modules/inventory/reference-inventory';
@@ -469,5 +470,77 @@ describe('A extraction lifecycle', () => {
     );
     expect((await controller.start()).ok).toBe(false);
     expect(controller.getView().phase).toBe('preparing');
+  });
+
+  it('applies non-stacking amplifier slow with refresh, post-slow immunity, tinnitus and pulse', async () => {
+    const s = await setup();
+    const amp = COMBAT_RULES.enemy.amplifier;
+
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBeCloseTo(amp.slowMultiplier, 5);
+    expect(s.controller.getView().statusEffects).toMatchObject({
+      slowRemainingMs: amp.slowDurationMs,
+      slowMultiplier: amp.slowMultiplier,
+      tinnitusRemainingMs: amp.tinnitusDurationMs,
+      sonicPulseRemainingMs: amp.pulseFeedbackMs,
+    });
+
+    // 重复命中刷新剩余时间而不相加，也不叠加减速强度
+    s.advance(1_000);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBeCloseTo(amp.slowMultiplier, 5);
+    expect(s.controller.getView().statusEffects?.slowRemainingMs).toBe(amp.slowDurationMs);
+    expect(s.controller.getView().statusEffects?.tinnitusRemainingMs).toBe(amp.tinnitusDurationMs);
+    expect(s.controller.getView().statusEffects?.sonicPulseRemainingMs).toBe(amp.pulseFeedbackMs);
+
+    // 与其他更强减速同时存在时，仅取最强一档
+    s.controller.applySlow(0.5, 1_500, { source: 'other-hazard' });
+    expect(s.controller.getMoveSpeedMultiplier()).toBeCloseTo(0.5, 5);
+
+    // 脉冲在 400ms 后消失
+    s.advance(amp.pulseFeedbackMs);
+    expect(s.controller.getView().statusEffects?.sonicPulseRemainingMs).toBe(0);
+
+    // 声波减速满 2.5s 结束后自动获得 1.5s 声波减速免疫
+    s.advance(amp.slowDurationMs - amp.pulseFeedbackMs);
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    expect(s.controller.getView().statusEffects?.slowRemainingMs).toBe(0);
+    expect(s.controller.getView().statusEffects?.slowImmuneRemainingMs).toBe(amp.slowImmunityMs);
+
+    // 免疫期内再中声波：不附加减速，但耳鸣与画面脉冲仍正常刷新
+    s.advance(500);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    expect(s.controller.getView().statusEffects?.slowRemainingMs).toBe(0);
+    expect(s.controller.getView().statusEffects?.tinnitusRemainingMs).toBe(amp.tinnitusDurationMs);
+    expect(s.controller.getView().statusEffects?.sonicPulseRemainingMs).toBe(amp.pulseFeedbackMs);
+
+    // 1.5s 免疫期满后再中声波，重新生效减速
+    s.advance(amp.slowImmunityMs - 500);
+    expect(s.controller.getView().statusEffects?.slowImmuneRemainingMs).toBe(0);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBeCloseTo(amp.slowMultiplier, 5);
+  });
+
+  it('ignores amplifier status effects during invulnerability and shifts timers across pause', async () => {
+    const s = await setup();
+    s.controller.activateInvulnerability(2_000);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    expect(s.controller.getView().statusEffects?.tinnitusRemainingMs).toBe(0);
+
+    s.advance(2_000);
+    s.controller.applySoundWaveEffect();
+    s.advance(500);
+    s.controller.pause();
+    s.advance(5_000);
+    s.controller.resume();
+    expect(s.controller.getView().statusEffects?.slowRemainingMs).toBe(
+      COMBAT_RULES.enemy.amplifier.slowDurationMs - 500,
+    );
+    expect(s.controller.getView().statusEffects?.tinnitusRemainingMs).toBe(
+      COMBAT_RULES.enemy.amplifier.tinnitusDurationMs - 500,
+    );
   });
 });

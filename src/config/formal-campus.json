@@ -5673,6 +5673,17 @@
           "y": 1650
         }
       ]
+    },
+    {
+      "id": "central-amplifier",
+      "kind": "amplifier",
+      "fixedPosition": true,
+      "route": [
+        {
+          "x": 1060,
+          "y": 1520
+        }
+      ]
     }
   ],
   "spawnPositions": [

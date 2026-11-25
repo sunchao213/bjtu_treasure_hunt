@@ -92,11 +92,19 @@ export function campusCombatMap(map: TrialMap): CombatMap {
     spawn: map.spawn,
     obstacles: map.obstacles,
     extractions: [map.extraction],
-    enemyRoutes: Array.from({ length: count }, (_, i) => ({
-      id: `campus-enemy-${i + 1}`,
-      kind: i % 4 === 3 ? ('hug' as const) : ('patrol' as const),
-      route: [map.spawn],
-    })),
+    enemyRoutes: Array.from({ length: count }, (_, i) => {
+      const isAmplifier = i === count - 2 && map.width > 2000;
+      return {
+        id: `campus-enemy-${i + 1}`,
+        kind: isAmplifier
+          ? ('amplifier' as const)
+          : i % 4 === 3
+            ? ('hug' as const)
+            : ('patrol' as const),
+        fixedPosition: isAmplifier ? true : undefined,
+        route: isAmplifier ? [{ x: 1060, y: 1520 }] : [map.spawn],
+      };
+    }),
     canSpawn: (p) => {
       const col = Math.floor((p.x - map.bounds.x) / step),
         row = Math.floor((p.y - map.bounds.y) / step);

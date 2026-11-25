@@ -76,7 +76,12 @@ export interface CombatMap {
   spawn: Point;
   obstacles: readonly Rect[];
   extractions: readonly Rect[];
-  enemyRoutes: readonly { id: string; kind: 'patrol' | 'hug'; route: readonly Point[] }[];
+  enemyRoutes: readonly {
+    id: string;
+    kind: 'patrol' | 'hug' | 'amplifier';
+    route: readonly Point[];
+    fixedPosition?: boolean;
+  }[];
   canSpawn?: (point: Point) => boolean;
 }
 
@@ -182,15 +187,31 @@ export class NightLighting {
   }
 }
 
+export interface SoundWave {
+  readonly id: string;
+  position: Point;
+  readonly angle: number;
+  travelled: number;
+  hitPlayer?: boolean;
+}
+
 export type EnemyState =
-  'patrol' | 'chase' | 'windup' | 'request' | 'calmed' | 'mutation-warning' | 'stunned' | 'dead';
+  | 'patrol'
+  | 'chase'
+  | 'windup'
+  | 'recovery'
+  | 'request'
+  | 'calmed'
+  | 'mutation-warning'
+  | 'stunned'
+  | 'dead';
 export type CombatWeaponId = 'training-bat' | 'stun-baton';
 /** Patrol animals share duck combat numbers. The field only picks a sprite. */
 export const PATROL_SPECIES = ['duck', 'cat', 'swan'] as const;
 export type PatrolSpecies = (typeof PATROL_SPECIES)[number];
 export interface Enemy {
   id: string;
-  kind: 'patrol' | 'hug';
+  kind: 'patrol' | 'hug' | 'amplifier';
   /** Set on patrol enemies. Omitted enemies render as ducks. */
   species?: PatrolSpecies;
   position: Point;
@@ -205,33 +226,77 @@ export interface Enemy {
   calmHitCount: number;
   mutated: boolean;
   wanders: boolean;
+  attackAngle?: number;
+  windupLocked?: boolean;
+  encounterRegion?: string;
 }
+
+export function enemyMaxHealth(kind: Enemy['kind']): number {
+  if (kind === 'hug') return COMBAT_RULES.hug.health;
+  if (kind === 'amplifier') return COMBAT_RULES.enemy.amplifier.health;
+  return COMBAT_RULES.enemy.patrol.health;
+}
+
+export function encounterRegionKey(position: Point): string {
+  const size = COMBAT_RULES.enemy.amplifier.encounterRegionSize;
+  return `${Math.floor(position.x / size)}:${Math.floor(position.y / size)}`;
+}
+
 export function createEnemies(
   random: () => number = Math.random,
   map: CombatMap = activeMap(),
 ): Enemy[] {
   const bounds = { x: 45, y: 50, width: map.width - 90, height: map.height - 100 };
-  const usedPositions: Point[] = [];
+  const isClear = (candidate: Point): boolean =>
+    candidate.x >= bounds.x + 18 &&
+    candidate.x <= bounds.x + bounds.width - 18 &&
+    candidate.y >= bounds.y + 18 &&
+    candidate.y <= bounds.y + bounds.height - 18 &&
+    !map.obstacles.some((obstacle) => overlaps(candidate, 18, obstacle)) &&
+    !nearExtraction(candidate, COMBAT_RULES.spawning.extractionSafeDistance, map) &&
+    (!map.canSpawn || map.canSpawn(candidate)) &&
+    distance(candidate, map.spawn) >= COMBAT_RULES.spawning.minPlayerDistance;
+
+  // Reserve valid fixed positions first so random spawns keep distance from them.
+  const reservedPositions = new Map<string, Point>();
+  for (const enemyConfig of map.enemyRoutes) {
+    const fixed = enemyConfig.fixedPosition ? enemyConfig.route[0] : undefined;
+    if (fixed && isClear(fixed)) {
+      reservedPositions.set(enemyConfig.id, { ...fixed });
+    }
+  }
+  const usedPositions: Point[] = [...reservedPositions.values()];
+  const usedAmplifierRegions = new Set<string>();
+  let amplifierCount = 0;
   let patrolOrdinal = 0;
   return map.enemyRoutes.flatMap((enemyConfig) => {
+    if (
+      enemyConfig.kind === 'amplifier' &&
+      amplifierCount >= COMBAT_RULES.enemy.amplifier.maxAlive
+    ) {
+      return [];
+    }
+    const amplifierConflict = (candidate: Point): boolean =>
+      enemyConfig.kind === 'amplifier' && usedAmplifierRegions.has(encounterRegionKey(candidate));
     let position: Point | null = null;
-    for (let attempt = 0; attempt < COMBAT_RULES.spawning.candidateAttempts; attempt++) {
+    const reserved = reservedPositions.get(enemyConfig.id);
+    if (reserved && !amplifierConflict(reserved)) {
+      position = reserved;
+    }
+    for (
+      let attempt = 0;
+      !position && attempt < COMBAT_RULES.spawning.candidateAttempts;
+      attempt++
+    ) {
       const candidatePosition = {
         x: bounds.x + random() * bounds.width,
         y: bounds.y + random() * bounds.height,
       };
       if (
-        candidatePosition.x < bounds.x + 18 ||
-        candidatePosition.x > bounds.x + bounds.width - 18 ||
-        candidatePosition.y < bounds.y + 18 ||
-        candidatePosition.y > bounds.y + bounds.height - 18 ||
-        map.obstacles.some((obstacle) => overlaps(candidatePosition, 18, obstacle)) ||
-        nearExtraction(candidatePosition, COMBAT_RULES.spawning.extractionSafeDistance, map) ||
-        (map.canSpawn && !map.canSpawn(candidatePosition)) ||
-        distance(candidatePosition, map.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
+        !isClear(candidatePosition) ||
+        amplifierConflict(candidatePosition) ||
         usedPositions.some(
-          (position) =>
-            distance(candidatePosition, position) < COMBAT_RULES.spawning.minEnemyDistance,
+          (used) => distance(candidatePosition, used) < COMBAT_RULES.spawning.minEnemyDistance,
         )
       ) {
         continue;
@@ -244,10 +309,8 @@ export function createEnemies(
         for (let x = bounds.x + 24; x < bounds.x + bounds.width - 24; x += 32) {
           const candidate = { x, y };
           if (
-            map.obstacles.some((obstacle) => overlaps(candidate, 18, obstacle)) ||
-            nearExtraction(candidate, COMBAT_RULES.spawning.extractionSafeDistance, map) ||
-            (map.canSpawn && !map.canSpawn(candidate)) ||
-            distance(candidate, map.spawn) < COMBAT_RULES.spawning.minPlayerDistance ||
+            !isClear(candidate) ||
+            amplifierConflict(candidate) ||
             usedPositions.some(
               (used) => distance(candidate, used) < COMBAT_RULES.spawning.minEnemyDistance,
             )
@@ -261,7 +324,15 @@ export function createEnemies(
     }
     if (!position) return [];
     const spawnPosition = position;
-    usedPositions.push(spawnPosition);
+    if (!reserved) {
+      usedPositions.push(spawnPosition);
+    }
+    let encounterRegion: string | undefined;
+    if (enemyConfig.kind === 'amplifier') {
+      amplifierCount++;
+      encounterRegion = encounterRegionKey(spawnPosition);
+      usedAmplifierRegions.add(encounterRegion);
+    }
     const species =
       enemyConfig.kind === 'patrol'
         ? PATROL_SPECIES[patrolOrdinal++ % PATROL_SPECIES.length]
@@ -274,15 +345,15 @@ export function createEnemies(
         position: { ...spawnPosition },
         home: { ...spawnPosition },
         waypoint: 0,
-        health:
-          enemyConfig.kind === 'hug' ? COMBAT_RULES.hug.health : COMBAT_RULES.enemy.patrol.health,
+        health: enemyMaxHealth(enemyConfig.kind),
         state: 'patrol',
         timer: 0,
         cooldown: 0,
         hugProgress: 0,
         calmHitCount: 0,
         mutated: false,
-        wanders: enemyConfig.kind === 'patrol',
+        wanders: enemyConfig.kind === 'patrol' || enemyConfig.kind === 'amplifier',
+        encounterRegion,
       },
     ];
   });
@@ -371,6 +442,9 @@ export class NightCombat {
   private hugSpawnTimer: number = COMBAT_RULES.spawning.hugSpawnIntervalMs;
   private nextSpawnId = 1;
   private nextPatrolSpecies = 0;
+  private amplifierSpawnTimer = COMBAT_RULES.enemy.amplifier.spawnIntervalMs;
+  private nextWaveId = 1;
+  readonly soundWaves: SoundWave[] = [];
 
   constructor(
     private readonly random: () => number = Math.random,
@@ -391,6 +465,9 @@ export class NightCombat {
     this.remainingWeaponUses.clear();
     this.nextSpawnId = 1;
     this.nextPatrolSpecies = 0;
+    this.amplifierSpawnTimer = COMBAT_RULES.enemy.amplifier.spawnIntervalMs;
+    this.nextWaveId = 1;
+    this.soundWaves.length = 0;
     this.resetSpawnTimer();
     this.hugSpawnTimer = COMBAT_RULES.spawning.hugSpawnIntervalMs;
   }
@@ -399,6 +476,7 @@ export class NightCombat {
     const elapsed = Math.max(0, deltaMs);
     this.spawnTimer -= elapsed;
     this.hugSpawnTimer -= elapsed;
+    this.amplifierSpawnTimer -= elapsed;
     const rules = COMBAT_RULES.spawning;
     const spawned: Enemy[] = [];
     if (this.spawnTimer <= 0) {
@@ -429,6 +507,42 @@ export class NightCombat {
         spawned.push(enemy);
       }
     }
+    const amplifierRules = COMBAT_RULES.enemy.amplifier;
+    if (this.amplifierSpawnTimer <= 0) {
+      this.amplifierSpawnTimer = amplifierRules.spawnIntervalMs;
+      if (
+        this.aliveEnemyCount() < rules.maxAlive &&
+        this.aliveAmplifierCount() < amplifierRules.maxAlive &&
+        this.random() < amplifierRules.spawnChance
+      ) {
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const position = findPosition();
+          if (!position || this.hasAmplifierInRegion(position)) continue;
+          const patrolPoint = findPatrolWaypoint(position, position, this.random, this.map());
+          if (!patrolPoint) continue;
+          const enemy: Enemy = {
+            id: `spawn-amplifier-${this.nextSpawnId++}`,
+            kind: 'amplifier',
+            position: { ...position },
+            home: { ...position },
+            route: [patrolPoint],
+            waypoint: 0,
+            health: amplifierRules.health,
+            state: 'patrol',
+            timer: 0,
+            cooldown: 0,
+            hugProgress: 0,
+            calmHitCount: 0,
+            mutated: false,
+            wanders: true,
+            encounterRegion: encounterRegionKey(position),
+          };
+          this.enemies.push(enemy);
+          spawned.push(enemy);
+          break;
+        }
+      }
+    }
     if (this.hugSpawnTimer <= 0) {
       this.hugSpawnTimer = rules.hugSpawnIntervalMs;
       if (this.aliveEnemyCount() < rules.maxAlive) {
@@ -456,6 +570,23 @@ export class NightCombat {
       }
     }
     return spawned;
+  }
+
+  private aliveAmplifierCount(): number {
+    return this.enemies.filter((enemy) => enemy.kind === 'amplifier' && enemy.state !== 'dead')
+      .length;
+  }
+
+  private hasAmplifierInRegion(position: Point): boolean {
+    const region = encounterRegionKey(position);
+    return (
+      this.enemies.filter(
+        (enemy) =>
+          enemy.kind === 'amplifier' &&
+          enemy.state !== 'dead' &&
+          (enemy.encounterRegion ?? encounterRegionKey(enemy.position)) === region,
+      ).length >= COMBAT_RULES.enemy.amplifier.maxPerEncounterRegion
+    );
   }
 
   private aliveEnemyCount(): number {
@@ -524,6 +655,28 @@ export class NightCombat {
         } else if (damage > 0) {
           this.warnMutation(enemy);
         }
+        continue;
+      }
+      if (enemy.kind === 'amplifier') {
+        const wasWindup = enemy.state === 'windup';
+        enemy.health = Math.max(0, enemy.health - damage);
+        if (enemy.health === 0) {
+          enemy.state = 'dead';
+          enemy.windupLocked = false;
+          defeated.push(enemy);
+        } else if (weapon.stunMs) {
+          enemy.state = 'stunned';
+          enemy.timer = weapon.stunMs.amplifier;
+          enemy.windupLocked = false;
+          if (wasWindup) {
+            // Interrupted charge forces at least 1.5s before recharging.
+            enemy.cooldown = COMBAT_RULES.enemy.amplifier.interruptCooldownMs;
+          }
+        } else if (enemy.state !== 'windup' && enemy.state !== 'recovery') {
+          enemy.state = 'chase';
+          enemy.timer = COMBAT_RULES.enemy.chaseMemoryMs;
+        }
+        enemy.hugProgress = 0;
         continue;
       }
       enemy.health = Math.max(0, enemy.health - damage);
@@ -595,10 +748,69 @@ export class NightCombat {
     stationary: boolean,
     walls: readonly Rect[],
     bounds: Rect,
-  ): { damage: number; calmed: Enemy[] } {
+    playerInvulnerable = false,
+  ): {
+    damage: number;
+    calmed: Enemy[];
+    slowHit: boolean;
+    tinnitusHit: boolean;
+    soundWaveHit: boolean;
+    amplifierWindups: Enemy[];
+  } {
     const dt = Math.max(0, Math.min(deltaMs, 100));
     this.tick(dt);
     let damage = 0;
+    let slowHit = false;
+    let tinnitusHit = false;
+    let soundWaveHit = false;
+    const amplifierWindups: Enemy[] = [];
+    const ampRules = COMBAT_RULES.enemy.amplifier;
+    const waveHalfWidth = ampRules.projectileWidth / 2;
+    this.soundWaves.forEach((wave) => {
+      const step = (ampRules.projectileSpeed * dt) / 1000;
+      const blocked = rayDistance(wave.position, wave.angle, step, walls);
+      const moved = Math.min(step, blocked);
+      const next = {
+        x: wave.position.x + Math.cos(wave.angle) * moved,
+        y: wave.position.y + Math.sin(wave.angle) * moved,
+      };
+      const vx = next.x - wave.position.x;
+      const vy = next.y - wave.position.y;
+      const length2 = vx * vx + vy * vy;
+      const t = length2
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              ((player.x - wave.position.x) * vx + (player.y - wave.position.y) * vy) / length2,
+            ),
+          )
+        : 0;
+      const closest = { x: wave.position.x + vx * t, y: wave.position.y + vy * t };
+      const gap = distance(player, closest);
+      if (!wave.hitPlayer && gap <= waveHalfWidth && lineOfSight(closest, player, walls)) {
+        wave.hitPlayer = true;
+        if (!playerInvulnerable && this.acceptDamage()) {
+          damage += ampRules.damage;
+          slowHit = true;
+          tinnitusHit = true;
+          soundWaveHit = true;
+          wave.travelled = ampRules.projectileMaxDistance + 1;
+          return;
+        }
+      }
+      wave.position = next;
+      wave.travelled += moved;
+      if (blocked < step) {
+        wave.travelled = ampRules.projectileMaxDistance + 1;
+      }
+    });
+    for (let index = this.soundWaves.length - 1; index >= 0; index--) {
+      const wave = this.soundWaves[index]!;
+      if (wave.travelled >= ampRules.projectileMaxDistance) {
+        this.soundWaves.splice(index, 1);
+      }
+    }
     const calmed: Enemy[] = [];
     const calmingAtStart = new Set(
       this.enemies
@@ -632,6 +844,17 @@ export class NightCombat {
       }
       if (enemy.state === 'stunned') {
         enemy.timer -= dt;
+        enemy.cooldown = Math.max(0, enemy.cooldown - dt);
+        if (enemy.timer <= 0) {
+          enemy.state = 'chase';
+          enemy.timer = COMBAT_RULES.enemy.chaseMemoryMs;
+        }
+        continue;
+      }
+      if (enemy.state === 'recovery') {
+        enemy.timer -= dt;
+        enemy.cooldown = Math.max(0, enemy.cooldown - dt);
+        enemy.windupLocked = false;
         if (enemy.timer <= 0) {
           enemy.state = 'chase';
           enemy.timer = COMBAT_RULES.enemy.chaseMemoryMs;
@@ -679,6 +902,119 @@ export class NightCombat {
         } else {
           continue;
         }
+      }
+      if (enemy.kind === 'amplifier') {
+        const rules = COMBAT_RULES.enemy.amplifier;
+        if (enemy.state === 'windup') {
+          enemy.timer -= dt;
+          if (enemy.timer > rules.lockBeforeFireMs) {
+            enemy.attackAngle = angleBetween(enemy.position, player);
+            enemy.windupLocked = false;
+          } else {
+            enemy.windupLocked = true;
+          }
+          if (enemy.timer <= 0) {
+            const angle = enemy.attackAngle ?? angleBetween(enemy.position, player);
+            this.soundWaves.push({
+              id: `wave-${this.nextWaveId++}`,
+              position: { ...enemy.position },
+              angle,
+              travelled: 0,
+            });
+            enemy.state = 'recovery';
+            enemy.timer = rules.recoveryMs;
+            enemy.windupLocked = false;
+          }
+          continue;
+        }
+        const ampDetection = lightOn ? rules.detectionLightRange : rules.detectionDarkRange;
+        if (sight && d < ampDetection) {
+          enemy.state = 'chase';
+          enemy.timer = COMBAT_RULES.enemy.chaseMemoryMs;
+        } else if (enemy.state === 'chase') {
+          enemy.timer -= dt;
+          if (enemy.timer <= 0) {
+            enemy.state = 'patrol';
+          }
+        }
+        const beginWindup = () => {
+          enemy.attackAngle = angleBetween(enemy.position, player);
+          enemy.windupLocked = false;
+          enemy.state = 'windup';
+          enemy.timer = rules.windupMs;
+          enemy.cooldown = rules.cooldownMs;
+          amplifierWindups.push(enemy);
+        };
+        if (enemy.state === 'chase') {
+          if (d < rules.attackRangeMin) {
+            const away =
+              d > 0.001
+                ? { x: enemy.position.x - player.x, y: enemy.position.y - player.y }
+                : { x: 1, y: 0 };
+            const before = enemy.position;
+            const nextPos = movePlayer(before, away, dt, rules.retreatSpeed, 12, bounds, walls);
+            enemy.position = nextPos;
+            const movedDist = distance(before, nextPos);
+            const expectedStep = (rules.retreatSpeed * dt) / 1000;
+            const retreatBlocked = expectedStep > 0.001 && movedDist < expectedStep * 0.25;
+            if (retreatBlocked && enemy.cooldown === 0 && sight) {
+              beginWindup();
+            }
+          } else if (
+            enemy.cooldown === 0 &&
+            sight &&
+            d >= rules.attackRangeMin &&
+            d <= rules.attackRangeMax
+          ) {
+            beginWindup();
+          } else if (!sight || d > rules.preferredRangeMax) {
+            enemy.position = movePlayer(
+              enemy.position,
+              { x: player.x - enemy.position.x, y: player.y - enemy.position.y },
+              dt,
+              rules.chaseSpeed,
+              12,
+              bounds,
+              walls,
+            );
+          } else if (d < rules.preferredRangeMin) {
+            enemy.position = movePlayer(
+              enemy.position,
+              { x: enemy.position.x - player.x, y: enemy.position.y - player.y },
+              dt,
+              rules.retreatSpeed,
+              12,
+              bounds,
+              walls,
+            );
+          }
+        } else if (enemy.state === 'patrol') {
+          let target = enemy.route[enemy.waypoint]!;
+          if (distance(enemy.position, target) < 12) {
+            if (enemy.wanders) {
+              const next = findPatrolWaypoint(enemy.home, enemy.position, this.random, this.map());
+              if (next) {
+                enemy.route = [next];
+                enemy.waypoint = 0;
+                target = next;
+              }
+            } else {
+              enemy.waypoint = (enemy.waypoint + 1) % enemy.route.length;
+              target = enemy.route[enemy.waypoint]!;
+            }
+          }
+          enemy.position = movePlayer(
+            enemy.position,
+            { x: target.x - enemy.position.x, y: target.y - enemy.position.y },
+            dt,
+            rules.speed,
+            12,
+            bounds,
+            walls,
+          );
+        }
+        enemy.encounterRegion = encounterRegionKey(enemy.position);
+        continue;
       }
       if (enemy.state === 'windup') {
         enemy.timer -= dt;
@@ -755,6 +1091,13 @@ export class NightCombat {
     if (damage > 0) {
       this.onPlayerDamaged(calmingAtStart);
     }
-    return { damage, calmed: calmed.filter((enemy) => enemy.state === 'calmed') };
+    return {
+      damage,
+      calmed: calmed.filter((enemy) => enemy.state === 'calmed'),
+      slowHit,
+      tinnitusHit,
+      soundWaveHit,
+      amplifierWindups,
+    };
   }
 }
