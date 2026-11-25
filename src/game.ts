@@ -312,8 +312,16 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
   const storage = accountStorage(localStorage, user.id);
   const lockName = `bjtu-treasure-hunt:account:${user.id}`;
 
+  let noticeTimer: number | undefined;
   const notify = (message: string) => {
-    element('notice').textContent = message;
+    // 提示改成浮动 toast：弹出后 3.2 秒自动消失，不再常驻大厅底部
+    const notice = element('notice');
+    notice.textContent = message;
+    notice.hidden = false;
+    window.clearTimeout(noticeTimer);
+    noticeTimer = window.setTimeout(() => {
+      notice.hidden = true;
+    }, 3200);
   };
   const profileStatus = element('profile-status');
   const profileHistory = element<HTMLOListElement>('profile-history');
@@ -1061,12 +1069,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     bagRoot.querySelector<HTMLButtonElement>('[data-bp-repair]')?.addEventListener('click', () => {
       notify('装备耐久暂未启用，现在不需要维修。');
     });
-    // 左侧竖排导航：背包是当前页；商店三项目前统一回大厅商城页
+    // 左侧竖排导航：背包是当前页；商店/购买去道具商店，出售归商城（负责出售，暂为占位页）
     for (const nav of bagRoot.querySelectorAll<HTMLButtonElement>('[data-bp-nav]')) {
       nav.addEventListener('click', () => {
         if (nav.dataset.bpNav === 'bag') return;
+        const target = nav.dataset.bpNav === 'sell' ? 'mall' : 'shop';
         element<HTMLDialogElement>('v19-loadout-dialog').close();
-        document.querySelector<HTMLButtonElement>('[data-lobby-tab="mall"]')?.click();
+        document.querySelector<HTMLButtonElement>(`[data-lobby-tab="${target}"]`)?.click();
       });
     }
     element('v19-mission-open').onclick = () =>

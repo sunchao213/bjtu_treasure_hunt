@@ -3138,14 +3138,24 @@ summary {
   line-height: 1.9;
   color: #c4cebd;
 }
+/* 提示条：默认隐藏（大厅底部不再常驻），notify() 弹消息时浮在底部居中，3 秒自动消失 */
 .notice {
-  background: #242b26;
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  background: #242b26ee;
   padding: 12px 17px;
   border-radius: 8px;
   color: #c2d4b6;
   font-size: 12px;
   line-height: 1.8;
-  margin-top: 20px;
+  z-index: 30;
+  box-shadow: 0 4px 16px #00000066;
+  pointer-events: none;
+}
+.notice[hidden] {
+  display: none;
 }
 footer {
   display: flex;
