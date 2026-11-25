@@ -25,9 +25,16 @@ export function friendsPanelMarkup(): string {
   return `<section class="lobby-panel lobby-panel-wide friends-panel" data-lobby-panel="friends" hidden aria-labelledby="friends-title">
     <div class="lobby-panel-heading"><div><p class="prep-kicker">行动中心 · 社交</p><h2 id="friends-title">好友</h2></div>
       <span class="lobby-panel-meta" id="friends-meta">在线档 · 正在读取好友…</span></div>
-    <p class="lobby-panel-intro">按 UID 添加好友，对方接受后即可私聊。消息 1—200 字符、每 10 秒最多 5 条；发送失败重试不会重复投递，屏蔽后立即停止收发。</p>
-    <div class="friends-layout">
-      <section class="friends-side">
+    <div id="friends-browser" class="friends-browser" data-friends-mode="invite">
+      <nav class="friends-categories" aria-label="好友功能">
+        <span class="friends-categories-label">社交档案</span>
+        <button type="button" data-friends-mode-option="invite" aria-pressed="true"><small>01</small><b>邀请<br>管理</b></button>
+        <button type="button" data-friends-mode-option="friends" aria-pressed="false"><small>02</small><b>好友<br>列表</b><span id="friends-nav-count" class="friends-nav-count" hidden>0</span></button>
+        <span class="friends-spine" aria-hidden="true">思源 · 好友记录</span>
+      </nav>
+      <div class="friends-workspace" aria-label="好友与私聊">
+        <section class="friends-screen friends-invitations" data-friends-screen="invite" aria-labelledby="friends-operations-title">
+          <header class="friends-screen-heading"><span>01 / SOCIAL INVITATION</span><h3 id="friends-operations-title">邀请管理</h3><p>账号标识与好友申请</p></header>
         <div class="friends-self">
           <div class="friends-self-text"><span>我的 UID（给好友添加用）</span><code id="friends-self-uid" title="账号唯一标识，32 位十六进制">—</code></div>
           <button id="friends-copy-uid" class="secondary friends-action" type="button">复制 UID</button>
@@ -40,32 +47,38 @@ export function friendsPanelMarkup(): string {
           </div>
         </form>
         <p id="friends-status" class="friends-status" role="status" aria-live="polite">输入 UID 发送好友申请。</p>
-        <div id="friends-requests" class="friends-block" hidden>
+        <div id="friends-requests" class="friends-block friends-requests" hidden>
           <h3>待处理</h3>
           <ul id="friends-requests-list" class="friends-list" role="list"></ul>
         </div>
-        <div class="friends-block">
-          <h3>好友 <span id="friends-count" class="friends-count">0</span></h3>
-          <ul id="friends-list" class="friends-list" role="list"></ul>
-          <p id="friends-empty" class="friends-empty">还没有好友。输入对方 UID 发送申请，对方接受后会出现在这里。</p>
-        </div>
-        <details id="friends-blocked" class="friends-blocked" hidden>
-          <summary>屏蔽名单 <span id="friends-blocked-count">0</span></summary>
-          <ul id="friends-blocked-list" class="friends-list" role="list"></ul>
-        </details>
-      </section>
-      <section id="friends-chat" class="friends-chat" hidden aria-labelledby="friends-chat-name">
-        <header class="friends-chat-head">
-          <div><b id="friends-chat-name"></b><span id="friends-chat-uid"></span></div>
-          <button id="friends-chat-close" class="text-button" type="button">收起</button>
-        </header>
-        <ol id="friends-messages" class="friends-messages" aria-live="polite"></ol>
-        <p id="friends-chat-empty" class="friends-empty">还没有消息。打个招呼，约一局校园夜巡。</p>
-        <form id="friends-send-form" class="friends-send" novalidate>
-          <input id="friends-text" maxlength="${MESSAGE_MAX_LENGTH}" autocomplete="off" aria-label="消息内容" placeholder="输入消息，回车发送（1—${MESSAGE_MAX_LENGTH} 字符）" />
-          <button id="friends-send" class="primary" type="submit">发送</button>
-        </form>
-        <p id="friends-chat-status" class="friends-status" role="status" aria-live="polite"></p>
+        </section>
+        <section class="friends-screen friends-communication" data-friends-screen="friends" hidden aria-labelledby="friends-directory-title">
+          <section class="friends-directory" aria-labelledby="friends-directory-title">
+            <header class="friends-screen-heading"><span>02 / CONTACTS</span><h3 id="friends-directory-title">好友列表</h3><p>已建立联系</p></header>
+            <div class="friends-block friends-roster">
+              <h3>好友 <span id="friends-count" class="friends-count">0</span></h3>
+              <ul id="friends-list" class="friends-list" role="list"></ul>
+              <p id="friends-empty" class="friends-empty">还没有好友。前往邀请管理发送申请。</p>
+            </div>
+            <details id="friends-blocked" class="friends-blocked" hidden>
+              <summary>屏蔽名单 <span id="friends-blocked-count">0</span></summary>
+              <ul id="friends-blocked-list" class="friends-list" role="list"></ul>
+            </details>
+          </section>
+          <section id="friends-chat" class="friends-chat" aria-label="私聊">
+            <header id="friends-chat-head" class="friends-chat-head" hidden>
+              <div><b id="friends-chat-name"></b><span id="friends-chat-uid"></span></div>
+              <button id="friends-chat-close" class="text-button" type="button">收起</button>
+            </header>
+            <ol id="friends-messages" class="friends-messages" aria-live="polite" hidden></ol>
+            <p id="friends-chat-empty" class="friends-chat-placeholder" hidden></p>
+            <form id="friends-send-form" class="friends-send" novalidate hidden>
+              <input id="friends-text" maxlength="${MESSAGE_MAX_LENGTH}" autocomplete="off" aria-label="消息内容" placeholder="输入消息（1—${MESSAGE_MAX_LENGTH} 字符）" />
+              <button id="friends-send" class="primary" type="submit">发送</button>
+            </form>
+            <p id="friends-chat-status" class="friends-status" role="status" aria-live="polite" hidden></p>
+          </section>
+        </section>
       </section>
     </div>
   </section>`;
@@ -89,6 +102,13 @@ export class FriendsPanel {
 
   mount(): void {
     this.showSelfUid();
+    this.byId('friends-browser').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+        '[data-friends-mode-option]',
+      );
+      const mode = button?.dataset.friendsModeOption;
+      if (mode === 'invite' || mode === 'friends') this.setMode(mode);
+    });
     this.byId<HTMLFormElement>('friends-apply-form').addEventListener('submit', (event) => {
       event.preventDefault();
       void this.apply();
@@ -150,6 +170,9 @@ export class FriendsPanel {
     this.byId('friends-meta').textContent =
       `在线档 · ${roster.friends.length} 位好友 · ${describeUnread(unreadTotal)}`;
     this.byId('friends-count').textContent = String(roster.friends.length);
+    const navCount = this.byId('friends-nav-count');
+    navCount.textContent = String(roster.friends.length);
+    navCount.hidden = roster.friends.length === 0;
     this.updateNavBadge(unreadTotal);
     // 自己的 UID 必须可见：好友申请按 UID 发起，玩家需要能把它发给对方。
     const selfUid = this.byId('friends-self-uid');
@@ -365,7 +388,13 @@ export class FriendsPanel {
     this.peer = peer;
     this.cursor = 0;
     this.messages = [];
-    this.byId('friends-chat').hidden = false;
+    this.setMode('friends');
+    this.byId('friends-chat-head').hidden = false;
+    this.byId('friends-messages').hidden = false;
+    this.byId('friends-send-form').hidden = false;
+    this.byId('friends-chat-empty').hidden = false;
+    this.byId('friends-chat-status').hidden = false;
+    this.byId('friends-chat-empty').textContent = '还没有消息。打个招呼，约一局校园夜巡。';
     this.renderChatHead(peer);
     await this.loadMessages(peer.uid);
     this.byId<HTMLInputElement>('friends-text').focus();
@@ -375,13 +404,33 @@ export class FriendsPanel {
     this.peer = null;
     this.messages = [];
     this.cursor = 0;
-    this.byId('friends-chat').hidden = true;
+    this.byId('friends-chat-head').hidden = true;
     this.byId<HTMLElement>('friends-messages').replaceChildren();
+    this.byId('friends-messages').hidden = true;
+    this.byId('friends-send-form').hidden = true;
+    this.byId('friends-chat-empty').hidden = true;
+    this.byId('friends-chat-empty').textContent = '';
+    const status = this.byId('friends-chat-status');
+    status.hidden = true;
+    status.textContent = '';
   }
 
   private renderChatHead(peer: SocialSelf): void {
     this.byId('friends-chat-name').textContent = peer.displayName;
     this.byId('friends-chat-uid').textContent = peer.uid;
+  }
+
+  private setMode(mode: 'invite' | 'friends'): void {
+    const browser = this.byId('friends-browser');
+    browser.dataset.friendsMode = mode;
+    for (const button of browser.querySelectorAll<HTMLButtonElement>(
+      '[data-friends-mode-option]',
+    )) {
+      button.setAttribute('aria-pressed', String(button.dataset.friendsModeOption === mode));
+    }
+    for (const screen of browser.querySelectorAll<HTMLElement>('[data-friends-screen]')) {
+      screen.hidden = screen.dataset.friendsScreen !== mode;
+    }
   }
 
   private async loadMessages(peerUid: string): Promise<void> {
