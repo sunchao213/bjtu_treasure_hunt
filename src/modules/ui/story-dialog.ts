@@ -110,9 +110,18 @@ export function bindStoryDialog(onOpen: () => void, onClose: () => void): StoryD
     },
   };
 
-  dialog.addEventListener('click', () => typewriter.advance());
-  dialog.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+  // Pointer lock routes mouse events to the canvas, even while the story is open.
+  // Accept those events here so reading never requires releasing mouse capture.
+  const acceptsInput = (event: Event): boolean =>
+    dialog.open && (event.composedPath().includes(dialog) || document.pointerLockElement !== null);
+  document.addEventListener('click', (event) => {
+    if (acceptsInput(event)) typewriter.advance();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (
+      acceptsInput(event) &&
+      (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar')
+    ) {
       event.preventDefault();
       typewriter.advance();
     }

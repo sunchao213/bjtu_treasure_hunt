@@ -593,6 +593,65 @@ async function verifyImmersiveFlow() {
     yaw,
     'start captures continuous mouse look without a canvas click',
   );
+  // Story events arrive during gameplay without a fresh user gesture.
+  for (const method of ['mouse', 'Enter', ' ']) {
+    await evaluate(
+      page,
+      `testScene.services.events.emit('StoryDiscovered', {
+        raidId: testScene.services.controller.getView().raidId,
+        locationId: 'pointer-lock-story-${method}', chapterId: 'siyuan-code',
+        title: '视角恢复测试', text: '剧情结束后直接转动视角。'
+      })`,
+    );
+    await until(page, 'document.querySelector("#story-dialog").open');
+    assert.equal(
+      await evaluate(page, 'document.pointerLockElement === testScene.view.renderer.domElement'),
+      true,
+      'story keeps the cursor captured while reading',
+    );
+    assert.equal(await evaluate(page, 'testScene.services.controller.isPaused()'), true);
+    const storyYaw = await evaluate(page, 'testScene.view.cameraRig.yaw');
+    for (const x of [600, 620, 640])
+      await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: 450 }, page.id);
+    await delay(100);
+    assert.equal(await evaluate(page, 'testScene.view.cameraRig.yaw'), storyYaw);
+    for (let advance = 0; advance < 2; advance++) {
+      if (method === 'mouse') {
+        for (const type of ['mousePressed', 'mouseReleased'])
+          await command(
+            'Input.dispatchMouseEvent',
+            { type, x: 640, y: 450, button: 'left', clickCount: 1 },
+            page.id,
+          );
+      } else {
+        await press(
+          page,
+          method,
+          method === 'Enter' ? 'Enter' : 'Space',
+          method === 'Enter' ? 13 : 32,
+        );
+      }
+      if (!(await evaluate(page, 'document.querySelector("#story-dialog").open'))) break;
+    }
+    await until(
+      page,
+      '!document.querySelector("#story-dialog").open && !testScene.services.controller.isPaused()',
+    );
+    assert.equal(
+      await evaluate(page, 'document.pointerLockElement === testScene.view.renderer.domElement'),
+      true,
+      'closing the story keeps the cursor captured without a canvas click',
+    );
+    for (const x of [660, 680, 700])
+      await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: 450 }, page.id);
+    await delay(100);
+    assert.notEqual(
+      await evaluate(page, 'testScene.view.cameraRig.yaw'),
+      storyYaw,
+      'mouse movement immediately resumes camera look after the story',
+    );
+  }
+  await screenshot(page, 'immersive-story-mouse-look');
   await press(page, 'Escape', 'Escape', 27);
   await until(
     page,
