@@ -125,3 +125,24 @@
 - 房间聊天接入当前账号认证后的 WebSocket 服务端，服务端只向房间成员广播并使用账号昵称，消息长度上限为 160 字符。
 - 验证：45 个测试文件 / 354 条单元测试通过；lint、数据库冒烟测试和 Vite 生产打包通过。TypeScript 检查因工作区缺少 `@types/node` 未通过；服务端集成测试因未安装 .NET SDK 未运行；未做浏览器实机验收。
 - 限制：当前「补齐队友」只提供玩家可选状态，服务端尚无自动匹配或机器人补位行为。
+
+## 十、2026-11-26 简易探测器局内特效（CHG-39）
+
+- 改动前：正式 Three.js 场景已保存最近未调查物资箱的目标和 8 秒截止时间，但没有显示对应局内方向素材。
+- 改动后：成功消耗简易探测器后，头顶播放一次 1.2 秒开机图集；绿色物资箱箭头围绕人物显示，随人物位置、镜头朝向更新，并在末尾淡出。
+- 目标箱被调查、时间到期、死亡、换局或销毁时隐藏；使用失败不消耗、不重新播放。沿用原目标选择和 8 秒时长，未改团队接口、网络协议、存档或数值。
+- 文件：`src/campus-3d/detector-effect-view.ts`、`src/campus-3d/view.ts`、`src/campus-3d/world-frame.ts`、`src/config/item-effects.ts`、`src/modules/world/formal-world.ts`；原图、导入脚本和来源说明见 `assets-source/item-effects/`、`scripts/prepare_detector_effects.py`、`public/assets/effects/README.md`。
+- 自动验证：新增 6 条回归测试，全量 82 个文件 / 585 条测试、ESLint、TypeScript、数据库 3 条测试及生产构建通过。
+- 完整门禁：已运行 `npm run check`，被 8 个既有文件的 Prettier 格式问题阻断（`mail-panel.ts`、`warehouse-panel.ts`、`style.css` 及 5 个历史探测脚本）；这些文件未在本次改动中修改，其余门禁已单独执行。
+
+- 浏览器验证：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --detector-only` 通过；覆盖桌面 1280×720、1440×900、1024×576 和手机触屏模拟。验证成功使用、最近目标、镜头转向、重复使用、到期、目标调查及无目标拒绝，页面无滚动。证据在 `artifacts/game-flow-1795656156122/`；未在真实手机上验收。
+
+## 十一、2026-11-26 速记卡片局内特效（CHG-40）
+
+- 改动前：速记卡片已有下一次搜索加速逻辑，正式 Three.js 场景缺少使用动画和待用提示。
+- 改动后：成功消耗后，人物头顶播放 1 秒、16 帧书写动画，随后头部旁显示小卡片图标。图标随人物和镜头移动，待用期间持续显示，使用加速搜索时轻微闪动，搜索完成或中断后隐藏。
+- 沿用搜索开始时消耗加速的原规则；充电等非搜索交互保留加速。重复使用失败不消耗、不重播；死亡、换局和销毁后清理。未修改搜索时长算法、玩法数值、共享接口、网络协议或存档结构。
+- 文件：`src/campus-3d/quick-note-effect-view.ts`、`src/campus-3d/view.ts`、`src/campus-3d/world-frame.ts`、`src/config/item-effects.ts`、`src/modules/world/formal-world.ts`、`src/modules/world/search-interaction.ts`；原图与导入脚本见 `assets-source/item-effects/`、`scripts/prepare_quick_note_effects.py`，来源见 `public/assets/effects/README.md`。
+- 自动验证：新增 5 条回归测试，全量 83 个文件 / 590 条测试、ESLint、TypeScript、数据库 3 条测试及生产构建通过。原图与运行时素材字节一致。
+- 完整门禁：已运行 `npm run check`，仍被 8 个既有文件的 Prettier 格式问题阻断（`mail-panel.ts`、`warehouse-panel.ts`、`style.css` 及 5 个历史探测脚本）；未修改这些无关文件，其余检查已单独执行。
+- 浏览器验证：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --quick-note-only` 通过，覆盖桌面 1280×720、1440×900、1024×576 与手机触屏模拟；验证成功使用、使用动画、待用提示、拒绝重复使用、移动与镜头跟随、加速搜索、完成清理、下一次正常搜索及中断清理，桌面页面无滚动。证据在 `artifacts/game-flow-1795656903570/`；未在真实手机上验收。

@@ -1,7 +1,11 @@
 import { CHEST_TIERS } from '../../config/chest-config';
 import { RaidHotbar } from '../inventory/raid-hotbar';
 import { COMBAT_RULES } from '../../config/combat-config';
-import { BANDAGE_HEALING_EFFECT, COFFEE_HEALING_EFFECT } from '../../config/item-effects';
+import {
+  BANDAGE_HEALING_EFFECT,
+  COFFEE_HEALING_EFFECT,
+  QUICK_NOTE_EFFECT,
+} from '../../config/item-effects';
 import { UtilityItemEffects } from './utility-item-effects';
 import { ITEM_DEFINITIONS, itemValueFor, RAID_RULES } from '../../config/game-config';
 import { activeMap, inExtraction } from '../../config/play-map';
@@ -124,12 +128,14 @@ export class FormalWorld {
   private readonly releaseItemConsumed: () => void;
   private bandageHealingStartedAt: number | null = null;
   private coffeeHealingStartedAt: number | null = null;
+  private quickNoteStartedAt: number | null = null;
   private readonly utilityItemEffects = new UtilityItemEffects();
   private readonly releaseShieldAbsorbed: () => void;
   private readonly discovered = new Set<string>();
   private readonly investigatedSites = new Set<string>();
   private storyCharmEarned = false;
   private detectorTargetId: string | null = null;
+  private detectorStartedAt: number | null = null;
   private detectorUntilMs = 0;
   private compassUntilMs = 0;
   private silentCloakUntilMs = 0;
@@ -149,6 +155,8 @@ export class FormalWorld {
       ) {
         if (itemId === 'bandage') this.bandageHealingStartedAt = this.clock();
         else if (itemId === 'morning-coffee') this.coffeeHealingStartedAt = this.clock();
+        else if (itemId === 'quick-note-card') this.quickNoteStartedAt = this.clock();
+        else if (itemId === 'simple-detector') this.detectorStartedAt = this.clock();
         else this.utilityItemEffects.consume(itemId, this.clock());
       }
     });
@@ -258,6 +266,7 @@ export class FormalWorld {
     this.lastRaidId = raidId;
     this.bandageHealingStartedAt = null;
     this.coffeeHealingStartedAt = null;
+    this.quickNoteStartedAt = null;
     this.utilityItemEffects.clear();
     this.position = { ...activeMap().spawn };
     this.aim = -Math.PI / 2;
@@ -271,6 +280,7 @@ export class FormalWorld {
     this.investigatedSites.clear();
     this.storyCharmEarned = false;
     this.detectorTargetId = null;
+    this.detectorStartedAt = null;
     this.detectorUntilMs = 0;
     this.compassUntilMs = 0;
     this.silentCloakUntilMs = 0;
@@ -523,7 +533,34 @@ export class FormalWorld {
         : this.clock() - this.bandageHealingStartedAt;
     const coffeeElapsedMs =
       this.coffeeHealingStartedAt === null ? undefined : this.clock() - this.coffeeHealingStartedAt;
+    const detectorTarget = this.searchPoints.find(
+      (point) => point.id === this.detectorTargetId && !this.search.isOpened(point.id),
+    );
+    const detectorRemainingMs = this.detectorUntilMs - this.clock();
+    const quickNoteElapsedMs =
+      this.quickNoteStartedAt === null ? undefined : this.clock() - this.quickNoteStartedAt;
+    const quickNoteStatus = this.search.nextDurationState();
     return {
+      quickNoteEffect:
+        quickNoteElapsedMs !== undefined &&
+        quickNoteElapsedMs >= 0 &&
+        (quickNoteElapsedMs < QUICK_NOTE_EFFECT.durationMs || quickNoteStatus !== undefined) &&
+        view.health > 0 &&
+        ['active', 'extracting'].includes(view.phase)
+          ? { elapsedMs: quickNoteElapsedMs, status: quickNoteStatus }
+          : undefined,
+      detectorEffect:
+        this.detectorStartedAt !== null &&
+        detectorTarget &&
+        detectorRemainingMs > 0 &&
+        view.health > 0 &&
+        ['active', 'extracting'].includes(view.phase)
+          ? {
+              elapsedMs: this.clock() - this.detectorStartedAt,
+              remainingMs: detectorRemainingMs,
+              target: { x: detectorTarget.x, y: detectorTarget.y },
+            }
+          : undefined,
       coffeeHealingElapsedMs:
         coffeeElapsedMs !== undefined &&
         coffeeElapsedMs >= 0 &&
@@ -611,6 +648,10 @@ export class FormalWorld {
     this.utilityItemEffects.clear();
     this.bandageHealingStartedAt = null;
     this.coffeeHealingStartedAt = null;
+    this.quickNoteStartedAt = null;
+    this.detectorStartedAt = null;
+    this.detectorTargetId = null;
+    this.detectorUntilMs = 0;
     this.teammates.clear();
   }
 

@@ -63,6 +63,8 @@ const healingOnly = process.argv.includes('--healing-only');
 const hotbarOnly = process.argv.includes('--hotbar-only');
 const durabilityOnly = process.argv.includes('--durability-only');
 const utilityEffectsOnly = process.argv.includes('--utility-effects-only');
+const detectorOnly = process.argv.includes('--detector-only');
+const quickNoteOnly = process.argv.includes('--quick-note-only');
 
 function command(method, params = {}, sessionId) {
   const id = ++nextId;
@@ -1280,6 +1282,303 @@ async function verifyHealingFlow(itemId = 'bandage') {
   }
 }
 
+async function verifyQuickNoteFlow() {
+  for (const mobile of [false, true]) {
+    const page = await newPage(mobile ? 'notemob' : 'notepc', { mobile });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await until(
+      page,
+      '!document.querySelector(".explore-loader") || document.querySelector(".explore-loader").hidden',
+    );
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    if (!mobile)
+      await command(
+        'Emulation.setDeviceMetricsOverride',
+        { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false },
+        page.id,
+      );
+    const points = await evaluate(
+      page,
+      `(() => {
+      testScene.combat.enemies=[];testScene.combat.updateSpawns=()=>[];
+      for(const id of ['note-a','note-b'])testScene.services.inventory.addLoot({instanceId:id,itemId:'quick-note-card',origin:{kind:'raid-loot',obtainedInRaidId:testScene.services.controller.getView().raidId}});
+      return testScene.searchPoints.filter(p=>p.tier==='normal').slice(0,3);
+    })()`,
+    );
+    assert.equal(await evaluate(page, 'testScene.view.quickNoteEffect.ready.visible'), false);
+    await click(page, '#inventory [data-item-id="quick-note-card"] button');
+    await evaluate(
+      page,
+      `(() => {if(!document.querySelector('#inventory-panel').hidden)document.querySelector('#toggle-inventory').click();})()`,
+    );
+    await until(
+      page,
+      'testScene.view.quickNoteEffect.activation.sprite.visible && testScene.view.quickNoteEffect.activation.sprite.material.opacity>0.2',
+    );
+    assert.equal(
+      await evaluate(
+        page,
+        "testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==='quick-note-card').length",
+      ),
+      1,
+    );
+    assert.equal(await evaluate(page, 'testScene.frame().quickNoteEffect.status'), 'ready');
+    await screenshot(page, `quick-note-${mobile ? 'mobile' : 'desktop'}-activation`);
+    await until(
+      page,
+      '!testScene.view.quickNoteEffect.activation.sprite.visible && testScene.view.quickNoteEffect.ready.visible',
+    );
+    await click(page, '#inventory [data-item-id="quick-note-card"] button');
+    assert.equal(
+      await evaluate(
+        page,
+        "testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==='quick-note-card').length",
+      ),
+      1,
+    );
+    assert(await evaluate(page, 'testScene.frame().quickNoteEffect.elapsedMs>=1000'));
+    await evaluate(
+      page,
+      `(() => {if(!document.querySelector('#inventory-panel').hidden)document.querySelector('#toggle-inventory').click();})()`,
+    );
+    if (!mobile) {
+      await move(page, 120);
+      await evaluate(page, 'testScene.view.orbitCamera(180,0)');
+      await delay(250);
+      assert(
+        await evaluate(
+          page,
+          `(() => {
+        const v=testScene.view,c=v.followCamera.matrixWorld.elements,p=testScene.position,b=v.quickNoteEffect.ready.position;
+        return Math.abs(b.x-(p.x/32+c[0]*0.65))<0.001 && Math.abs(b.z-(p.y/32+c[2]*0.65))<0.001;
+      })()`,
+        ),
+      );
+    }
+    await screenshot(page, `quick-note-${mobile ? 'mobile' : 'desktop'}-ready`);
+    if (!mobile)
+      for (const [width, height] of [
+        [1440, 900],
+        [1024, 576],
+      ]) {
+        await command(
+          'Emulation.setDeviceMetricsOverride',
+          { width, height, deviceScaleFactor: 1, mobile: false },
+          page.id,
+        );
+        await delay(120);
+        assert(
+          await evaluate(
+            page,
+            'document.documentElement.scrollWidth===document.documentElement.clientWidth && document.documentElement.scrollHeight===document.documentElement.clientHeight',
+          ),
+        );
+        await screenshot(page, `quick-note-desktop-${width}x${height}`);
+      }
+    await standAt(page, points[0]);
+    await command(
+      'Input.dispatchKeyEvent',
+      { type: 'keyDown', key: 'e', code: 'KeyE', windowsVirtualKeyCode: 69 },
+      page.id,
+    );
+    await until(page, 'testScene.frame().quickNoteEffect?.status === "searching"');
+    await screenshot(page, `quick-note-${mobile ? 'mobile' : 'desktop'}-searching`);
+    await until(page, `testScene.search.isOpened('${points[0].id}')`);
+    await command(
+      'Input.dispatchKeyEvent',
+      { type: 'keyUp', key: 'e', code: 'KeyE', windowsVirtualKeyCode: 69 },
+      page.id,
+    );
+    await until(
+      page,
+      '!testScene.frame().quickNoteEffect && !testScene.view.quickNoteEffect.ready.visible',
+    );
+    await screenshot(page, `quick-note-${mobile ? 'mobile' : 'desktop'}-finished`);
+    // The following ordinary search does not retain the bonus.
+    await standAt(page, points[1]);
+    await interact(page, 1200);
+    assert.equal(await evaluate(page, `testScene.search.isOpened('${points[1].id}')`), false);
+    await interact(page, 2200);
+    assert.equal(await evaluate(page, `testScene.search.isOpened('${points[1].id}')`), true);
+    // A second successful card use can prepare another bonus; cancellation spends it as before.
+    await click(page, '#inventory [data-item-id="quick-note-card"] button');
+    await evaluate(
+      page,
+      `(() => {if(!document.querySelector('#inventory-panel').hidden)document.querySelector('#toggle-inventory').click();})()`,
+    );
+    await until(page, 'testScene.view.quickNoteEffect.ready.visible');
+    await standAt(page, points[2]);
+    await interact(page, 250);
+    await until(
+      page,
+      '!testScene.frame().quickNoteEffect && !testScene.view.quickNoteEffect.ready.visible',
+    );
+    pass(
+      `${mobile ? 'Mobile' : 'Desktop'} quick note: successful use, one-shot atlas, persistent ready badge, rejected duplicate, movement/camera follow, shortened search, completion cleanup, normal next search and interruption cleanup`,
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  }
+}
+
+async function verifyDetectorFlow() {
+  for (const mobile of [false, true]) {
+    const page = await newPage(mobile ? 'detectmob' : 'detectpc', { mobile });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await until(
+      page,
+      '!document.querySelector(".explore-loader") || document.querySelector(".explore-loader").hidden',
+    );
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    if (!mobile)
+      await command(
+        'Emulation.setDeviceMetricsOverride',
+        {
+          width: 1280,
+          height: 720,
+          deviceScaleFactor: 1,
+          mobile: false,
+        },
+        page.id,
+      );
+    const nearest = await evaluate(
+      page,
+      `(() => {
+      testScene.combat.enemies=[]; testScene.combat.updateSpawns=()=>[];
+      const p=testScene.position;
+      const target=[...testScene.searchPoints].filter(c=>!testScene.search.isOpened(c.id))
+        .sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];
+      for (const id of ['detector-a','detector-b']) testScene.services.inventory.addLoot({
+        instanceId:id,itemId:'simple-detector',origin:{kind:'raid-loot',obtainedInRaidId:testScene.services.controller.getView().raidId}});
+      return {x:target.x,y:target.y};
+    })()`,
+    );
+    assert.equal(await evaluate(page, 'testScene.view.detectorEffect.marker.visible'), false);
+    await click(page, '#inventory [data-item-id="simple-detector"] button');
+    await evaluate(
+      page,
+      `(() => {if(!document.querySelector('#inventory-panel').hidden) document.querySelector('#toggle-inventory').click();})()`,
+    );
+    await until(
+      page,
+      'testScene.view.detectorEffect.activation.sprite.visible && testScene.view.detectorEffect.marker.visible',
+    );
+    const used = await evaluate(
+      page,
+      `(() => {
+      const v=testScene.view.detectorEffect, state=testScene.frame().detectorEffect;
+      return {target:state.target,remaining:state.remainingMs,count:testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==='simple-detector').length,
+        sizes:[v.activation.sprite.material.map.image.naturalWidth,v.marker.material.map.image.naturalWidth],
+        headClearance:v.activation.sprite.position.y-v.activation.sprite.scale.y/2};
+    })()`,
+    );
+    assert.deepEqual(used.target, nearest);
+    assert.equal(used.count, 1);
+    assert(used.remaining > 6500 && used.remaining <= 8000);
+    assert.deepEqual(used.sizes, [1024, 256]);
+    assert(used.headClearance > 1.44);
+    await screenshot(page, `detector-${mobile ? 'mobile' : 'desktop'}-activation`);
+    await until(page, '!testScene.view.detectorEffect.activation.sprite.visible');
+    await click(page, '#inventory [data-item-id="simple-detector"] button');
+    assert.equal(
+      await evaluate(
+        page,
+        "testScene.services.inventory.getCarriedItems().filter(i=>i.itemId==='simple-detector').length",
+      ),
+      1,
+    );
+    assert(await evaluate(page, 'testScene.frame().detectorEffect.elapsedMs>=1200'));
+    await evaluate(
+      page,
+      `(() => {if(!document.querySelector('#inventory-panel').hidden) document.querySelector('#toggle-inventory').click();})()`,
+    );
+    if (!mobile) await move(page, 120);
+    const before = await evaluate(page, 'testScene.view.detectorEffect.marker.material.rotation');
+    await evaluate(page, 'testScene.view.orbitCamera(240,0)');
+    await delay(300);
+    const after = await evaluate(page, 'testScene.view.detectorEffect.marker.material.rotation');
+    assert(Math.abs(after - before) > 0.2, 'pointer responds to camera orbit');
+    assert(
+      await evaluate(
+        page,
+        `(() => {
+      const v=testScene.view, m=v.detectorEffect.marker, c=v.followCamera.matrixWorld.elements;
+      const p=testScene.position,t=testScene.frame().detectorEffect.target;
+      const x=(t.x-p.x)*c[0]+(t.y-p.y)*c[2], y=(t.x-p.x)*c[4]+(t.y-p.y)*c[6];
+      return Math.abs(m.material.rotation-Math.atan2(-x,y))<0.001;
+    })()`,
+      ),
+      'screen arrow points toward target after orbit and movement',
+    );
+    await screenshot(page, `detector-${mobile ? 'mobile' : 'desktop'}-direction`);
+    if (!mobile) {
+      for (const [width, height] of [
+        [1440, 900],
+        [1024, 576],
+      ]) {
+        await command(
+          'Emulation.setDeviceMetricsOverride',
+          { width, height, deviceScaleFactor: 1, mobile: false },
+          page.id,
+        );
+        await delay(120);
+        assert(
+          await evaluate(
+            page,
+            'document.documentElement.scrollWidth===document.documentElement.clientWidth && document.documentElement.scrollHeight===document.documentElement.clientHeight',
+          ),
+        );
+        await screenshot(page, `detector-desktop-${width}x${height}`);
+      }
+    }
+    await until(
+      page,
+      '!testScene.view.detectorEffect.marker.visible && !testScene.frame().detectorEffect',
+    );
+    await screenshot(page, `detector-${mobile ? 'mobile' : 'desktop'}-expired`);
+    // The second detector is now usable. Investigating its selected box removes the pointer.
+    await click(page, '#inventory [data-item-id="simple-detector"] button');
+    await until(page, '!!testScene.frame().detectorEffect');
+    await evaluate(
+      page,
+      `(() => {
+      const target=testScene.frame().detectorEffect.target;
+      const box=testScene.searchPoints.find(p=>p.x===target.x && p.y===target.y);
+      testScene.search.markOpened(box.id);
+    })()`,
+    );
+    await until(
+      page,
+      '!testScene.view.detectorEffect.marker.visible && !testScene.frame().detectorEffect',
+    );
+    // No targets: failed use must leave the item untouched and show no activation.
+    await evaluate(
+      page,
+      `(() => {
+      for(const box of testScene.searchPoints)testScene.search.markOpened(box.id);
+      testScene.services.inventory.addLoot({instanceId:'no-target',itemId:'simple-detector',origin:{kind:'raid-loot',obtainedInRaidId:testScene.services.controller.getView().raidId}});
+      testScene.detectorUntilMs=0;
+    })()`,
+    );
+    await click(page, '#inventory [data-item-id="simple-detector"] button');
+    assert(
+      await evaluate(
+        page,
+        "testScene.services.inventory.getCarriedItems().some(i=>i.instanceId==='no-target') && !testScene.frame().detectorEffect",
+      ),
+    );
+    pass(
+      `${mobile ? 'Mobile' : 'Desktop'} detector: activation, nearest chest, successful consumption, rejected repeat, camera-relative direction, eight-second expiry, investigated target and no-target rejection`,
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  }
+}
+
 async function verifyUtilityEffectsFlow(boostItem = 'yellow-bike') {
   const skates = boostItem === 'roller-skates';
   const visual = skates ? 'skates' : 'bike';
@@ -1705,7 +2004,11 @@ try {
     }
   });
 
-  if (chestsOnly) {
+  if (quickNoteOnly) {
+    await verifyQuickNoteFlow();
+  } else if (detectorOnly) {
+    await verifyDetectorFlow();
+  } else if (chestsOnly) {
     await verifyChestTiersFlow();
   } else if (durabilityOnly) {
     await verifyWeaponDurabilityFlow();

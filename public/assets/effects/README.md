@@ -47,3 +47,31 @@
   满血、暂停或旧局事件不触发；换局、死亡、结束和销毁时不再显示。
 
 重新处理全部四张原图：`python scripts/prepare_utility_effects.py`。
+
+## 简易探测器
+
+素材由用户于 2026-11-26 提供，原图保存在 `assets-source/item-effects/`，运行时文件逐字节复制，未重绘、未更改透明度或像素：
+
+- `simple_detector_activation_4x4.png` → `detector-activation.png`：1024 × 1024 RGBA，4×4 帧，按行播放。成功消耗后在人物头顶播放一次，时长 1.2 秒。
+- `simple_detector_loot_direction_marker.png` → `detector-direction.png`：256 × 256 RGBA，源箭头朝上；作为独立纹理旋转，不使用图集裁切。
+
+方向标记沿用 `FormalWorld.activateDetector` 选中的最近未调查箱子和 8 秒计时，随人物位置和当前镜头方向更新。
+透视镜头下使用方向向量投影，防止目标在相机背面时箭头反向；区域总览使用当前正交相机。
+目标箱被调查、计时到期、死亡或离开对局时隐藏。重复使用被拒绝时不消耗、不重新播放启动动画。
+只对当前玩家显示，不新增网络协议、存档字段或玩法数值。
+
+复现素材导入：`python scripts/prepare_detector_effects.py`；从下载目录导入可加 `--source-dir C:/Users/74286/Downloads`。
+
+## 速记卡片
+
+素材由用户于 2026-11-26 提供，原图保存在 `assets-source/item-effects/`，运行时文件逐字节复制，未重绘或修改像素：
+
+- `sujika_card_use_atlas_4x4.png` → `quick-note-use.png`：1024 × 1024 RGBA，4×4 帧，按行播放；成功消耗后在人物头顶播放 1 秒书写动画。
+- `sujika_card_ready_icon.png` → `quick-note-ready.png`：256 × 256 RGBA，动画结束后显示在人物头部旁，随人物和当前镜头移动。
+
+待用图标持续到下一次搜索，不增加额外超时；使用加速的搜索期间图标轻微闪动，完成或中断后隐藏。
+沿用原有规则：加速在搜索开始时消耗，中断搜索也不返还；充电等非搜索交互不消耗待用加速。
+重复使用被拒绝时不消耗物品、不重新播放动画；死亡、换局、结束或销毁后隐藏。
+只对当前玩家显示，未修改搜索时长算法、共享接口、网络协议或存档结构。
+
+复现素材导入：`python scripts/prepare_quick_note_effects.py`；从下载目录导入可加 `--source-dir C:/Users/74286/Downloads`。

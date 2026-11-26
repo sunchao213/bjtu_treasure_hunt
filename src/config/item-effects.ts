@@ -1,3 +1,4 @@
+import type { Point } from '../shared/types/game';
 import { UTILITY_EFFECTS } from './game-config';
 
 export interface HealingItemEffectConfig {
@@ -80,4 +81,44 @@ export interface UtilityItemEffectFrame {
   readonly itemId: UtilityItemEffectId;
   readonly phase: 'start' | 'loop' | 'end';
   readonly elapsedMs: number;
+}
+
+/** Detector gameplay owns the target and eight-second lifetime. */
+export const DETECTOR_EFFECT = {
+  asset: 'effects/detector-activation.png',
+  markerAsset: 'effects/detector-direction.png',
+  name: 'DetectorActivation',
+  size: 0.95,
+  height: 2.0,
+  columns: 4,
+  rows: 4,
+  animationMs: 1_200,
+  fadeInMs: 60,
+  fadeOutMs: 150,
+  durationMs: 1_200,
+} as const;
+
+export interface DetectorEffectFrame {
+  readonly elapsedMs: number;
+  readonly remainingMs: number;
+  readonly target: Point;
+}
+
+export const QUICK_NOTE_EFFECT = {
+  asset: 'effects/quick-note-use.png',
+  readyAsset: 'effects/quick-note-ready.png',
+  name: 'QuickNoteUse',
+  size: 0.72,
+  height: 1.95,
+  columns: 4,
+  rows: 4,
+  animationMs: 1_000,
+  fadeInMs: 60,
+  fadeOutMs: 140,
+  durationMs: 1_000,
+} as const;
+
+export interface QuickNoteEffectFrame {
+  readonly elapsedMs: number;
+  readonly status: 'ready' | 'searching' | undefined;
 }
