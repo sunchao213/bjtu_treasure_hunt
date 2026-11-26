@@ -1,0 +1,292 @@
+/* 背包仓库整屏（v4 完整底图 1672×941）
+ *
+ * 底图承担全部静态像素：砖墙灯笼、左侧导航、两个面板边框、按钮、提示文字。
+ * 这里只放会变的东西：格子、数字、点击热区。
+ * 坐标系固定 1672×941，整体缩放由 game.ts 写 --bp-scale。
+ */
+
+.bp-stage {
+  position: relative;
+  width: 1672px;
+  height: 941px;
+  flex: none;
+  transform: scale(var(--bp-scale, 1));
+  transform-origin: center center;
+  background: url('/assets/ui/warehouse/v4/bg.png') 0 0 / 1672px 941px no-repeat;
+  image-rendering: pixelated;
+  font-family: 'Zpix', 'Microsoft YaHei', sans-serif;
+  user-select: none;
+}
+
+/* 透明热区：叠在底图画好的按钮/导航上，只负责点击 */
+.bp-hot {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.bp-hot:focus-visible {
+  outline: 2px solid #e8c477;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.bp-hot:disabled {
+  cursor: default;
+}
+
+/* 左上返回箭头 */
+.bp-hot-back {
+  left: 26px;
+  top: 62px;
+  width: 86px;
+  height: 76px;
+}
+
+/* 左侧竖排导航：背包 / 商店 / 购买 / 出售 */
+.bp-hot-nav[data-bp-nav='bag'] {
+  left: 10px;
+  top: 210px;
+  width: 128px;
+  height: 82px;
+}
+.bp-hot-nav[data-bp-nav='shop'] {
+  left: 10px;
+  top: 320px;
+  width: 128px;
+  height: 72px;
+}
+.bp-hot-nav[data-bp-nav='buy'] {
+  left: 10px;
+  top: 432px;
+  width: 128px;
+  height: 68px;
+}
+.bp-hot-nav[data-bp-nav='sell'] {
+  left: 10px;
+  top: 536px;
+  width: 128px;
+  height: 70px;
+}
+
+/* 右上交子余额：整枚徽章（交子圆币 + 凹槽）直接用美术切图盖在底图上。
+   底图里那张徽章版本一旧（露出旧钱袋图标）就救不回来，DOM 这层永远兜底。
+   素材 currency-badge-with-jiaozi.png 244×70，凹槽在素材 (80..230, 9..55)，中心 y=32。
+   文件名沿用美术定稿原名（不再用短名 currency-badge.png）：同名换图会被浏览器
+   heuristic 缓存顶掉，改名让旧缓存失效（2026-11-26 顺手加固，见 server 端 no-cache）。
+   数字右对齐、垂直居中：flex 内容区去掉 6px 下内边后中心正好落在凹槽中心，
+   右端 244-19=225，距凹槽右端 230 留 5px 气口（与 compose 示例数值一致）。
+   必须提层：.bp-wh（844,24 起 790×890）与徽章 (1375,4) 重叠，DOM 顺序又在后面，
+   不提层时币的大半和数字都被仓库面板底图盖住，只露顶部 20px（2026-11-26「交子
+   只剩半枚、凹槽无数字」的根因，元素遮挡而非素材/缓存）。5 > 面板(auto)，
+   又低于面板内详情浮层 40，点开详情时仍由浮层盖住。 */
+.bp-balance {
+  position: absolute;
+  z-index: 5;
+  left: 1375px;
+  top: 4px; /* 2026-11-26 与仓库面板一起上移 20px（原 24） */
+  width: 244px;
+  height: 70px;
+  background: url('/assets/ui/warehouse/v5/currency-badge-with-jiaozi.png') 0 0 / 244px 70px
+    no-repeat;
+  image-rendering: pixelated;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 19px;
+  padding-bottom: 6px;
+  font-size: 22px;
+  line-height: 1;
+  color: #ffe8ad;
+  text-shadow: 0 0 6px #160b05;
+  pointer-events: none;
+}
+.bp-balance b {
+  font-weight: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------- 左：随身背包 --------------------------------- */
+
+.bp-bag {
+  position: absolute;
+  left: 176px;
+  top: 60px;
+  width: 625px;
+  height: 820px;
+}
+
+/* 负重数值：贴在「负重：」后面的横条里（底图标签 y 210..250，条心 228） */
+.bp-load {
+  position: absolute;
+  left: 150px;
+  top: 157px;
+  display: flex;
+  align-items: center;
+  font-size: 22px;
+  line-height: 1;
+  color: #ffe8ad;
+  text-shadow: 0 0 6px #160b05;
+  pointer-events: none;
+}
+.bp-load b {
+  font-weight: inherit;
+}
+.bp-load i {
+  margin-left: 6px;
+  font-style: normal;
+  color: #a8834c;
+  text-shadow: none;
+}
+
+/* 6 格道具背包：底图已有空槽，这里只放图标与名称。
+   几何必须对齐底图烘焙框（bg.png 实测）：行1框 y319..499、行2框 y530..708
+   （相对 .bp-bag：top 259，行高 181/179，行缝 30）；列框 x230..396/413..579/596..762
+   （宽 166、列缝 17）。2026-11-26 修正：原 grid 行距 196 与底图 211 不符，
+   第二行内容整体偏上 24px（图标顶到框沿、名称浮在名称栏上方）。 */
+.bp-bag-grid {
+  position: absolute;
+  left: 54px;
+  top: 259px;
+  width: 532px;
+  height: 390px;
+  display: grid;
+  grid-template-columns: repeat(3, 166px);
+  grid-template-rows: 181px 179px;
+  column-gap: 17px;
+  row-gap: 30px;
+}
+.bp-slot {
+  position: relative;
+  width: 166px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ffe8ad;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+}
+.bp-slot:disabled {
+  cursor: default;
+}
+.bp-slot[data-empty='false']:hover {
+  filter: brightness(1.12);
+}
+/* 稀有度底色：与仓库格子同一套色板（取自 v5 slot-{rarity}.png 内部实测色），
+   只染图标区 —— 名称栏分隔线在框内 76.8% 处，::before 止步线上，且画在
+   图标/名称 DOM 之前（::before 是首个子节点），不会盖住它们 */
+.bp-slot::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 5px;
+  bottom: 24%;
+  background: transparent;
+  pointer-events: none;
+}
+.bp-slot[data-rarity='common']::before {
+  background: #1e2431;
+}
+.bp-slot[data-rarity='uncommon']::before {
+  background: #291e38;
+}
+.bp-slot[data-rarity='epic']::before {
+  background: #3c2b11;
+}
+.bp-slot[data-rarity='legendary']::before {
+  background: #371816;
+}
+.bp-slot > img {
+  position: absolute;
+  left: 8%;
+  top: 7%;
+  width: 84%;
+  height: 72%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.bp-slot-name {
+  position: absolute;
+  left: 6%;
+  top: 82.5%;
+  width: 88%;
+  height: 15%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-family: 'Source Han Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1;
+  color: #f5e7ca;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.bp-slot[data-drop='true'] {
+  filter: brightness(1.35) sepia(0.35);
+  outline: 2px solid #f0c877;
+  outline-offset: -3px;
+}
+
+/* 底部两个按钮的热区（图标与文字都在底图里） */
+.bp-hot-put-all {
+  left: 239px;
+  top: 705px;
+  width: 285px;
+  height: 86px;
+}
+.bp-hot-repair {
+  left: 34px;
+  top: 686px;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+}
+.bp-hot-put-all:disabled {
+  filter: grayscale(0.5) brightness(0.7);
+}
+
+/* 「出发准备」：旧那套勾选列表的入口，做成左下角小字链接 */
+.bp-prep-link {
+  position: absolute;
+  left: 392px;
+  top: 74px;
+  padding: 6px 10px;
+  border: 1px solid #6b4a2a;
+  border-radius: 3px;
+  background: #1c1109cc;
+  color: #c9a469;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bp-prep-link:hover:not(:disabled) {
+  border-color: #c9a469;
+  color: #ffe4a0;
+}
+.bp-prep-link:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 右：仓库面板（内部另在 warehouse-panel.css）
+   790×890：定稿 872 + 底框下移 18px（build_panels_v5.py 把美术给的完整
+   「一键整理」按钮 806..867 塞进底框上方，参考图二的效果）。
+   top 24：2026-11-26 按用户要求与右上徽章一起上移 20px（原 44），
+   底边 914，舞台 941 内余 27px 砖墙——顶部 24 / 底部 27，比原 44/7 均衡；
+   底图 bg.png 里旧徽章/旧框区域都被这层完全盖住。
+   同日按钮金框又下移到 810..871、横线上移（tools/rework_sort_button.py），见 manifest。 */
+.bp-wh {
+  position: absolute;
+  left: 844px;
+  top: 24px;
+  width: 790px;
+  height: 890px;
+}

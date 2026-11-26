@@ -1,4 +1,5 @@
 import { EventBus } from '../../shared/events/game-events';
+import { inventorySection, occupiedSlots, type InventoryCapacities } from './inventory-sections';
 import type {
   ActionResult,
   EquipmentSlot,
@@ -18,6 +19,7 @@ export class ReferenceInventory implements InventoryClientPort {
     private readonly bus: EventBus,
     private readonly capacity: number,
     private readonly definitions: Readonly<Record<string, ItemDefinition>>,
+    private readonly sections?: InventoryCapacities,
   ) {}
 
   begin(
@@ -31,9 +33,16 @@ export class ReferenceInventory implements InventoryClientPort {
     const allItems = [...loadout, ...equipped];
     if (
       !raidId ||
-      this.loadoutSlots(loadout) > this.capacity ||
+      (this.sections
+        ? this.loadoutSlots(allItems) > this.sections.tools
+        : this.loadoutSlots(loadout) > this.capacity) ||
       new Set(allItems.map((item) => item.instanceId)).size !== allItems.length ||
-      allItems.some((item) => !this.isValidItem(item, true) || item.origin.kind !== 'carry-in') ||
+      allItems.some(
+        (item) =>
+          !this.isValidItem(item, true) ||
+          item.origin.kind !== 'carry-in' ||
+          this.definitions[item.itemId]?.kind === 'quest',
+      ) ||
       equipped.some((item) => this.definitions[item.itemId]?.kind !== 'weapon')
     ) {
       throw new Error('Loadout exceeds capacity');
@@ -67,7 +76,7 @@ export class ReferenceInventory implements InventoryClientPort {
     if (this.items.some((owned) => owned.instanceId === item.instanceId)) {
       return { ok: false, error: 'INVALID_ITEM' };
     }
-    if (this.bagCount() + (this.definitions[item.itemId]?.bagSlots ?? 1) > this.capacity) {
+    if (!this.canFit(item)) {
       return { ok: false, error: 'INVENTORY_FULL' };
     }
     this.items.push(structuredClone(item));
@@ -117,7 +126,7 @@ export class ReferenceInventory implements InventoryClientPort {
     if (!item) {
       return { ok: false, error: 'INVALID_ITEM' };
     }
-    if (this.bagCount() + (this.definitions[item.itemId]?.bagSlots ?? 1) > this.capacity) {
+    if (!this.sections && !this.canFit(item)) {
       return { ok: false, error: 'BAG_FULL' };
     }
     this.equipment.delete(slotId);
@@ -153,7 +162,7 @@ export class ReferenceInventory implements InventoryClientPort {
     if (!removed.ok) {
       return removed;
     }
-    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId });
+    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId, itemId: item.itemId });
     return removed;
   }
 
@@ -166,7 +175,7 @@ export class ReferenceInventory implements InventoryClientPort {
     if (!applyEffect()) return { ok: false, error: 'INVALID_STATE' };
     const removed = this.remove(instanceId);
     if (!removed.ok) return removed;
-    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId });
+    this.bus.emit('ItemConsumed', { raidId: this.raidId, instanceId, itemId: item.itemId });
     return removed;
   }
 
@@ -188,6 +197,16 @@ export class ReferenceInventory implements InventoryClientPort {
           : slots)
       );
     }, 0);
+  }
+  private canFit(item: ItemInstance): boolean {
+    const section = inventorySection(item);
+    const used = this.sections
+      ? occupiedSlots(this.items, this.definitions, section)
+      : this.bagCount();
+    return (
+      used + (this.definitions[item.itemId]?.bagSlots ?? 1) <=
+      (this.sections?.[section] ?? this.capacity)
+    );
   }
   private loadoutSlots(items: readonly ItemInstance[]): number {
     return items.reduce((total, item) => total + (this.definitions[item.itemId]?.bagSlots ?? 1), 0);

@@ -1,3 +1,9 @@
+import { CHEST_TIERS } from '../config/chest-config';
+import {
+  occupiedSlots,
+  sectionCanFit,
+  type InventoryCapacities,
+} from '../modules/inventory/inventory-sections';
 import { isTouchLayout } from '../modules/ui/mobile-layout';
 import { createTypingGuard, isFormFocused } from '../modules/ui/typing-guard';
 import { assetUrl } from '../app/asset-url';
@@ -10,12 +16,7 @@ import {
   monsterAnimationFor,
   monsterScaleFor,
 } from '../config/monster-sprites';
-import {
-  generateLootSpawns,
-  questSpawnPlan,
-  roundRandom,
-  type LootSpawn,
-} from '../modules/world/loot-spawns';
+import { generateLootSpawns, questSpawnPlan, type LootSpawn } from '../modules/world/loot-spawns';
 import {
   activeMap,
   beginRaidMap,
@@ -34,8 +35,11 @@ import {
   type Enemy,
   type EnemyState,
   angleBetween,
+  combatWeaponConfig,
   distance,
+  enemyMaxHealth,
   findEnemySpawnPosition,
+  isCombatWeaponId,
   lineOfSight,
   shouldDropPatrolLoot,
 } from '../modules/world/night-systems';
@@ -52,6 +56,8 @@ import type { GameSnapshot, PlayerInput, RemotePlayerSnapshot } from '../shared/
 import type { TouchControls } from '../modules/world/touch-controls';
 import type { SoundManager } from '../modules/ui/sound-manager';
 import type { NetworkSession, PlayerSnapshot } from '../modules/network/network-session';
+import { RoomLootSearch } from '../modules/network/room-loot-search';
+import type { RoomChestSnapshot } from '../modules/network/network-protocol';
 import {
   isQuestComplete,
   hasCurrentRaidNotebook,
@@ -75,8 +81,9 @@ interface SceneServices {
   displayName?: string;
   controller: RaidControllerPort;
   inventory: InventoryPort;
+  inventoryCapacities?: InventoryCapacities;
   /** 当前进行中的章节 id，由大厅按存档实时给出（章节推进后下一局自动换章）。 */
-  questChapter?: () => string;
+  questChapter?: () => string | null;
   events: EventBus;
   notify: (message: string) => void;
   touch: TouchControls;
@@ -182,6 +189,7 @@ export class WorldScene extends Phaser.Scene {
   private readonly enemyDeathFinished = new Set<string>();
   private readonly enemyMutatedStates = new Map<string, boolean>();
   private readonly enemyLastPositions = new Map<string, Point>();
+  private readonly soundWaveSprites = new Map<string, Phaser.GameObjects.Sprite>();
   private readonly remotePlayerObjects = new Map<string, Phaser.GameObjects.Container>();
   private readonly remotePlayerTargets = new Map<string, RemotePlayerSnapshot>();
   private onlineSnapshot: GameSnapshot | null = null;
@@ -198,6 +206,8 @@ export class WorldScene extends Phaser.Scene {
     { text: Phaser.GameObjects.Text; offsetY: number }
   >();
   private networkInputElapsed = 0;
+  private roomRoundId: string | null = null;
+  private roomLootSearch?: RoomLootSearch;
   private lastRaidId: string | null = null;
   private previousInteract = false;
   private previousAttack = false;
@@ -229,6 +239,11 @@ export class WorldScene extends Phaser.Scene {
   private alerts?: Phaser.GameObjects.Graphics;
   private searchAlert?: Phaser.GameObjects.Text;
   private alertAnchor: { id: string; x: number; y: number } | null = null;
+  private detectorTargetId: string | null = null;
+  private detectorUntilMs = 0;
+  private compassUntilMs = 0;
+  private silentCloakUntilMs = 0;
+  private silentCloakDetectionMultiplier = 1;
   private readonly warningLabels = new Map<string, Phaser.GameObjects.Text>();
 
   constructor(private readonly services: SceneServices) {
@@ -236,8 +251,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** 当前章节 id；未接线时退回第一章，保证单测与旧调用方行为不变。 */
-  private questChapterId(): string {
-    return this.services.questChapter?.() ?? QUEST_CHAPTER_ID;
+  private questChapterId(): string | null {
+    return this.services.questChapter ? this.services.questChapter() : QUEST_CHAPTER_ID;
   }
 
   preload(): void {
@@ -270,8 +285,105 @@ export class WorldScene extends Phaser.Scene {
     };
   }
 
+  activateSearchBoost(reductionMs: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    const duration = Math.max(250, RAID_RULES.searchDurationMs - reductionMs);
+    return this.search.setNextDuration(duration);
+  }
+
+  activateDetector(durationMs: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    if (this.detectorTargetId !== null && this.time.now < this.detectorUntilMs) return false;
+    const target = this.searchPoints
+      .filter((point) => !this.search.isOpened(point.id))
+      .sort((a, b) => distance(this.position, a) - distance(this.position, b))[0];
+    if (!target || !Number.isFinite(durationMs) || durationMs <= 0) return false;
+    this.detectorTargetId = target.id;
+    this.detectorUntilMs = this.time.now + durationMs;
+    return true;
+  }
+
+  activateCompass(durationMs: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    if (this.time.now < this.compassUntilMs) return false;
+    if (!this.compassQuestTarget() && !this.extractionTarget()) return false;
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return false;
+    this.compassUntilMs = this.time.now + durationMs;
+    return true;
+  }
+
+  activateSilentCloak(durationMs: number, detectionMultiplier: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    if (this.time.now < this.silentCloakUntilMs) return false;
+    if (
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0 ||
+      !Number.isFinite(detectionMultiplier) ||
+      detectionMultiplier <= 0
+    ) {
+      return false;
+    }
+    this.silentCloakUntilMs = this.time.now + durationMs;
+    this.silentCloakDetectionMultiplier = detectionMultiplier;
+    return true;
+  }
+
+  activateReflectiveFilter(multiplier: number): boolean {
+    const phase = this.services.controller.getView().phase;
+    if (phase !== 'active' && phase !== 'extracting') return false;
+    return this.lighting.setFlashlightRangeMultiplier(multiplier);
+  }
+
+  private detectionMultiplier(): number {
+    if (this.time.now >= this.silentCloakUntilMs) {
+      this.silentCloakDetectionMultiplier = 1;
+      return 1;
+    }
+    return this.silentCloakDetectionMultiplier;
+  }
+
+  private hasCurrentQuestEvidence(itemId: string): boolean {
+    const raidId = this.services.controller.getView().raidId;
+    return this.services.inventory
+      .getCarriedItems()
+      .some(
+        (item) =>
+          item.itemId === itemId &&
+          item.origin.kind === 'raid-loot' &&
+          item.origin.obtainedInRaidId === raidId,
+      );
+  }
+
+  private compassQuestTarget(): Point | null {
+    const view = this.services.controller.getView();
+    const chapterId = this.questChapterId();
+    if (chapterId === null) return null;
+    const pending = questChapterById(chapterId).evidence.find(
+      (entry) => !this.hasCurrentQuestEvidence(entry.itemId),
+    );
+    if (!pending) return null;
+    if (pending.itemId === 'anomalous-feather' && view.steleInvestigated) return null;
+    const stone = activeMap().stone;
+    if (pending.itemId === 'anomalous-feather' && stone) {
+      return { ...stone };
+    }
+    const target = this.searchPoints.find(
+      (point) => point.itemId === pending.itemId && !this.search.isOpened(point.id),
+    );
+    return target ? { x: target.x, y: target.y } : null;
+  }
+
+  private extractionTarget(): Point | null {
+    const zone = activeMap().extractions[0];
+    return zone ? { x: zone.x + zone.width / 2, y: zone.y + zone.height / 2 } : null;
+  }
+
   clearInteractions(): void {
-    this.search.cancel();
+    this.cancelSearch();
     this.services.touch.reset();
     this.input?.keyboard?.resetKeys();
     for (const enemy of this.combat.enemies) {
@@ -372,6 +484,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createWorld(): void {
+    if (this.services.network) {
+      this.roomLootSearch = new RoomLootSearch(
+        this.services.network,
+        (chest) => this.receiveRoomLoot(chest),
+        (message) => this.services.notify(message),
+      );
+    }
     for (const key of MONSTER_SPRITE_SHEETS) {
       if (!this.textures.exists(key) || !this.textures.get(key).has('0')) {
         throw new Error(`Missing animation frames: ${key}`);
@@ -457,9 +576,11 @@ export class WorldScene extends Phaser.Scene {
       this.services.sound.play('behit');
       this.services.sound.setLoop('alarm', health > 0 && health < 20);
       this.hurtThisFrame = true;
+      this.silentCloakUntilMs = 0;
+      this.silentCloakDetectionMultiplier = 1;
       this.hurtFeedbackMs = COMBAT_RULES.feedback.playerHighlightMs;
       this.setPlayerAction('hurt', COMBAT_RULES.feedback.playerHighlightMs);
-      this.search.cancel();
+      this.cancelSearch();
       this.combat.onPlayerDamaged();
       this.services.notify(`受到 ${amount} 点伤害，当前生命 ${health}；搜索和撤离读条已中断。`);
       this.cameras.main.flash(COMBAT_RULES.feedback.cameraFlashMs, 255, 72, 72, false);
@@ -471,12 +592,13 @@ export class WorldScene extends Phaser.Scene {
     const onHidden = () => {
       if (document.hidden) {
         this.services.touch.reset();
-        this.search.cancel();
+        this.cancelSearch();
         this.services.controller.cancelExtraction();
       }
     };
     document.addEventListener('visibilitychange', onHidden);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.roomLootSearch?.dispose();
       this.releaseDamage?.();
       document.removeEventListener('visibilitychange', onHidden);
       keyboard?.removeAllKeys(true);
@@ -505,12 +627,21 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.updateRoomPlayers(deltaMs);
+    this.syncRoomLoot();
     if (this.services.isOnline?.()) {
       const snapshot = this.onlineSnapshot;
       // 焦点在输入框/下拉框时不消费按键（typing-guard 同时会放开 capture）。
       const isTyping = isFormFocused();
+      const focused = document.activeElement;
+      const inInventory =
+        focused !== null &&
+        'closest' in focused &&
+        (focused as HTMLElement).closest('#inventory-panel') !== null;
       const down = (key: string) =>
-        this.services.touch.held(key) || (!isTyping && (this.keys[key]?.isDown ?? false));
+        this.services.touch.held(key) ||
+        (!isTyping &&
+          !(inInventory && ['UP', 'DOWN', 'LEFT', 'RIGHT', 'SPACE'].includes(key)) &&
+          (this.keys[key]?.isDown ?? false));
       const movement = {
         x:
           Number(down('D') || down('RIGHT')) -
@@ -574,8 +705,16 @@ export class WorldScene extends Phaser.Scene {
       this.hurtThisFrame = false;
       // 焦点在输入框/下拉框时不消费按键（typing-guard 同时会放开 capture）。
       const isTyping = isFormFocused();
+      const focused = document.activeElement;
+      const inInventory =
+        focused !== null &&
+        'closest' in focused &&
+        (focused as HTMLElement).closest('#inventory-panel') !== null;
       const down = (key: string) =>
-        this.services.touch.held(key) || (!isTyping && (this.keys[key]?.isDown ?? false));
+        this.services.touch.held(key) ||
+        (!isTyping &&
+          !(inInventory && ['UP', 'DOWN', 'LEFT', 'RIGHT', 'SPACE'].includes(key)) &&
+          (this.keys[key]?.isDown ?? false));
       const movement = {
         x:
           Number(down('D') || down('RIGHT')) -
@@ -598,7 +737,7 @@ export class WorldScene extends Phaser.Scene {
       this.moving = Math.hypot(movement.x, movement.y) > 0.1;
       this.services.sound.setLoop('footsteps', this.moving);
       if (this.moving) {
-        this.search.cancel();
+        this.cancelSearch();
       }
       const map = activeMap();
       this.position =
@@ -666,7 +805,10 @@ export class WorldScene extends Phaser.Scene {
         this.services.notify('照明棒已部署，附近区域将保持可见 30 秒。');
       }
       if (down('SPACE')) {
-        this.search.cancel();
+        // cancelSearch 内部已含 this.search.cancel()，且额外取消房战搜刮
+        this.cancelSearch();
+        this.silentCloakUntilMs = 0;
+        this.silentCloakDetectionMultiplier = 1;
         const carriedItems = this.services.inventory.getCarriedItems();
         const equippedWeapon = this.services.inventory.getEquipment().primary;
         const weaponItem =
@@ -678,17 +820,15 @@ export class WorldScene extends Phaser.Scene {
             this.services.notify('未携带武器，无法攻击。');
           }
         } else {
-          const stunBaton = weaponItem.itemId === 'stun-baton';
-          const weapon = stunBaton
-            ? COMBAT_RULES.player.attack.weapons.stunBaton
-            : COMBAT_RULES.player.attack.weapons.trainingBat;
+          const weaponId = isCombatWeaponId(weaponItem.itemId) ? weaponItem.itemId : 'training-bat';
+          const weapon = combatWeaponConfig(weaponId);
           if (
-            stunBaton &&
-            this.combat.currentWeaponId === 'stun-baton' &&
+            weapon.maxUses !== null &&
+            this.combat.currentWeaponId === weaponId &&
             this.combat.weaponUsesRemaining === 0
           ) {
             if (!this.previousAttack) {
-              this.services.notify('电击器已用尽。');
+              this.services.notify(`${ITEM_DEFINITIONS[weaponId]?.name ?? weaponId}已用尽。`);
             }
             this.previousAttack = down('SPACE');
           }
@@ -698,7 +838,7 @@ export class WorldScene extends Phaser.Scene {
             this.aim,
             activeMap().obstacles,
             weapon.damage,
-            stunBaton ? 'stun-baton' : 'training-bat',
+            weaponId,
           );
           if (previousCooldown <= 0 && this.combat.attackCooldown > 0) {
             this.setPlayerAction('attack', COMBAT_RULES.player.attack.swingMs + 140);
@@ -740,6 +880,8 @@ export class WorldScene extends Phaser.Scene {
         !this.moving,
         activeMap().obstacles,
         this.bounds,
+        this.detectionMultiplier(),
+        this.services.controller.isInvulnerable?.() ?? false,
       );
       const spawnedEnemies = this.combat.updateSpawns(deltaMs, () =>
         findEnemySpawnPosition(this.position, this.aim, this.lighting, this.combat.enemies),
@@ -750,8 +892,14 @@ export class WorldScene extends Phaser.Scene {
       if (spawnedEnemies.length > 0) {
         this.services.notify(`远处出现了${spawnedEnemies.length}只新的怪物。`);
       }
+      if (combat.amplifierWindups.length > 0) {
+        this.services.sound.playAmplifierCharge?.();
+      }
       if (combat.damage) {
         this.services.controller.applyDamage(combat.damage);
+      }
+      if (combat.soundWaveHit) {
+        this.services.controller.applySoundWaveEffect?.();
       }
       if (combat.calmed.length > 0) {
         this.services.notify('抱抱成功，怪物平静约 30 秒，不会掉落物品。');
@@ -773,6 +921,8 @@ export class WorldScene extends Phaser.Scene {
         true,
         activeMap().obstacles,
         this.bounds,
+        this.detectionMultiplier(),
+        this.services.controller.isInvulnerable?.() ?? false,
       );
       const spawnedEnemies = this.combat.updateSpawns(deltaMs, () =>
         findEnemySpawnPosition(this.position, this.aim, this.lighting, this.combat.enemies),
@@ -783,26 +933,36 @@ export class WorldScene extends Phaser.Scene {
       if (spawnedEnemies.length > 0) {
         this.services.notify(`远处出现了${spawnedEnemies.length}只新的怪物。`);
       }
+      if (combat.amplifierWindups.length > 0) {
+        this.services.sound.playAmplifierCharge?.();
+      }
       if (combat.damage) {
         this.services.controller.applyDamage(combat.damage);
+      }
+      if (combat.soundWaveHit) {
+        this.services.controller.applySoundWaveEffect?.();
       }
       if (combat.calmed.length > 0) {
         this.services.notify('抱抱成功，怪物平静约 30 秒，不会掉落物品。');
       }
     } else if (!playable) {
       this.services.sound.setLoop('footsteps', false);
-      this.search.cancel();
+      this.services.sound.setTinnitus?.(false);
+      this.cancelSearch();
       if (view.health <= 0) {
         this.setPlayerAction('death', Number.POSITIVE_INFINITY);
       }
       this.interaction = this.services.controller.isPaused()
-        ? '已暂停 · 横屏并关闭规则 / 校园图 / 图鉴后继续'
+        ? '已暂停 · 关闭设置或当前弹窗后继续'
         : view.phase === 'preparing'
           ? '准备好后，开始本次校园探索'
           : '本次探索已结束，请查看结算';
     }
     this.services.controller.tick();
     const current = this.services.controller.getView();
+    this.services.sound.setTinnitus?.(
+      playable && (current.statusEffects?.tinnitusRemainingMs ?? 0) > 0,
+    );
     const extractionFill = current.value >= current.threshold ? 0x77d4a8 : 0x667a77;
     const extractionStroke = current.value >= current.threshold ? 0x97ecc6 : 0x738984;
     for (const marker of this.extractionMarkers) {
@@ -1103,10 +1263,11 @@ export class WorldScene extends Phaser.Scene {
           : this.services.inventory
               .getCarriedItems()
               .find((item) => ITEM_DEFINITIONS[item.itemId]?.kind === 'weapon');
-      const swingWeapon =
-        carriedWeapon?.itemId === 'stun-baton'
-          ? COMBAT_RULES.player.attack.weapons.stunBaton
-          : COMBAT_RULES.player.attack.weapons.trainingBat;
+      const swingWeaponId =
+        carriedWeapon && isCombatWeaponId(carriedWeapon.itemId)
+          ? carriedWeapon.itemId
+          : 'training-bat';
+      const swingWeapon = combatWeaponConfig(swingWeaponId);
       this.flashlight.fillStyle(0xf2edbc, 0.35);
       this.flashlight.beginPath();
       this.flashlight.moveTo(this.position.x, this.position.y);
@@ -1149,12 +1310,11 @@ export class WorldScene extends Phaser.Scene {
           .fillStyle(0x40202b)
           .fillRect(enemy.position.x - 18, enemy.position.y - 70, 36, 4);
         this.flashlight
-          .fillStyle(enemy.mutated ? 0xff4e68 : 0xe4ae6b)
+          .fillStyle(enemy.mutated ? 0xff4e68 : enemy.kind === 'amplifier' ? 0xff6b7d : 0xe4ae6b)
           .fillRect(
             enemy.position.x - 18,
             enemy.position.y - 70,
-            (36 * enemy.health) /
-              (enemy.kind === 'hug' ? COMBAT_RULES.hug.health : COMBAT_RULES.enemy.patrol.health),
+            (36 * Math.max(0, enemy.health)) / enemyMaxHealth(enemy.kind),
             4,
           );
         if (enemy.state === 'mutation-warning') {
@@ -1163,29 +1323,84 @@ export class WorldScene extends Phaser.Scene {
             .strokeCircle(enemy.position.x, enemy.position.y, 48);
         }
         if (enemy.state === 'windup') {
-          const warning = COMBAT_RULES.feedback.enemyWarning;
-          const direction = angleBetween(enemy.position, this.position);
-          const tip = {
-            x: enemy.position.x + Math.cos(direction) * warning.lineLength,
-            y: enemy.position.y + Math.sin(direction) * warning.lineLength,
-          };
-          const left = {
-            x: tip.x - Math.cos(direction - Math.PI / 6) * warning.arrowSize,
-            y: tip.y - Math.sin(direction - Math.PI / 6) * warning.arrowSize,
-          };
-          const right = {
-            x: tip.x - Math.cos(direction + Math.PI / 6) * warning.arrowSize,
-            y: tip.y - Math.sin(direction + Math.PI / 6) * warning.arrowSize,
-          };
-          this.flashlight
-            .lineStyle(3, 0xff5269, 0.8)
-            .strokeCircle(enemy.position.x, enemy.position.y, warning.ringRadius)
-            .lineStyle(warning.lineWidth, 0xff5269, 0.95)
-            .lineBetween(enemy.position.x, enemy.position.y, tip.x, tip.y)
-            .lineBetween(tip.x, tip.y, left.x, left.y)
-            .lineBetween(tip.x, tip.y, right.x, right.y);
+          if (enemy.kind === 'amplifier' && enemy.attackAngle !== undefined) {
+            const ampRules = COMBAT_RULES.enemy.amplifier;
+            const angle = enemy.attackAngle;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const halfWidth = ampRules.projectileWidth / 2;
+            const length = ampRules.projectileMaxDistance;
+            const perpX = -sin * halfWidth;
+            const perpY = cos * halfWidth;
+            const endX = enemy.position.x + cos * length;
+            const endY = enemy.position.y + sin * length;
+            const locked = Boolean(enemy.windupLocked);
+            const progress = Math.max(0, Math.min(1, 1 - enemy.timer / ampRules.windupMs));
+            this.flashlight.fillStyle(
+              locked ? 0xff2b43 : 0xff5a6a,
+              locked ? 0.3 + Math.sin(this.time.now / 50) * 0.08 : 0.14 + progress * 0.14,
+            );
+            this.flashlight.beginPath();
+            this.flashlight.moveTo(enemy.position.x + perpX, enemy.position.y + perpY);
+            this.flashlight.lineTo(endX + perpX, endY + perpY);
+            this.flashlight.lineTo(endX - perpX, endY - perpY);
+            this.flashlight.lineTo(enemy.position.x - perpX, enemy.position.y - perpY);
+            this.flashlight.closePath().fillPath();
+            this.flashlight
+              .lineStyle(locked ? 3 : 2, locked ? 0xffd2d6 : 0xff7b88, locked ? 0.95 : 0.72)
+              .lineBetween(enemy.position.x, enemy.position.y, endX, endY);
+          } else {
+            const warning = COMBAT_RULES.feedback.enemyWarning;
+            const direction = angleBetween(enemy.position, this.position);
+            const tip = {
+              x: enemy.position.x + Math.cos(direction) * warning.lineLength,
+              y: enemy.position.y + Math.sin(direction) * warning.lineLength,
+            };
+            const left = {
+              x: tip.x - Math.cos(direction - Math.PI / 6) * warning.arrowSize,
+              y: tip.y - Math.sin(direction - Math.PI / 6) * warning.arrowSize,
+            };
+            const right = {
+              x: tip.x - Math.cos(direction + Math.PI / 6) * warning.arrowSize,
+              y: tip.y - Math.sin(direction + Math.PI / 6) * warning.arrowSize,
+            };
+            this.flashlight
+              .lineStyle(3, 0xff5269, 0.8)
+              .strokeCircle(enemy.position.x, enemy.position.y, warning.ringRadius)
+              .lineStyle(warning.lineWidth, 0xff5269, 0.95)
+              .lineBetween(enemy.position.x, enemy.position.y, tip.x, tip.y)
+              .lineBetween(tip.x, tip.y, left.x, left.y)
+              .lineBetween(tip.x, tip.y, right.x, right.y);
+          }
         }
       }
+    }
+    const activeWaveIds = new Set(this.combat.soundWaves.map((wave) => wave.id));
+    for (const [waveId, sprite] of this.soundWaveSprites) {
+      if (!activeWaveIds.has(waveId)) {
+        sprite.destroy();
+        this.soundWaveSprites.delete(waveId);
+      }
+    }
+    for (const wave of this.combat.soundWaves) {
+      let sprite = this.soundWaveSprites.get(wave.id);
+      if (!sprite) {
+        sprite = this.add
+          .sprite(wave.position.x, wave.position.y, 'amplifier-wave', 0)
+          .setOrigin(0.5, 0.5)
+          .setDisplaySize(
+            COMBAT_RULES.enemy.amplifier.projectileWidth,
+            COMBAT_RULES.enemy.amplifier.projectileWidth,
+          );
+        if (this.anims.exists('amplifier-wave')) {
+          sprite.anims.play('amplifier-wave', true);
+        }
+        this.soundWaveSprites.set(wave.id, sprite);
+      }
+      sprite
+        .setPosition(wave.position.x, wave.position.y)
+        .setRotation(wave.angle)
+        .setDepth(this.entityDepth(wave.position.y) + 2);
     }
     for (const point of this.searchPoints) {
       this.chestObjects
@@ -1284,22 +1499,80 @@ export class WorldScene extends Phaser.Scene {
     return `${instruction} · 剩余 ${Math.ceil(hug.timer / 1000)} 秒 · 抱满 1.5 秒平静约 30 秒`;
   }
 
+  private cancelSearch(): void {
+    this.search.cancel();
+    this.roomLootSearch?.cancel();
+  }
+
+  private syncRoomLoot(): void {
+    const state = this.services.network?.getRoomState();
+    if (!this.roomRoundId || state?.roundId !== this.roomRoundId) return;
+    for (const chest of state.chests ?? []) {
+      if (chest.claimedBy && !this.search.isOpened(chest.id)) {
+        if (this.search.current() === chest.id) this.cancelSearch();
+        this.openChest(chest.id);
+      }
+    }
+  }
+
+  private openChest(id: string): void {
+    this.search.markOpened(id);
+    this.chestSprites.get(id)?.play('treasure-chest-open');
+    this.chestObjects.get(id)?.setAlpha(0.23);
+  }
+
+  private receiveRoomLoot(chest: RoomChestSnapshot): boolean {
+    const view = this.services.controller.getView();
+    if (
+      view.phase !== 'active' ||
+      !view.raidId ||
+      this.services.controller.isPaused() ||
+      !this.services.network?.isInRoom() ||
+      this.services.network.getRoomState()?.roundId !== this.roomRoundId ||
+      this.search.isOpened(chest.id)
+    )
+      return false;
+    const result = this.services.inventory.addLoot({
+      instanceId: `${view.raidId}:room:${chest.id}`,
+      itemId: chest.itemId,
+      origin: { kind: 'raid-loot', obtainedInRaidId: view.raidId },
+    });
+    this.cancelSearch();
+    if (!result.ok) {
+      this.services.notify('背包已满，宝箱已保留；腾出空间后可以重新搜索。');
+      return false;
+    }
+    this.openChest(chest.id);
+    this.services.events.emit('LocationInteracted', { raidId: view.raidId, locationId: chest.id });
+    this.banner = {
+      text: `已拾取：${ITEM_DEFINITIONS[chest.itemId]?.name ?? chest.itemId}`,
+      untilMs: this.time.now + 3200,
+    };
+    this.services.notify('搜索完成，物资进入本局背包。');
+    return true;
+  }
+
   private interact(held: boolean): void {
     const view = this.services.controller.getView();
     if (view.phase !== 'active' && view.phase !== 'extracting') {
-      this.search.cancel();
+      this.cancelSearch();
       return;
     }
     const carried = this.services.inventory.getCarriedItems();
     const equippedIds = new Set(
       Object.values(this.services.inventory.getEquipment()).map((item) => item.instanceId),
     );
-    const chapter = questChapterById(this.questChapterId());
-    const bagFull =
-      carried.filter((item) => !equippedIds.has(item.instanceId)).length >= RAID_RULES.bagCapacity;
+    const chapterId = this.questChapterId();
+    const chapter = chapterId === null ? null : questChapterById(chapterId);
+    const bagFull = this.services.inventoryCapacities
+      ? occupiedSlots(carried, ITEM_DEFINITIONS, 'bag') >= this.services.inventoryCapacities.bag
+      : carried
+          .filter((item) => !equippedIds.has(item.instanceId))
+          .reduce((slots, item) => slots + (ITEM_DEFINITIONS[item.itemId]?.bagSlots ?? 1), 0) >=
+        RAID_RULES.bagCapacity;
     const hug = this.nearbyHug();
     if (hug) {
-      this.search.cancel();
+      this.cancelSearch();
       this.interaction = this.hugInstruction(hug);
       this.keyPrompt = { key: 'Q', label: '安抚' };
       return;
@@ -1312,9 +1585,18 @@ export class WorldScene extends Phaser.Scene {
       )
       .sort((a, b) => distance(a.position, this.position) - distance(b.position, this.position))[0];
     if (loot) {
-      this.search.cancel();
-      if (bagFull) {
-        this.interaction = `背包已满 · ${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}留在地上，先腾出空间再拾取`;
+      this.cancelSearch();
+      const lootFits = this.services.inventoryCapacities
+        ? sectionCanFit(carried, loot.item, ITEM_DEFINITIONS, this.services.inventoryCapacities)
+        : occupiedSlots(carried, ITEM_DEFINITIONS) +
+            (ITEM_DEFINITIONS[loot.item.itemId]?.bagSlots ?? 1) <=
+          RAID_RULES.bagCapacity;
+      if (!lootFits) {
+        const sectionName =
+          loot.item.origin.kind === 'carry-in' && this.services.inventoryCapacities
+            ? '道具栏'
+            : '背包';
+        this.interaction = `${sectionName}已满 · ${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}留在地上，先腾出空间再拾取`;
         return;
       }
       this.interaction = `按 E 拾取：${ITEM_DEFINITIONS[loot.item.itemId]?.name ?? loot.item.itemId}`;
@@ -1343,29 +1625,50 @@ export class WorldScene extends Phaser.Scene {
     );
     if (chest) {
       this.alertAnchor = { id: chest.id, x: chest.x, y: chest.y };
-      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapter.id);
+      const prerequisite = prerequisiteHint(chest.itemId, carried, view.raidId, chapterId);
       if (prerequisite !== null) {
-        this.search.cancel();
+        this.cancelSearch();
         this.interaction = prerequisite;
         return;
       }
       // 满包时不启动搜索进度：否则每次 2 秒读条失败重来，玩家只看得到进度条循环。
       if (bagFull) {
-        this.search.cancel();
+        this.cancelSearch();
         this.interaction = '背包已满 · 先丢弃或替换物品再搜索';
         if (held && !this.previousInteract) {
           this.services.notify('背包已满，搜索点保留在原地；丢弃或替换物品后可以重新搜索。');
         }
         return;
       }
-      this.interaction = '长按 E 搜索';
+      this.interaction = `${CHEST_TIERS[chest.tier ?? 'normal'].name} · 长按 E 搜索 ${CHEST_TIERS[chest.tier ?? 'normal'].durationMs / 1000} 秒`;
       this.keyPrompt = { key: 'E', label: '搜索' };
       if (!held || this.moving || view.phase !== 'active') {
-        this.search.cancel();
+        this.cancelSearch();
+        return;
+      }
+      if (this.roomRoundId) {
+        const network = this.services.network;
+        const sharedChest = network?.getRoomState()?.chests?.find((point) => point.id === chest.id);
+        if (
+          !network?.isInRoom() ||
+          network.getRoomState()?.roundId !== this.roomRoundId ||
+          !sharedChest
+        ) {
+          this.cancelSearch();
+          this.interaction = '联机连接中断，暂时无法搜索';
+          return;
+        }
+        if (this.search.current() !== chest.id) {
+          this.search.begin(chest.id);
+          this.services.sound.play('box');
+        }
+        this.roomLootSearch?.hold(sharedChest);
+        if (this.roomLootSearch?.current() !== chest.id) this.search.cancel();
+        if (this.search.progress() >= 1) this.interaction = '搜索完成 · 等待领取确认…';
         return;
       }
       const wasSearching = this.search.current() === chest.id;
-      this.search.begin(chest.id);
+      this.search.begin(chest.id, CHEST_TIERS[chest.tier ?? 'normal'].durationMs);
       if (!wasSearching) {
         this.services.sound.play('box');
       }
@@ -1377,7 +1680,9 @@ export class WorldScene extends Phaser.Scene {
         };
         const result = this.search.finish(item, (entry) => this.services.inventory.addLoot(entry));
         if (result.ok) {
-          this.chestSprites.get(chest.id)?.play('treasure-chest-open');
+          this.chestSprites
+            .get(chest.id)
+            ?.play(`${CHEST_TIERS[chest.tier ?? 'normal'].texture}-open`);
           this.chestObjects.get(chest.id)?.setAlpha(0.23);
           this.services.events.emit('LocationInteracted', {
             raidId: view.raidId,
@@ -1390,10 +1695,10 @@ export class WorldScene extends Phaser.Scene {
           const beat = isQuestComplete(
             this.services.inventory.getCarriedItems(),
             view.raidId,
-            chapter.id,
+            chapterId,
             view.steleInvestigated,
           )
-            ? chapter.completeHint
+            ? chapter?.completeHint
             : evidenceStoryBeat(chest.itemId);
           const pickup =
             beat ??
@@ -1415,10 +1720,10 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const stele = activeMap().stone;
-    if (chapter.id === QUEST_CHAPTER_ID && stele) {
+    if (chapter?.id === QUEST_CHAPTER_ID && stele) {
       const steleDistance = distance(stele, this.position);
       if (steleDistance < 78) {
-        this.search.cancel();
+        this.cancelSearch();
         if (!hasCurrentRaidNotebook(carried, view.raidId)) {
           this.interaction = '明湖石碑 · 先取得本局残缺手记';
           return;
@@ -1453,7 +1758,7 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     if (view.inExtractionZone) {
-      this.search.cancel();
+      this.cancelSearch();
       this.interaction =
         view.phase === 'extracting'
           ? '正在撤离 · 请留在区域内'
@@ -1474,17 +1779,17 @@ export class WorldScene extends Phaser.Scene {
       if (lamp && this.lighting.battery < 99) {
         this.interaction = '灯站充电';
         if (held && !this.moving && !this.hurtThisFrame) {
-          this.search.begin(`charge:${lamp.x}`);
+          this.search.begin(`charge:${lamp.x}`, false);
           if (this.search.progress() >= 1) {
             this.lighting.charge();
-            this.search.cancel();
+            this.cancelSearch();
             this.services.notify('手电筒已充满。');
           }
         } else {
-          this.search.cancel();
+          this.cancelSearch();
         }
       } else {
-        this.search.cancel();
+        this.cancelSearch();
         const request = this.requestingHug();
         this.interaction = request ? this.hugInstruction(request) : '校园夜巡';
       }
@@ -1527,18 +1832,26 @@ export class WorldScene extends Phaser.Scene {
       useCampusMap();
     } else if (raidId) {
       beginRaidMap();
+      if (!activeMap().hasStory) useCampusMap();
     } else {
       previewUpcomingMap();
     }
     this.presentActiveMap();
+    this.roomLootSearch?.reset();
     this.lastRaidId = raidId;
     this.services.sound.setLoop('alarm', false);
+    this.services.sound.setTinnitus?.(false);
+    for (const sprite of this.soundWaveSprites.values()) {
+      sprite.destroy();
+    }
+    this.soundWaveSprites.clear();
     this.hurtFeedbackMs = 0;
     this.attackFeedbackMs = 0;
     this.hitStopMs = 0;
     this.banner = null;
     const network = this.services.network;
     const roundId = network?.isInRoom() ? network.getRoomState()?.roundId : null;
+    this.roomRoundId = raidId ? (roundId ?? null) : null;
     this.position = {
       ...(roundId ? (network?.getLocalPlayer()?.position ?? activeMap().spawn) : activeMap().spawn),
     };
@@ -1577,15 +1890,17 @@ export class WorldScene extends Phaser.Scene {
     this.chestObjects.clear();
     this.chestSprites.clear();
     this.searchPoints = raidId
-      ? generateLootSpawns(
-          roundId ? roundRandom(roundId) : Math.random,
-          activeMap().hasStory ? questSpawnPlan(this.questChapterId()) : [],
-        )
+      ? roundId
+        ? (network?.getRoomState()?.chests ?? []).map((chest) => ({ ...chest }))
+        : generateLootSpawns(
+            Math.random,
+            activeMap().hasStory ? questSpawnPlan(this.questChapterId()) : [],
+          )
       : [];
     for (const point of this.searchPoints) {
-      const halo = this.add.circle(0, 0, 23, 0xe3bf79, 0.09);
+      const halo = this.add.circle(0, 0, 23, CHEST_TIERS[point.tier ?? 'normal'].color, 0.09);
       const chest = this.add
-        .sprite(0, 0, 'treasure-chest', 2)
+        .sprite(0, 0, CHEST_TIERS[point.tier ?? 'normal'].texture, 2)
         .setName('chest-sprite')
         .setOrigin(0.5, 1)
         .setScale(0.26);
@@ -1609,18 +1924,23 @@ export class WorldScene extends Phaser.Scene {
     this.previousRefill = false;
     this.previousFlare = false;
     this.services.touch.reset();
+    this.detectorTargetId = null;
+    this.detectorUntilMs = 0;
+    this.compassUntilMs = 0;
+    this.silentCloakUntilMs = 0;
+    this.silentCloakDetectionMultiplier = 1;
   }
 
   private createChestAnimations(): void {
-    if (!this.textures.exists('treasure-chest') || this.anims.exists('treasure-chest-open')) {
-      return;
+    for (const { texture } of Object.values(CHEST_TIERS)) {
+      if (!this.textures.exists(texture) || this.anims.exists(`${texture}-open`)) continue;
+      this.anims.create({
+        key: `${texture}-open`,
+        frames: this.anims.generateFrameNumbers(texture, { start: 3, end: 5 }),
+        frameRate: 8,
+        repeat: 0,
+      });
     }
-    this.anims.create({
-      key: 'treasure-chest-open',
-      frames: this.anims.generateFrameNumbers('treasure-chest', { start: 3, end: 5 }),
-      frameRate: 8,
-      repeat: 0,
-    });
   }
 
   private createEnemyAnimations(): void {
@@ -1729,12 +2049,17 @@ export class WorldScene extends Phaser.Scene {
     const mutatedPulse = isMutated ? 1 + Math.sin(this.time.now / 190) * 0.025 : 1;
     sprite.setScale(baseScale * mutatedPulse);
     const lastPosition = this.enemyLastPositions.get(enemy.id);
-    if (lastPosition && Math.abs(enemy.position.x - lastPosition.x) > 0.05) {
+    if (enemy.kind === 'amplifier' && windup && enemy.attackAngle !== undefined) {
+      const cos = Math.cos(enemy.attackAngle);
+      if (Math.abs(cos) > 0.05) sprite.setFlipX(cos < 0);
+    } else if (lastPosition && Math.abs(enemy.position.x - lastPosition.x) > 0.05) {
       sprite.setFlipX(enemy.position.x < lastPosition.x);
     }
-    sprite.setAlpha(windup ? 0.72 : calmed ? 0.78 : 1);
+    sprite.setAlpha(windup && enemy.kind !== 'amplifier' ? 0.72 : calmed ? 0.78 : 1);
     if (mutationWarning) {
       sprite.setTint(0xffb347);
+    } else if (enemy.kind === 'amplifier' && windup && enemy.windupLocked) {
+      sprite.setTint(0xffb5be);
     } else {
       sprite.clearTint();
     }
@@ -1748,6 +2073,33 @@ export class WorldScene extends Phaser.Scene {
 
   private playHugCry(): void {
     this.services.sound.playHugCry();
+  }
+
+  private drawDirectionArrow(target: Point, color: number): void {
+    if (!this.alerts) return;
+    const direction = angleBetween(this.position, target);
+    const base = {
+      x: this.position.x + Math.cos(direction) * 28,
+      y: this.position.y + Math.sin(direction) * 28,
+    };
+    const tip = {
+      x: this.position.x + Math.cos(direction) * 62,
+      y: this.position.y + Math.sin(direction) * 62,
+    };
+    const left = {
+      x: tip.x - Math.cos(direction - Math.PI / 6) * 14,
+      y: tip.y - Math.sin(direction - Math.PI / 6) * 14,
+    };
+    const right = {
+      x: tip.x - Math.cos(direction + Math.PI / 6) * 14,
+      y: tip.y - Math.sin(direction + Math.PI / 6) * 14,
+    };
+    this.alerts
+      .lineStyle(4, color, 0.95)
+      .strokeCircle(this.position.x, this.position.y, 24)
+      .lineBetween(base.x, base.y, tip.x, tip.y)
+      .lineBetween(tip.x, tip.y, left.x, left.y)
+      .lineBetween(tip.x, tip.y, right.x, right.y);
   }
 
   private drawPlayAlerts(): void {
@@ -1766,6 +2118,32 @@ export class WorldScene extends Phaser.Scene {
     if (anchor && this.alerts) {
       this.alerts.lineStyle(3, 0xeed5a4, 0.95).strokeCircle(anchor.x, anchor.y, 26);
       this.alerts.lineStyle(2, 0xf0d9a6, 0.85).strokeCircle(anchor.x, anchor.y, 40);
+    }
+    const view = this.services.controller.getView();
+    const detectorTarget =
+      this.detectorTargetId !== null &&
+      this.time.now < this.detectorUntilMs &&
+      (view.phase === 'active' || view.phase === 'extracting')
+        ? this.searchPoints.find(
+            (point) => point.id === this.detectorTargetId && !this.search.isOpened(point.id),
+          )
+        : undefined;
+    if (detectorTarget) {
+      this.drawDirectionArrow(detectorTarget, 0x8de0bd);
+    } else if (this.detectorTargetId !== null) {
+      this.detectorTargetId = null;
+      this.detectorUntilMs = 0;
+    }
+    if (
+      this.time.now < this.compassUntilMs &&
+      (view.phase === 'active' || view.phase === 'extracting')
+    ) {
+      const questTarget = this.compassQuestTarget();
+      const extractionTarget = this.extractionTarget();
+      if (questTarget) this.drawDirectionArrow(questTarget, 0xf0d9a6);
+      if (extractionTarget) this.drawDirectionArrow(extractionTarget, 0xc2a2ee);
+    } else if (this.compassUntilMs !== 0) {
+      this.compassUntilMs = 0;
     }
     const showSearch = anchor !== null && this.keyPrompt?.label === '搜索';
     this.searchAlert?.setVisible(showSearch);

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
 
@@ -103,6 +104,37 @@ app.MapPost("/api/save/release", (HttpContext context, SaveLeaseRequest input) =
     return Results.NoContent();
 }));
 
+app.MapGet("/api/profile/self", (HttpContext context) => WithAccount(context, session => Results.Ok(database.GetSelfProfile(session.User.Id))));
+app.MapPost("/api/profile/privacy", (HttpContext context, ProfilePrivacyRequest input) => WithAccount(context, session =>
+{
+    database.SetProfilePrivacy(session.User.Id, input.PublicCollections);
+    return Results.Ok(new { publicCollections = input.PublicCollections });
+}));
+app.MapGet("/api/profile/{uid}/public", (HttpContext context, string uid) => WithAccount(context, session =>
+{
+    var profile = database.GetPublicProfile(session.User.Id, uid);
+    return profile is null ? Results.NotFound(new { message = "该公开档案不可用。" }) : Results.Ok(profile);
+}));
+app.MapGet("/api/friends", (HttpContext context) => WithAccount(context, session => Results.Ok(new { friends = database.ListFriends(session.User.Id), unread = database.GetUnreadCount(session.User.Id) })));
+app.MapPost("/api/friends/request", (HttpContext context, SocialRequest input) => WithSocial(context, session =>
+    Results.Ok(new { status = database.RequestFriend(session.User.Id, input.TargetUid ?? "") })));
+app.MapPost("/api/friends/respond", (HttpContext context, FriendResponseRequest input) => WithSocial(context, session =>
+{
+    database.RespondFriend(session.User.Id, input.TargetUid ?? "", input.Accept);
+    return Results.Ok(new { status = input.Accept ? "accepted" : "rejected" });
+}));
+app.MapPost("/api/friends/action", (HttpContext context, FriendActionRequest input) => WithSocial(context, session =>
+{
+    database.FriendAction(session.User.Id, input.TargetUid ?? "", input.Action ?? "");
+    return Results.NoContent();
+}));
+app.MapGet("/api/messages", (HttpContext context, string with, long after = 0) => WithSocial(context, session =>
+    Results.Ok(new { messages = database.GetMessages(session.User.Id, with, after), unread = database.GetUnreadCount(session.User.Id) })));
+app.MapPost("/api/messages", (HttpContext context, MessageRequest input) => WithSocial(context, session =>
+    Results.Ok(database.SendDirectMessage(session.User.Id, input.MessageId ?? "", input.ToUid ?? "", input.Text ?? ""))));
+app.MapPost("/api/messages/read", (HttpContext context, MessageReadRequest input) => WithSocial(context, session =>
+    Results.Ok(database.MarkMessagesRead(session.User.Id, input.PartnerUid ?? "", input.Sequence))));
+
 static bool ValidToken(string? token) => token is { Length: 64 } && token.All(char.IsAsciiHexDigit);
 IResult WithSave(HttpContext context, Func<LoginSession, IResult> action)
 {
@@ -116,10 +148,23 @@ IResult WithSave(HttpContext context, Func<LoginSession, IResult> action)
         return Results.Json(new { message = "云存档暂时不可用，请稍后重试；原进度已保留。" }, statusCode: 503);
     }
 }
+IResult WithAccount(HttpContext context, Func<LoginSession, IResult> action)
+{
+    var session = sessions.Find(context);
+    return session is null ? Results.Unauthorized() : action(session);
+}
+IResult WithSocial(HttpContext context, Func<LoginSession, IResult> action)
+{
+    var session = sessions.Find(context);
+    if (session is null) return Results.Unauthorized();
+    try { return action(session); }
+    catch (SocialException error) { return Results.Json(new { code = error.Code, message = error.Message }, statusCode: error.Status); }
+    catch (SqliteException) { return Results.Json(new { message = "社交服务暂时不可用，请重试。" }, statusCode: 503); }
+}
 
 var rooms = new RoomDirectory();
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-const int protocolVersion = 1;
+const int protocolVersion = 2;
 const int maxMessageBytes = 4096;
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", protocol = protocolVersion }));
@@ -141,7 +186,7 @@ app.Map("/ws", async context =>
     using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, session.Lifetime.Token);
     // Aborting interrupts both receives and blocked sends when logout/expiry revokes access.
     using var revoked = lifetime.Token.Register(socket.Abort);
-    var client = new Client(socket, Guid.NewGuid().ToString("N")) { DisplayName = session.User.DisplayName };
+    var client = new Client(socket, Guid.NewGuid().ToString("N")) { DisplayName = session.User.DisplayName, AccountId = session.User.Id };
     string? joinedRoomId = null;
 
     try
@@ -176,6 +221,7 @@ app.Map("/ws", async context =>
                 case "finish-game":
                 case "room-settings":
                 case "transfer-host":
+                    // 章节完成度暂不作为联机入口门槛，保留存档校验供后续重新启用。
                     RoomAction action;
                     if (type == "set-ready" && (!root.TryGetProperty("ready", out var readyValue)
                         || readyValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False)))
@@ -190,16 +236,24 @@ app.Map("/ws", async context =>
                         await SendError(client, "INVALID_MESSAGE", "房间规则无效。", json);
                         break;
                     }
-                    action = type switch
+                    try
                     {
-                        "create-room" => rooms.Create(client),
-                        "join-room" => rooms.Join(client, ReadString(root, "roomId", "")),
-                        "set-ready" => rooms.Ready(client, root.GetProperty("ready").GetBoolean()),
-                        "start-game" => rooms.Start(client),
-                        "room-settings" => rooms.Settings(client, root.GetProperty("maxPlayers").GetInt32(), root.GetProperty("admissionOpen").GetBoolean()),
-                        "transfer-host" => rooms.TransferHost(client, ReadString(root, "playerId", "")),
-                        _ => rooms.Finish(client, ReadString(root, "roundId", "")),
-                    };
+                        action = type switch
+                        {
+                            "create-room" => rooms.Create(client),
+                            "join-room" => rooms.Join(client, ReadString(root, "roomId", "")),
+                            "set-ready" => rooms.Ready(client, root.GetProperty("ready").GetBoolean()),
+                            "start-game" => rooms.Start(client),
+                            "room-settings" => rooms.Settings(client, root.GetProperty("maxPlayers").GetInt32(), root.GetProperty("admissionOpen").GetBoolean()),
+                            "transfer-host" => rooms.TransferHost(client, ReadString(root, "playerId", "")),
+                            _ => rooms.Finish(client, ReadString(root, "roundId", "")),
+                        };
+                    }
+                    catch (SqliteException)
+                    {
+                        await SendError(client, "SAVE_UNAVAILABLE", "暂时无法读取通关进度，请稍后重试。", json);
+                        break;
+                    }
                     if (action.Code is not null)
                     {
                         await SendError(client, action.Code, action.Message!, json);
@@ -246,9 +300,43 @@ app.Map("/ws", async context =>
                     var dx = ReadFiniteProperty(movement, "x");
                     var dy = ReadFiniteProperty(movement, "y");
                     var aim = root.TryGetProperty("aim", out var aimValue) ? ReadFiniteNumber(aimValue) : 0;
-                    var inputRoom = rooms.Move(client, ReadString(root, "roundId", ""), sequence, dx, dy, aim);
+                    var interacting = root.TryGetProperty("actions", out var actions) && actions.ValueKind == JsonValueKind.Array
+                        && actions.EnumerateArray().Any(a => a.ValueKind == JsonValueKind.String && a.GetString() == "interact")
+                        && !actions.EnumerateArray().Any(a => a.ValueKind == JsonValueKind.String && a.GetString() == "attack");
+                    var inputRoom = rooms.Move(client, ReadString(root, "roundId", ""), sequence, dx, dy, aim, interacting);
                     if (inputRoom is null) break;
                     await BroadcastRoom(joinedRoomId!, inputRoom, rooms, json);
+                    break;
+                case "loot-search":
+                case "loot-ack":
+                    var lootRound = ReadString(root, "roundId", "");
+                    var requestId = ReadString(root, "requestId", "");
+                    var chestId = ReadString(root, "chestId", "");
+                    var stage = ReadString(root, "stage", "");
+                    if (requestId.Length is < 1 or > 64 || (type == "loot-search" && (chestId.Length is < 1 or > 64 || stage is not ("hold" or "claim" or "cancel")))
+                        || (type == "loot-ack" && (!root.TryGetProperty("accepted", out var acceptedValue) || acceptedValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False))))
+                    {
+                        await SendError(client, "INVALID_MESSAGE", "搜索请求无效。", json);
+                        break;
+                    }
+                    Room? lootRoom = null;
+                    LootReply? lootReply = null;
+                    lock (rooms.Gate)
+                    {
+                        if (joinedRoomId is not null && rooms.TryGetValue(joinedRoomId, out var currentRoom)
+                            && currentRoom.Started && currentRoom.RoundId == lootRound && !client.Finished && currentRoom.Loot is not null)
+                        {
+                            lootRoom = currentRoom;
+                            if (type == "loot-search") lootReply = currentRoom.Loot.Handle(client, lootRound, requestId, chestId, stage);
+                            else currentRoom.Loot.Acknowledge(client, requestId, root.GetProperty("accepted").GetBoolean());
+                        }
+                    }
+                    if (lootRoom is null) await SendError(client, "INVALID_ROUND", "本局状态已变化，无法搜索。", json);
+                    else
+                    {
+                        if (lootReply is not null) await Send(client, lootReply, json);
+                        if (type == "loot-ack") await BroadcastRoom(joinedRoomId!, lootRoom, rooms, json);
+                    }
                     break;
                 case "ping":
                     var sentAt = root.TryGetProperty("sentAt", out var sentAtValue) ? sentAtValue.GetInt64() : 0;
@@ -283,7 +371,17 @@ if (Directory.Exists(frontendPath))
 {
     var files = new PhysicalFileProvider(frontendPath);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-    app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+    var contentTypes = new FileExtensionContentTypeProvider();
+    contentTypes.Mappings[".glb"] = "model/gltf-binary";
+    contentTypes.Mappings[".gltf"] = "model/gltf+json";
+    // public/ 资产同名换图时 URL 不变，浏览器 heuristic 缓存会顶掉新图（2026-11-26 右上角交子徽章）。
+    // no-cache 只要求每次 revalidate：内容没变走 304，带宽几乎为零，但永远拿得到最新字节。
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = files,
+        ContentTypeProvider = contentTypes,
+        OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache",
+    });
 }
 app.Run();
 
@@ -352,6 +450,7 @@ static async Task BroadcastRoom(string roomId, Room room, RoomDirectory rooms, J
             admissionOpen = room.AdmissionOpen,
             started = room.Started,
             roundId = room.RoundId,
+            chests = room.Loot?.Chests.Select(chest => new { chest.Id, chest.X, chest.Y, chest.ZoneId, chest.ItemId, chest.ClaimedBy }).ToArray() ?? [],
             players = clients.Select(client => new
             {
                 playerId = client.Id,
@@ -403,6 +502,7 @@ sealed class Client(WebSocket socket, string id)
     public WebSocket Socket { get; } = socket;
     public string Id { get; } = id;
     public string DisplayName { get; set; } = "玩家";
+    public string AccountId { get; set; } = "";
     public Point? Position { get; set; }
     public float Aim { get; set; }
     public long LastSequence { get; set; } = -1;
@@ -423,4 +523,5 @@ sealed class Room(object gate)
     public bool AdmissionOpen { get; set; } = true;
     public bool Started { get; set; }
     public string? RoundId { get; set; }
+    public RoomLoot? Loot { get; set; }
 }

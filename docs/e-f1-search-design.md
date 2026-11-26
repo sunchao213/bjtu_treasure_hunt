@@ -27,7 +27,7 @@
 5. `SearchInteraction.finish(item, inventory.addLoot)` 先执行库存写入，成功才标记地点打开。
 6. 成功后发出 `LocationInteracted`，由任务模块更新本局临时证据；永久章节必须由成功结算流程提交。
 
-`SearchInteraction` 也被灯站充电复用，但充电使用 `charge:${lamp.x}` 的临时目标，不会创建物品或发出地点调查事件。
+`SearchInteraction` 也被充电桩充电复用，但充电使用 `charge:${station.id}` 的临时目标，不会创建物品或发出地点调查事件。路灯仅提供照明，不再支持充电。
 
 ## 异常与恢复
 

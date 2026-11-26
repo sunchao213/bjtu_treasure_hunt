@@ -8,6 +8,58 @@ import {
 } from '../../src/modules/network/network-protocol';
 
 describe('online protocol boundary', () => {
+  it('validates loot requests and rejects invalid chest snapshots and offers', () => {
+    const search = {
+      type: 'loot-search',
+      roundId: 'round',
+      requestId: 'request',
+      chestId: 'chest',
+      stage: 'hold',
+    };
+    expect(isClientMessage(search)).toBe(true);
+    expect(isClientMessage({ ...search, stage: 'award' })).toBe(false);
+    expect(isClientMessage({ ...search, requestId: '' })).toBe(false);
+    expect(
+      isClientMessage({
+        type: 'loot-ack',
+        roundId: 'round',
+        requestId: 'request',
+        accepted: false,
+      }),
+    ).toBe(true);
+    const room = {
+      type: 'room-state',
+      roomId: '123456',
+      tick: 1,
+      hostId: 'host',
+      maxPlayers: 2,
+      started: true,
+      roundId: 'round',
+      players: [],
+      chests: [
+        {
+          id: 'chest',
+          zoneId: 'flag-lawn',
+          itemId: 'school-badge',
+          x: 100,
+          y: 1500,
+          claimedBy: null,
+        },
+      ],
+    };
+    expect(isServerMessage(room)).toBe(true);
+    expect(isServerMessage({ ...room, chests: [...room.chests, ...room.chests] })).toBe(false);
+    expect(isServerMessage({ ...room, chests: [{ ...room.chests[0], x: NaN }] })).toBe(false);
+    expect(
+      isServerMessage({
+        type: 'loot-result',
+        roundId: 'round',
+        requestId: 'request',
+        chestId: 'chest',
+        status: 'offered',
+      }),
+    ).toBe(false);
+  });
   it('validates capacity, admission settings and host transfer', () => {
     expect(isClientMessage({ type: 'room-settings', maxPlayers: 2, admissionOpen: false })).toBe(
       true,
@@ -56,7 +108,7 @@ describe('online protocol boundary', () => {
   });
 
   it('rejects malformed or unsupported messages', () => {
-    expect(isClientMessage({ type: 'hello', protocol: 2, sessionId: 'x', displayName: 'x' })).toBe(
+    expect(isClientMessage({ type: 'hello', protocol: 1, sessionId: 'x', displayName: 'x' })).toBe(
       false,
     );
     expect(

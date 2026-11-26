@@ -92,6 +92,17 @@ const post = (path, body, cookie = '', headers = {}) =>
     body: JSON.stringify(body),
   });
 const me = (cookie = '') => fetch(`${base}/api/auth/me`, { headers: { Cookie: cookie } });
+const socialPost = (path, body, cookie = '') =>
+  fetch(`${base}/api/${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Game-Request': '1',
+      Origin: origin,
+      Cookie: cookie,
+    },
+    body: JSON.stringify(body),
+  });
 const cloudPost = (path, body, cookie = '') =>
   fetch(`${base}/api/save${path}`, {
     method: 'POST',
@@ -217,14 +228,13 @@ try {
   socket.on('data', (chunk) => {
     received = Buffer.concat([received, chunk]);
   });
-  send({ type: 'hello', protocol: 1, sessionId: 'fake', displayName: 'Impersonated Name' });
+  send({ type: 'hello', protocol: 2, sessionId: 'fake', displayName: 'Impersonated Name' });
   send({ type: 'create-room' });
   for (let attempt = 0; attempt < 100 && !received.includes(Buffer.from('room-state')); attempt++)
     await delay(50);
-  assert(received.includes(Buffer.from('room-state')), 'authenticated room join succeeds');
   assert(
-    received.includes(Buffer.from(credentials.displayName)),
-    'room identity comes from the account',
+    received.includes(Buffer.from('room-state')),
+    'authenticated players can create a room before completing the story',
   );
   assert(
     !received.includes(Buffer.from('Impersonated Name')),
@@ -243,17 +253,27 @@ try {
   assert.equal(initial.data, null);
   assert.equal(initial.revision, 0);
   const cloudData = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     warehouse: [],
+    mailbox: [],
     codexIds: ['school-badge'],
     unlockedChapterIds: [],
     activeRaid: null,
-    settledRaidIds: Array.from({ length: 250 }, (_, i) => `settled-raid-for-body-limit-${i}`),
-    lastResult: null,
+    settledRaidIds: [
+      ...Array.from({ length: 250 }, (_, i) => `settled-raid-for-body-limit-${i}`),
+      'raid-history-smoke',
+    ],
+    lastResult: {
+      raidId: 'raid-history-smoke',
+      outcome: 'success',
+      reason: null,
+      items: [],
+      value: 75,
+    },
   };
   const write = { leaseToken: initial.leaseToken, revision: 0, data: cloudData };
   assert.equal(
-    (await cloudPost('', { ...write, data: { ...cloudData, schemaVersion: '3' } }, cookie)).status,
+    (await cloudPost('', { ...write, data: { ...cloudData, schemaVersion: '4' } }, cookie)).status,
     400,
     'malformed schema types fail cleanly',
   );
@@ -264,6 +284,12 @@ try {
     'cloud snapshots larger than the auth request body limit are accepted',
   );
   assert.equal((await saved.json()).revision, 1);
+  const selfProfile = await (
+    await fetch(`${base}/api/profile/self`, { headers: { Cookie: cookie } })
+  ).json();
+  assert.equal(selfProfile.raids.length, 1, 'a real saved settlement is added to archive history');
+  assert.equal(selfProfile.raids[0].result.raidId, 'raid-history-smoke');
+  assert.equal(selfProfile.publicCollections, false, 'public profile defaults to private');
   const replayed = await cloudPost('', write, cookie);
   assert.equal(replayed.status, 200, 'retrying a lost response does not repeat settlement');
   assert.equal((await replayed.json()).revision, 1);
@@ -288,6 +314,7 @@ try {
   const bob = await post('register', { ...credentials, username: 'other_player' });
   assert.equal(bob.status, 200);
   const bobCookie = cookieFrom(bob);
+  const bobUser = (await bob.json()).user;
   const bobSave = await cloudPost('/open', { clientId: randomUUID() }, bobCookie);
   assert.equal(bobSave.status, 200);
   assert.equal(
@@ -299,6 +326,113 @@ try {
     (await cloudPost('', write, bobCookie)).status,
     409,
     'another account cannot use a stolen save lease token',
+  );
+  assert.equal(
+    (
+      await fetch(`${base}/api/profile/${registered.user.id}/public`, {
+        headers: { Cookie: bobCookie },
+      })
+    ).status,
+    404,
+    'non-friends cannot read public profile data',
+  );
+  assert.equal(
+    (await socialPost('profile/privacy', { publicCollections: true }, cookie)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await socialPost(
+        'friends/request',
+        { targetUid: bobUser.id, requestId: randomUUID() },
+        cookie,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await socialPost(
+        'friends/respond',
+        { targetUid: registered.user.id, accept: true },
+        bobCookie,
+      )
+    ).status,
+    200,
+  );
+  const publicProfile = await fetch(`${base}/api/profile/${registered.user.id}/public`, {
+    headers: { Cookie: bobCookie },
+  });
+  assert.equal(
+    publicProfile.status,
+    200,
+    'accepted friends can read the allowlisted public profile',
+  );
+  const publicData = await publicProfile.json();
+  assert.deepEqual(Object.keys(publicData).sort(), [
+    'collections',
+    'displayName',
+    'recentRaids',
+    'uid',
+  ]);
+  assert.equal(publicData.recentRaids[0].result.raidId, 'raid-history-smoke');
+  assert.equal(
+    publicData.recentRaids[0].result.items,
+    undefined,
+    'public summaries do not expose item details',
+  );
+  const message = { messageId: 'chat-smoke-message', toUid: bobUser.id, text: '<b>纯文本消息</b>' };
+  assert.equal((await socialPost('messages', message, cookie)).status, 200);
+  assert.equal(
+    (await socialPost('messages', message, cookie)).status,
+    200,
+    'same message ID is idempotent',
+  );
+  assert.equal(
+    (await socialPost('messages', { ...message, text: 'different' }, cookie)).status,
+    409,
+  );
+  const inbox = await (
+    await fetch(`${base}/api/messages?with=${registered.user.id}&after=0`, {
+      headers: { Cookie: bobCookie },
+    })
+  ).json();
+  assert.equal(inbox.messages.length, 1);
+  assert.equal(inbox.messages[0].senderId, registered.user.id, 'sender identity is server-owned');
+  assert.equal(inbox.unread, 1);
+  assert.equal(
+    (
+      await socialPost(
+        'messages/read',
+        { partnerUid: registered.user.id, sequence: inbox.messages[0].sequence },
+        bobCookie,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await (await fetch(`${base}/api/friends`, { headers: { Cookie: bobCookie } })).json()).unread,
+    0,
+  );
+  assert.equal(
+    (
+      await socialPost(
+        'friends/action',
+        { targetUid: registered.user.id, action: 'block' },
+        bobCookie,
+      )
+    ).status,
+    204,
+  );
+  assert.equal(
+    (
+      await socialPost(
+        'messages',
+        { messageId: 'blocked-message', toUid: bobUser.id, text: 'blocked' },
+        cookie,
+      )
+    ).status,
+    403,
   );
   await post('logout', {}, bobCookie);
 

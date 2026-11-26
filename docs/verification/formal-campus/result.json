@@ -1,0 +1,20 @@
+{
+  "origin": "http://127.0.0.1:59742",
+  "passed": [
+    "Cached 128px sprites → new 176px release → solo launch without clearing browser data",
+    "Tab backpack and Esc settings retain their original panels, close order and pause rules",
+    "Pointer lock: Esc opens one settings panel, Tab releases capture, closing bag preserves panel order, clicking map recaptures",
+    "Formal camera overview/reset and real WebGL context loss require manual resume",
+    "Single player: consent → start → running timer → movement → pause → settlement → lobby",
+    "Second solo round and short desktop window remain usable",
+    "Formal combat: Space damages enemies, enemy windup hurts player, Q calms, death settles and active reload recovers",
+    "All three chapters: notebook/stele → map/key → charm/record → extraction → ending-gated cloud unlock and archive replay",
+    "Standalone shop: balance, all three purchases, insufficient funds, failed save rollback, duplicate click, cloud reload, carry-in, healing, speed and shield effects",
+    "Room rules: host-only capacity and admission, synchronized changes, readiness reset and live latency",
+    "Host transfer updates permissions in both browsers",
+    "Two accounts: join → ready → start together → sync movement → finish → next round → return to solo",
+    "Portrait touch device: landscape layout, movement and aim sticks, attack isolation and map camera drag",
+    "Missing sprite: visible recovery action and no raid started"
+  ],
+  "errors": []
+}

@@ -1,0 +1,26 @@
+{
+  "searchDurationMs": 2000,
+  "heartbeatTimeoutMs": 600,
+  "range": 60,
+  "pool": ["window-seat", "morning-coffee", "school-badge"],
+  "zones": [
+    { "id": "west-lawn", "x": 82, "y": 680, "width": 310, "height": 500 },
+    { "id": "flag-lawn", "x": 82, "y": 1300, "width": 310, "height": 280 },
+    { "id": "library", "x": 478, "y": 530, "width": 360, "height": 130 },
+    { "id": "lake", "x": 930, "y": 560, "width": 280, "height": 80 },
+    { "id": "central-lawn", "x": 478, "y": 880, "width": 360, "height": 350 },
+    { "id": "east-garden", "x": 930, "y": 620, "width": 280, "height": 550 }
+  ],
+  "occlusion": [
+    { "x": 202, "y": 610, "width": 101, "height": 280 },
+    { "x": 218, "y": 939, "width": 85, "height": 79 },
+    { "x": 220, "y": 1018, "width": 83, "height": 32 },
+    { "x": 232, "y": 1040, "width": 58, "height": 112 },
+    { "x": 204, "y": 1142, "width": 130, "height": 50 }
+  ],
+  "fixed": [
+    { "x": 240, "y": 620 },
+    { "x": 800, "y": 940 },
+    { "x": 467, "y": 370 }
+  ]
+}

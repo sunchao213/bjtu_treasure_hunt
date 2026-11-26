@@ -100,10 +100,13 @@ sealed class RoomDirectory
             if (client.RoomId is null || !rooms.TryGetValue(client.RoomId, out var room)) return NotInRoom();
             if (room.HostId != client.Id) return new("HOST_ONLY", "只有房主可以开始游戏。");
             if (room.Started) return new("ROOM_STARTED", "游戏已经开始。");
+            if (room.Clients.Count < 2) return new("ROOM_NEEDS_PARTNER", "合作探索至少需要两名成员。");
+            // 暂时允许未完成剧情的成员进入联机房间。
             if (room.Clients.Values.Any(peer => peer.Id != room.HostId && !peer.Ready))
                 return new("NOT_ALL_READY", "还有队友未准备，请等待所有成员准备。");
             room.Started = true;
             room.RoundId = Guid.NewGuid().ToString("N");
+            room.Loot = new RoomLoot();
             var seat = 0;
             foreach (var peer in room.Clients.Values)
             {
@@ -123,12 +126,13 @@ sealed class RoomDirectory
             if (client.RoomId is null || !rooms.TryGetValue(client.RoomId, out var room)) return NotInRoom();
             if (!room.Started || room.RoundId != roundId) return new("INVALID_ROUND", "本局状态已变化，请刷新房间状态。");
             client.Finished = true;
+            room.Loot?.Leave(client);
             ResetFinishedRound(room);
             return new(client.RoomId, room);
         }
     }
 
-    public Room? Move(Client client, string roundId, long sequence, float dx, float dy, float aim)
+    public Room? Move(Client client, string roundId, long sequence, float dx, float dy, float aim, bool interacting)
     {
         lock (Gate)
         {
@@ -141,6 +145,7 @@ sealed class RoomDirectory
             client.LastSequence = sequence;
             client.Position = CampusWorld.Move(client.Position ?? CampusWorld.Spawn(0), dx, dy, elapsed);
             client.Aim = Math.Clamp(aim, -MathF.PI, MathF.PI);
+            if (MathF.Abs(dx) + MathF.Abs(dy) > 0.1f || !interacting) room.Loot?.Cancel(client);
             return room;
         }
     }
@@ -151,6 +156,7 @@ sealed class RoomDirectory
         {
             if (!rooms.TryGetValue(id, out var room)) return null;
             room.Clients.Remove(client.Id);
+            room.Loot?.Leave(client);
             client.RoomId = null;
             client.Ready = false;
             if (room.Clients.Count == 0) rooms.Remove(id);
@@ -180,6 +186,7 @@ sealed class RoomDirectory
         if (!room.Started || !room.Clients.Values.All(peer => peer.Finished)) return;
         room.Started = false;
         room.RoundId = null;
+        room.Loot = null;
         foreach (var peer in room.Clients.Values) peer.Ready = false;
     }
 

@@ -194,12 +194,12 @@ export const THIRD_CHAPTER: ChapterContent = {
       stepId: 'step-3-complete-record',
       stepNumber: 3,
       title: '线索三 · 完整记录',
-      locationId: 'south-extraction-point',
+      locationId: 'complete-record-point',
       requiresEvidence: [EVIDENCE_SOOTHE_CHARM, EVIDENCE_COMPLETE_RECORD],
       stepBody:
         '护符与前两章的证据在记录册里对应上了。你终于明白：思源机制原本用于保存记忆，' +
         '却因为长期无人理解与整理，把未被记录的情绪当成噪声清除。' +
-        '你带着护符和完整记录穿过南门，册页第一次没有出现新的红点，而是安静地翻回第一页。',
+        '完整的一页在记录台上慢慢显形。你把它收入背包，准备带着护符一起从南门离开。',
     },
   ],
 };
@@ -244,6 +244,11 @@ export const STORY_LOCATION_ANCHORS: Readonly<Record<string, StoryLocationAnchor
     anchorId: 'siyuan-key-point',
   },
   'garden-sos': { placeName: '芳华园', kind: 'loot-zone', anchorId: 'east-garden' },
+  'complete-record-point': {
+    placeName: '中心广场记录台',
+    kind: 'point',
+    anchorId: 'complete-record-point',
+  },
 };
 
 /** 图鉴条目描述：所有可入仓物品都有对应说明。 */
@@ -264,6 +269,11 @@ export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
     '叶脉奇怪的银杏叶，细密的纹路在叶心交汇，像一幅尚未读懂的校园暗图。',
   'hunter-binoculars': '猎手望远镜，镜筒上留着细碎划痕，镜片里映着校园夜路尽头的灯光。',
   'roller-skates': '轮滑鞋，鞋轮边缘沾着操场的尘土，鞋带上还系着褪色的社团徽记。',
+  'quick-note-card': '速记卡片：写下关键位置后，下一次搜索可以更快完成。',
+  'simple-detector': '简易探测器：屏幕上的指针会指向最近一个尚未调查的物资箱。',
+  'star-compass': '星光罗盘：金色指针指向主线调查点，紫色指针指向南侧撤离点。',
+  'silent-cloak': '静音斗篷：披上后脚步声被夜色吞没，敌人更难发现你的动向。',
+  'reflective-filter': '反光滤片：滤片捕捉微弱光线，让手电照得更远。',
   'soothe-charm': '安抚护符，贴着掌心仍有余温，刻着「我不是在追你，我只是怕被忘记」。',
   'complete-record': '思源记录册的完整一页，记着一段被主动删除的情绪，与前面三章的证据一一对应。',
   'electric-bike-helmet': '电瓶车头盔：使用后获得 15 点护盾，持续 5 秒。',
@@ -271,6 +281,10 @@ export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
   'silver-watch': '银色手表：传说收藏物，价值 100。',
   'training-bat': '训练棍：入场装备，挥不动人也挥不坏东西。',
   'stun-baton': '电击器：短暂击晕怪物，电量只够使用十五次。',
+  'folding-ruler': '折叠铁尺：轻巧的近身武器，挥动迅速，适合处理靠近的敌人。',
+  'long-broom': '长柄扫帚：校园夜路上的长柄武器，攻击距离较远。',
+  'window-breaker': '破窗锤：沉重的破拆工具，挥动较慢但能造成更高伤害。',
+  'night-watch-spear': '夜巡长枪：传说中的长柄武器，攻击距离和伤害都很突出。',
   bandage: '创可贴：使用后恢复 10 点生命值。',
   'yellow-bike': '小黄车：使用后移动速度提升 30%，持续 5 秒。',
   'thick-down-jacket': '超厚羽绒服：使用后获得 30 点护盾，持续 5 秒。',
@@ -298,8 +312,8 @@ const EVIDENCE_STEP_LOCATION: Readonly<Record<string, { chapterId: string; index
   [EVIDENCE_FEATHER]: { chapterId: QUEST_CHAPTER_ID, index: 1 },
   [EVIDENCE_CAMPUS_MAP]: { chapterId: SECOND_CHAPTER_ID, index: 0 },
   [EVIDENCE_SIYUAN_KEY]: { chapterId: SECOND_CHAPTER_ID, index: 1 },
-  [EVIDENCE_SOOTHE_CHARM]: { chapterId: THIRD_CHAPTER_ID, index: 0 },
-  [EVIDENCE_COMPLETE_RECORD]: { chapterId: THIRD_CHAPTER_ID, index: 1 },
+  [EVIDENCE_SOOTHE_CHARM]: { chapterId: THIRD_CHAPTER_ID, index: 1 },
+  [EVIDENCE_COMPLETE_RECORD]: { chapterId: THIRD_CHAPTER_ID, index: 2 },
 };
 
 export function steleStoryBeat(): string {

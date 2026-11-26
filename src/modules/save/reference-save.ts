@@ -1,6 +1,8 @@
+import { occupiedSlots } from '../inventory/inventory-sections';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import {
   assertKnownItemId,
+  isCarryInAllowed,
   isExplorationItem,
   ITEM_DEFINITIONS,
   RAID_RULES,
@@ -205,7 +207,11 @@ export class ReferenceSave implements SavePort {
     return true;
   }
 
-  async beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]> {
+  async beginRaid(
+    raidId: string,
+    loadoutIds: readonly string[],
+    reservedSlots = 0,
+  ): Promise<readonly ItemInstance[]> {
     if (
       this.data.activeRaid ||
       this.data.settledRaidIds.includes(raidId) ||
@@ -220,12 +226,21 @@ export class ReferenceSave implements SavePort {
       if (!item) {
         throw new Error('Missing loadout item');
       }
+      if (!isCarryInAllowed(item.itemId)) {
+        throw new Error('Quest items cannot be brought into a raid');
+      }
       const source = item.origin.kind === 'carry-in' ? item.origin.source : undefined;
       return {
         ...structuredClone(item),
         origin: source ? { kind: 'carry-in' as const, source } : { kind: 'carry-in' as const },
       };
     });
+    if (
+      !Number.isSafeInteger(reservedSlots) ||
+      reservedSlots < 0 ||
+      occupiedSlots(loadout, ITEM_DEFINITIONS) + reservedSlots > RAID_RULES.bagCapacity
+    )
+      throw new Error('Loadout exceeds capacity');
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
     next.activeRaid = { raidId };
@@ -272,7 +287,7 @@ export class ReferenceSave implements SavePort {
     if (this.data.unlockedChapterIds.includes(chapterId)) return;
     const chapter = activeQuestChapter(this.data.unlockedChapterIds);
     if (
-      chapter.id !== chapterId ||
+      chapter?.id !== chapterId ||
       !this.data.lastResult ||
       !chapterUnlockGranted(this.data.lastResult, chapterId)
     ) {

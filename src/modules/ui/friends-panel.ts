@@ -79,7 +79,7 @@ export function friendsPanelMarkup(): string {
             <p id="friends-chat-status" class="friends-status" role="status" aria-live="polite" hidden></p>
           </section>
         </section>
-      </section>
+      </div>
     </div>
   </section>`;
 }

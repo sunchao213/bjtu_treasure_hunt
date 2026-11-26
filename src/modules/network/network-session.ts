@@ -251,6 +251,28 @@ export class NetworkSession {
     return this.inRoom && this.send({ type: 'finish-game', roundId });
   }
 
+  sendLootSearch(
+    roundId: string,
+    requestId: string,
+    chestId: string,
+    stage: 'hold' | 'claim' | 'cancel',
+  ): boolean {
+    return (
+      this.inRoom &&
+      this.roomState?.roundId === roundId &&
+      !this.getLocalPlayer()?.finished &&
+      this.send({ type: 'loot-search', roundId, requestId, chestId, stage })
+    );
+  }
+
+  acknowledgeLoot(roundId: string, requestId: string, accepted: boolean): boolean {
+    return (
+      this.inRoom &&
+      this.roomState?.roundId === roundId &&
+      this.send({ type: 'loot-ack', roundId, requestId, accepted })
+    );
+  }
+
   leave(): boolean {
     this.roomId = null;
     this.roomState = null;

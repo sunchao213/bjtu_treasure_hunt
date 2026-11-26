@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tour hassounds="0" appversion="7.1.9" apprev="20995" start="node40">
+  <panorama hideabout="1" id="node40">
+    <input levelbias="0.400" leveltileurl="tiles/node40/cf_%c/l_%l/c_%x/tile_%y.jpg" levelingroll="-1" width="2953" overlap="1" height="2953" leveltilesize="510" levelbiashidpi="1.000" levelingpitch="0">
+      <level preload="0" width="2953" predecode="0" height="2953"/>
+      <level preload="0" width="1476" predecode="0" height="1476"/>
+      <level preload="0" width="738" predecode="0" height="738"/>
+      <level preload="1" width="369" predecode="1" height="369"/>
+      <preview strip="1" color="0x808080"/>
+    </input>
+    <view pannorth="0" fovmode="2">
+      <start pan="43.09" tilt="0.74" fov="100" projection="4"/>
+      <flyin pan="-129.77" tilt="-90" fov="347.35" projection="9"/>
+      <min pan="0" tilt="-90" fovpixel="2"/>
+      <max pan="360" tilt="90" fovfisheye="360" fov="140" fovstereographic="330" scaletofit="1"/>
+    </view>
+    <userdata nodeid="node40" author="" comment="" info="" description="" source="" latitude="" tags="p" title="" customnodeid="" longitude="" copyright="" datetime="2026/5/30 14:15" heading="0"/>
+    <hotspots smoothmovement="0" wordwrap="1" width="180" height="20">
+      <label borderradius="1" backgroundalpha="1" borderalpha="1" wordwrap="1" textcolor="0x000000" background="1" bordercolor="0x000000" width="180" backgroundcolor="0xffffff" border="1" height="20" enabled="1" textalpha="1"/>
+      <polystyle backgroundalpha="0.25098" backgroundcolor="0x0000ff" borderalpha="1" mode="0" handcursor="1" bordercolor="0x0000ff"/>
+    </hotspots>
+    <media/>
+    <transition zoomspeed="2" blendcolor="0x000000" zoomin="0" softedge="0" delay="none" zoomafteroutfov="40" blendtime="1" zoomafterinfov="140" zoomoutpause="1" zoomout="0" enabled="1" zoomfov="40" type="crossdissolve"/>
+    <autorotate nodedelay="0.00" noderandom="1" returntohorizon="0.000" delay="1.00" startloaded="0" speed="0.050" horizonfromdefview="0" nodefilter="" enabled="1" useanimation="0"/>
+    <flyintransition enabled="1" speed="2.00"/>
+    <animation useinautorotation="0" animsequence="Animation01" clipsrandom="0" syncanimationwithvideo="0"/>
+    <control contextprojections="0" hideabout="1" lockedkeyboardzoom="0" contextfullscreen="0" speedwheel="1" lockedwheel="0" invertwheel="0" sensitivity="8" invertcontrol="1" lockedkeyboard="0" simulatemass="1" zoomcentercursor="1" dblclickfullscreen="0" rubberband="0" contextvr="0" lockedmouse="0"/>
+  </panorama>
+  <masternode>
+    <userdata title="" author="" copyright="" comment="" description="" tags=""/>
+    <animationsequences>
+      <sequence title="Animation01"/>
+    </animationsequences>
+  </masternode>
+</tour>

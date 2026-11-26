@@ -9,10 +9,22 @@ sealed record SaveLeaseRequest(string? LeaseToken);
 sealed class SaveConflictException(string message) : Exception(message);
 
 // One game host owns this database. SQLite transactions also protect concurrent HTTP requests.
-sealed class GameDatabase
+sealed partial class GameDatabase
 {
     private const long LeaseDurationMs = 90_000;
     private readonly string connectionString;
+    private static readonly string[] OnlineChapters = LoadOnlineChapters();
+
+    private static string[] LoadOnlineChapters()
+    {
+        using var stream = typeof(GameDatabase).Assembly.GetManifestResourceStream("online-unlock.json")
+            ?? throw new InvalidOperationException("Online unlock rules are missing.");
+        using var rules = JsonDocument.Parse(stream);
+        return rules.RootElement.GetProperty("requiredChapterIds")
+            .EnumerateArray()
+            .Select(id => id.GetString()!)
+            .ToArray();
+    }
 
     public GameDatabase(string directory)
     {
@@ -124,6 +136,26 @@ sealed class GameDatabase
         return reader.Read() ? new AccountRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4)) : null;
     }
 
+    public bool CanPlayOnline(string userId)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT data FROM player_saves WHERE user_id=$user;";
+        command.Parameters.AddWithValue("$user", userId);
+        if (command.ExecuteScalar() is not string raw) return false;
+
+        using var data = JsonDocument.Parse(raw);
+        if (!data.RootElement.TryGetProperty("unlockedChapterIds", out var chapters)
+            || chapters.ValueKind != JsonValueKind.Array)
+            return false;
+
+        var completed = chapters.EnumerateArray()
+            .Where(id => id.ValueKind == JsonValueKind.String)
+            .Select(id => id.GetString())
+            .ToHashSet(StringComparer.Ordinal);
+        return OnlineChapters.All(completed.Contains);
+    }
+
     public CloudSaveReply OpenSave(LoginSession session, string clientId)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -187,6 +219,7 @@ sealed class GameDatabase
         command.Parameters.AddWithValue("$expires", expires);
         if (command.ExecuteNonQuery() != 1) throw new SaveConflictException("云存档占用已失效，请刷新重试。");
         if (current is not null) RecordNewSettlement(connection, transaction, session.User.Id, current, input.Data);
+        CaptureRaidHistory(connection, transaction, session.User.Id, input.Data);
         transaction.Commit();
         return new { revision = nextRevision, leaseExpiresAt = expires };
     }

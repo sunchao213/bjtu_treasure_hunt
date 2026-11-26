@@ -1,23 +1,15 @@
+import { CHEST_COUNTS, rollChestItem, type ChestTier } from '../../config/chest-config';
 import { activeMap } from '../../config/play-map';
-import { WORLD } from '../../config/world-config';
 import type { Point, Rect } from '../../shared/types/game';
 import { EVIDENCE_CAMPUS_MAP, questChapterById, QUEST_CHAPTER_ID } from '../quests/quest-service';
+import { STORY_SITES } from './story-triggers';
 
 export interface LootSpawn extends Point {
   id: string;
   itemId: string;
   zoneId: string;
+  tier?: ChestTier;
 }
-
-// Ordinary chest probabilities sum to 100%. Quest evidence is assigned separately.
-const CHEST_LOOT = [
-  { itemId: 'window-seat', upperBound: 0.3 },
-  { itemId: 'morning-coffee', upperBound: 0.6 },
-  { itemId: 'school-badge', upperBound: 0.9 },
-  { itemId: 'roller-skates', upperBound: 0.98 },
-  { itemId: 'hunter-binoculars', upperBound: 0.998 },
-  { itemId: 'strange-veined-ginkgo-leaf', upperBound: 1 },
-] as const;
 
 /** The room round ID gives every member the same randomized campus layout. */
 export function roundRandom(roundId: string): () => number {
@@ -49,10 +41,11 @@ export function clearLootPosition(
 ): boolean {
   const map = activeMap();
   const obstacles =
-    avoidForegroundOcclusion && map.id === 'campus'
+    avoidForegroundOcclusion && map.imageKey === 'campus-base'
       ? [...map.obstacles, ...FOREGROUND_OCCLUSION_ZONES]
       : map.obstacles;
   return (
+    (!map.canSpawn || map.canSpawn(p)) &&
     p.x >= 30 + radius &&
     p.x <= map.width - 30 - radius &&
     p.y >= 35 + radius &&
@@ -75,7 +68,8 @@ export interface QuestSpawnPlan {
   fixedPoint?: Point & { id: string };
 }
 
-export function questSpawnPlan(chapterId: string = QUEST_CHAPTER_ID): QuestSpawnPlan[] {
+export function questSpawnPlan(chapterId: string | null = QUEST_CHAPTER_ID): QuestSpawnPlan[] {
+  if (chapterId === null) return [];
   const chapter = questChapterById(chapterId);
   const plan: QuestSpawnPlan[] = chapter.evidence
     .filter((entry) => entry.spawnZoneId !== '')
@@ -87,16 +81,27 @@ export function questSpawnPlan(chapterId: string = QUEST_CHAPTER_ID): QuestSpawn
   if (chapter.id === 'siyuan-key') {
     plan[0] = {
       itemId: EVIDENCE_CAMPUS_MAP,
-      zoneId: WORLD.chapterTwoPoints.campusMap.zoneId,
+      zoneId: activeMap().chapterTwoPoints!.campusMap.zoneId,
       index: -1,
-      fixedPoint: WORLD.chapterTwoPoints.campusMap,
+      fixedPoint: activeMap().chapterTwoPoints!.campusMap,
     };
     plan[1] = {
       itemId: 'siyuan-key',
-      zoneId: WORLD.chapterTwoPoints.siyuanKey.zoneId,
+      zoneId: activeMap().chapterTwoPoints!.siyuanKey.zoneId,
       index: -1,
-      fixedPoint: WORLD.chapterTwoPoints.siyuanKey,
+      fixedPoint: activeMap().chapterTwoPoints!.siyuanKey,
     };
+  }
+  if (chapter.id === 'soothe-monster') {
+    // The charm is earned by calming the authored garden encounter.
+    return [
+      {
+        itemId: 'complete-record',
+        zoneId: 'central-lawn',
+        index: -1,
+        fixedPoint: activeMap().chapterThreePoints!.record,
+      },
+    ];
   }
   // 第一章的手记来自思源楼前固定宝箱，不占用随机搜索区。
   if (chapter.id === QUEST_CHAPTER_ID) {
@@ -111,8 +116,18 @@ export function generateLootSpawns(
   plan: readonly QuestSpawnPlan[] = questSpawnPlan(),
 ): LootSpawn[] {
   const result: LootSpawn[] = [];
+  const randomSpawns: LootSpawn[] = [];
   const roll = () => Math.max(0, Math.min(0.999999, random()));
   const fixedQuestPoints = plan.filter((quest) => quest.fixedPoint);
+  const map = activeMap();
+  // Reserve every chapter's authored landmarks before sampling any random
+  // chest. Room members may be on different chapters but share one layout.
+  const reserved = [
+    ...STORY_SITES,
+    ...(map.questChest ? [map.questChest] : []),
+    ...(map.chapterTwoPoints ? Object.values(map.chapterTwoPoints) : []),
+    ...fixedQuestPoints.map((quest) => quest.fixedPoint!),
+  ];
   for (let i = 0; i < fixedQuestPoints.length; i++) {
     const quest = fixedQuestPoints[i]!;
     const point = quest.fixedPoint!;
@@ -135,21 +150,6 @@ export function generateLootSpawns(
       zoneId: quest.zoneId,
     });
   }
-  const questItemIds = new Set(plan.map((entry) => entry.itemId));
-  const pool = CHEST_LOOT.map((entry, index) => ({
-    itemId: entry.itemId,
-    weight: entry.upperBound - (CHEST_LOOT[index - 1]?.upperBound ?? 0),
-  })).filter((entry) => !questItemIds.has(entry.itemId));
-  const poolWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
-  const randomItemId = (): string => {
-    if (pool.length === 0) throw new Error('No ordinary chest loot available');
-    let remaining = roll() * poolWeight;
-    for (const entry of pool) {
-      remaining -= entry.weight;
-      if (remaining < 0) return entry.itemId;
-    }
-    return pool[pool.length - 1]!.itemId;
-  };
   const questChest = activeMap().questChest;
   for (const zone of activeMap().lootZones) {
     const candidates: Point[] = [];
@@ -157,6 +157,7 @@ export function generateLootSpawns(
       for (let y = zone.y + 25; y < zone.y + zone.height - 20; y += 50) {
         if (
           clearLootPosition({ x, y }, 35, true) &&
+          reserved.every((other) => Math.hypot(x - other.x, y - other.y) >= 90) &&
           (questChest === null || Math.hypot(x - questChest.x, y - questChest.y) >= 90) &&
           result.every((other) => Math.hypot(x - other.x, y - other.y) >= 90)
         ) {
@@ -168,7 +169,7 @@ export function generateLootSpawns(
     // Shuffle a finite list, then backtrack if a central choice would crowd out
     // the remaining boxes. A unlucky first choice must not break raid startup.
     const available = candidates.filter((p) =>
-      result.every((other) => Math.hypot(p.x - other.x, p.y - other.y) >= 120),
+      [...reserved, ...result].every((other) => Math.hypot(p.x - other.x, p.y - other.y) >= 120),
     );
     for (let i = available.length - 1; i > 0; i--) {
       const j = Math.floor(roll() * (i + 1));
@@ -195,18 +196,89 @@ export function generateLootSpawns(
       const jitter = { x: point.x + (roll() - 0.5) * 20, y: point.y + (roll() - 0.5) * 20 };
       const position =
         clearLootPosition(jitter, 35, true) &&
+        reserved.every((other) => Math.hypot(jitter.x - other.x, jitter.y - other.y) >= 90) &&
         result.every((other) => Math.hypot(jitter.x - other.x, jitter.y - other.y) >= 90)
           ? jitter
           : point;
       const quest = plan.find(
         (entry) => !entry.fixedPoint && entry.zoneId === zone.id && entry.index === i,
       );
-      const itemId = quest ? quest.itemId : randomItemId();
-      result.push({ ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id });
+      const rolledItemId = rollChestItem('normal', roll);
+      const itemId = quest ? quest.itemId : rolledItemId;
+      const spawn = { ...position, id: `${zone.id}-${i}`, itemId, zoneId: zone.id };
+      result.push(spawn);
+      // Authored quest slots never enter the tier-upgrade pool.
+      if (!quest) randomSpawns.push(spawn);
     }
   }
+  const selectedSpawns = new Set(assignChestTiers(randomSpawns, roll));
+  const randomCandidates = new Set(randomSpawns);
   if (plan.some((entry) => entry.itemId === 'torn-notebook') && questChest) {
     result.push({ ...questChest, itemId: 'torn-notebook' });
   }
-  return result;
+  return result.filter((point) => !randomCandidates.has(point) || selectedSpawns.has(point));
+}
+
+/** Select each round's random slots and tiers independently of authored evidence.
+ * Intermediate chests occupy four randomly chosen exploration zones; normal
+ * chests are sampled from the remaining candidates. All positions were sampled above. */
+function assignChestTiers(points: LootSpawn[], random: () => number): LootSpawn[] {
+  const shuffled = <T>(values: readonly T[]): T[] => {
+    const result = [...values];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [result[i], result[j]] = [result[j]!, result[i]!];
+    }
+    return result;
+  };
+  const map = activeMap();
+  const slots = points;
+  const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+  const patrols = map.enemyRoutes
+    .filter((route) => route.kind === 'patrol')
+    .flatMap((route) => route.route);
+  const exits = map.extractions.map((zone) => ({
+    x: zone.x + zone.width / 2,
+    y: zone.y + zone.height / 2,
+  }));
+  const deep = slots.filter(
+    (point) =>
+      slots.filter((other) => other.zoneId === point.zoneId).length > 1 &&
+      distance(point, map.spawn) >= 900 &&
+      exits.every((exit) => distance(point, exit) >= 700),
+  );
+  const guarded = deep.filter((point) => patrols.some((patrol) => distance(point, patrol) <= 300));
+  const advancedPool = guarded.length ? guarded : deep;
+  const advanced = advancedPool[Math.floor(random() * advancedPool.length)];
+  if (!advanced) throw new Error('No accessible advanced chest position');
+  advanced.tier = 'advanced';
+  const selected = [advanced];
+  const nearZone = [...map.lootZones].sort(
+    (a, b) =>
+      distance({ x: a.x + a.width / 2, y: a.y + a.height / 2 }, map.spawn) -
+      distance({ x: b.x + b.width / 2, y: b.y + b.height / 2 }, map.spawn),
+  )[0];
+  const mediumZones = shuffled(map.lootZones.filter((zone) => zone !== nearZone));
+  for (const zone of mediumZones.slice(0, CHEST_COUNTS.intermediate)) {
+    const candidates = slots.filter((point) => point.zoneId === zone.id && point !== advanced);
+    if (!candidates.length) continue;
+    const point = candidates[Math.floor(random() * candidates.length)]!;
+    point.tier = 'intermediate';
+    selected.push(point);
+  }
+  const normal = shuffled(slots.filter((point) => !selected.includes(point))).slice(
+    0,
+    CHEST_COUNTS.normal,
+  );
+  for (const point of normal) point.tier = 'normal';
+  selected.push(...normal);
+  if (selected.length !== CHEST_COUNTS.normal + CHEST_COUNTS.intermediate + CHEST_COUNTS.advanced) {
+    throw new Error('Insufficient accessible chest positions');
+  }
+  for (const point of selected) {
+    point.tier ??= 'normal';
+    const itemId = point.tier === 'normal' ? point.itemId : rollChestItem(point.tier, random);
+    point.itemId = itemId;
+  }
+  return selected;
 }

@@ -29,8 +29,8 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
     id: 'move',
     title: '先走出去',
-    body: '用 W A S D 或方向键在校园里移动；鼠标指向决定手电照向哪边。手机用左摇杆移动、右摇杆瞄准。',
-    keys: 'WASD / 方向键 · 鼠标指向',
+    body: '用 W A S D 或方向键相对镜头移动；移动鼠标转动视角，Esc 打开设置或继续探索，Tab 打开背包。手机左摇杆移动、右摇杆瞄准，空白地图拖动镜头。',
+    keys: 'WASD / 方向键 · 移动鼠标转向',
   },
   {
     id: 'light',
@@ -41,13 +41,13 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
     id: 'search',
     title: '靠近，长按 E 搜索',
-    body: `照亮箱子后走近站稳，长按 E ${RAID_RULES.searchDurationMs / 1000} 秒直到读条走完；移动、松手或受伤都会中断。`,
+    body: `照亮箱子后走近站稳，长按 E 直到读条走完：普通箱 2 秒、中级箱 4 秒、高级箱 6 秒；移动、松手或受伤都会中断。`,
     keys: '长按 E（手机：交互键）',
   },
   {
     id: 'value',
     title: `凑够 ${threshold} 价值`,
-    body: `只有本局搜到并还带在身上的物资计入价值，从仓库带入的物品不算。差额看侧栏「本局物资价值」。`,
+    body: `只有本局搜到并还带在身上的物资计入价值，从仓库带入的物品不算。背包只有 6 格，满包后可换掉低价值物品，中级箱更容易找到高价值物资。价值看顶部中央；按 Tab 或点左下角背包管理物品，背包打开时探索继续。`,
     keys: `目标 ${threshold} · 背包 ${RAID_RULES.bagCapacity} 格`,
   },
   {

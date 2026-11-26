@@ -1,3 +1,6 @@
+import { RAID_RULES } from '../../config/game-config';
+import { raidInventoryMarkup } from './raid-inventory';
+import { raidHotbarMarkup } from './raid-hotbar';
 import { gameRulesMarkup } from './game-rules';
 import { roomPageMarkup } from './room-page';
 import { iconSvg } from './icons';
@@ -9,6 +12,8 @@ import { shopMarkup } from './shop';
 import { archiveBrowserMarkup } from './archive-browser';
 import { friendsPanelMarkup } from './friends-panel';
 import { leaderboardMarkup } from './leaderboard-panel';
+import { warehousePanelMarkup } from './warehouse-panel';
+import { BAG_CAPACITY } from '../../config/game-config';
 
 /**
  * F01 准备页整页首屏（与助教要求一致）：
@@ -26,9 +31,9 @@ export function prepViewMarkup(): string {
               <span id="lobby-player-name" class="v19-player-name"></span>
 
               <button class="v19-hotspot v19-nav-shop" type="button" data-lobby-tab="mall" aria-label="商城"></button>
-              <button class="v19-hotspot v19-nav-archive" type="button" data-lobby-tab="warehouse" aria-label="档案与仓库"></button>
+              <button class="v19-hotspot v19-nav-archive" type="button" data-lobby-tab="profile" aria-label="玩家档案"></button>
               <button class="v19-hotspot v19-nav-friends" type="button" data-lobby-tab="friends" aria-label="好友"></button>
-              <button class="v19-hotspot v19-nav-codex" type="button" data-lobby-tab="warehouse" aria-label="图鉴"></button>
+              <button class="v19-hotspot v19-nav-codex" type="button" data-lobby-tab="warehouse" aria-label="图鉴与仓库"></button>
               <button id="open-ranking" class="v19-hotspot v19-nav-ranking" type="button" aria-label="排行榜"></button>
               <button class="v19-hotspot v19-nav-settings" type="button" data-lobby-tab="settings" aria-label="设置"></button>
               <button class="v19-hotspot v19-nav-mail" type="button" data-lobby-tab="mail" aria-label="邮件">
@@ -61,9 +66,8 @@ export function prepViewMarkup(): string {
 
               <label class="v19-risk-consent"><input id="risk-consent" type="checkbox" /><span>出发风险我已知悉</span></label>
               <button id="start" class="v19-hotspot v19-start" type="button" disabled aria-label="开始探索"></button>
-              <p id="next-map" class="v19-load-status">本局地图：海淀夜巡</p>
               <p id="game-load-status" class="v19-load-status" role="status">正在加载校园与角色资源…</p>
-              <button id="reload-game" class="v19-sr-only" type="button" hidden>重新加载校园</button>
+              <button id="reload-game" type="button" hidden>重新加载校园</button>
               <p class="v19-sr-only" id="lobby-prepare-title">行前准备</p>
             </div>
 
@@ -80,10 +84,39 @@ export function prepViewMarkup(): string {
               <header><h2 id="v19-ranking-title">近七日排行</h2><button type="button" data-v19-close>关闭</button></header>
               ${leaderboardMarkup()}
             </dialog>
+            <dialog id="v19-room-dialog" class="v19-dialog v19-room-dialog" aria-labelledby="v19-room-title">
+              <header><h2 id="v19-room-title">联机大厅</h2><button id="v19-room-close" type="button">返回大厅</button></header>
+              <p id="v19-room-status" class="v19-room-status" role="status">正在连接联机服务…</p>
+              <label class="field-label" for="v19-room-code">房间号</label>
+              <input id="v19-room-code" class="room-input" inputmode="numeric" maxlength="6" placeholder="创建后分享给队友" />
+              <div class="v19-room-actions"><button id="v19-room-create" class="secondary" type="button">创建房间</button><button id="v19-room-join" class="primary" type="button">加入房间</button></div>
+              <div id="v19-room-members" class="v19-room-members" hidden></div>
+              <label class="consent v19-room-consent"><input id="v19-room-risk-consent" type="checkbox" />我已了解本局风险，准备进入探索。</label>
+              <div id="v19-room-controls" class="v19-room-actions" hidden><button id="v19-room-ready" class="secondary" type="button">准备</button><button id="v19-room-start" class="primary" type="button">开始游戏</button><button id="v19-room-leave" class="text-button" type="button">离开房间</button></div>
+            </dialog>
             <dialog id="v19-loadout-dialog" class="v19-dialog v19-loadout-dialog" aria-labelledby="v19-loadout-title">
-              <header><h2 id="v19-loadout-title">背包与出发装备</h2><button id="v19-loadout-close" type="button">返回大厅</button></header>
-              <p class="prep-warning">失败、超时或刷新页面会损失本局全部携带物（包括带入装备）；未带入的仓库物品会保留。</p>
+              <header class="bp-sr-head"><h2 id="v19-loadout-title">背包与出发装备</h2></header>
+              <div class="bp-stage">
+                <span class="bp-balance"><b data-bp-balance>0</b></span>
+                <button id="v19-loadout-close" class="bp-hot bp-hot-back" type="button" aria-label="返回大厅"></button>
+                <button class="bp-hot bp-hot-nav" data-bp-nav="bag" type="button" aria-label="背包"></button>
+                <button class="bp-hot bp-hot-nav" data-bp-nav="shop" type="button" aria-label="商店"></button>
+                <button class="bp-hot bp-hot-nav" data-bp-nav="buy" type="button" aria-label="购买"></button>
+                <button class="bp-hot bp-hot-nav" data-bp-nav="sell" type="button" aria-label="出售"></button>
+                <div class="bp-bag">
+                  <span class="bp-load"><b data-bp-load>0</b><i>/ ${BAG_CAPACITY}</i></span>
+                  <div class="bp-bag-grid" data-bp-bag-grid role="group" aria-label="随身背包"></div>
+                  <button class="bp-hot bp-hot-put-all" data-bp-put-all type="button" aria-label="一键放入仓库"></button>
+                  <button class="bp-hot bp-hot-repair" data-bp-repair type="button" aria-label="维修全部"></button>
+                  <button class="bp-prep-link" data-wh-prep type="button">出发准备</button>
+                </div>
+                <div id="warehouse-panel" class="bp-wh">${warehousePanelMarkup()}</div>
+              </div>
+            </dialog>
+            <dialog id="v19-prepare-dialog" class="v19-dialog v19-prepare-dialog" aria-labelledby="v19-prepare-title">
+              <header><h2 id="v19-prepare-title">行前准备</h2><button id="v19-prepare-close" type="button">关闭</button></header>
               <div id="preparation" class="prep-main v19-preparation">
+                <p class="prep-warning">失败、超时或刷新页面会损失本局全部携带物（包括带入装备）；未带入的仓库物品会保留。</p>
                 <div class="game-load-feedback"><p class="v19-sr-only">校园状态</p><button id="reload-game-dialog" type="button" hidden>重新加载校园</button></div>
                 <section class="prep-block prep-kit" aria-labelledby="prep-kit-title">
                   <h3 id="prep-kit-title">装备与带入</h3>
@@ -98,9 +131,27 @@ export function prepViewMarkup(): string {
             </dialog>
           </section>
 
+          <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="profile" hidden aria-labelledby="lobby-profile-title">
+            <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
+            <div class="lobby-panel-heading"><div><p class="prep-kicker">玩家资料</p><h2 id="lobby-profile-title">玩家档案</h2></div><button id="profile-refresh" class="secondary" type="button">刷新档案</button></div>
+            <p id="profile-status" class="lobby-panel-intro" role="status">正在读取玩家档案…</p>
+            <div class="player-profile-grid">
+              <section class="side-card player-profile-card" aria-labelledby="profile-identity-title">
+                <h3 id="profile-identity-title">身份信息</h3>
+                <dl class="player-profile-facts"><div><dt>昵称</dt><dd id="profile-display-name">—</dd></div><div><dt>账号 UID</dt><dd id="profile-uid">—</dd></div></dl>
+                <label class="consent"><input id="profile-public" type="checkbox" />允许好友查看展示藏品与最近对局摘要</label>
+              </section>
+              <section class="side-card player-profile-card" aria-labelledby="profile-progress-title">
+                <h3 id="profile-progress-title">行动统计</h3>
+                <dl class="player-profile-stats"><div><dt>完成章节</dt><dd id="profile-chapters">0</dd></div><div><dt>图鉴数量</dt><dd id="profile-codex">0</dd></div><div><dt>仓库物品</dt><dd id="profile-warehouse">0</dd></div><div><dt>历史对局</dt><dd id="profile-raids">0</dd></div></dl>
+              </section>
+            </div>
+            <section class="side-card player-profile-history" aria-labelledby="profile-history-title"><h3 id="profile-history-title">最近对局</h3><ol id="profile-history" class="profile-history"></ol><p id="profile-history-empty" class="muted">暂无已保存的对局记录。</p></section>
+          </section>
+
           <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="warehouse" hidden aria-labelledby="lobby-warehouse-title">
             <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
-            <div class="lobby-panel-heading archive-panel-heading"><div><p class="prep-kicker">思源记录册</p><h2 id="lobby-warehouse-title">收藏与仓库</h2></div><span class="lobby-panel-meta" id="warehouse-count-label"><span id="warehouse-item-count">0 件物品</span><span class="currency-display"><img src="${assetUrl('assets/ui/jiaozi.png')}" alt="" /><b id="warehouse-currency">0</b></span></span></div>
+            <div class="lobby-panel-heading archive-panel-heading"><div><p class="prep-kicker">物品记录</p><h2 id="lobby-warehouse-title">图鉴与仓库</h2></div><span class="lobby-panel-meta" id="warehouse-count-label"><span id="warehouse-item-count">0 件物品</span><span class="currency-display"><img src="${assetUrl('assets/ui/jiaozi.png')}" alt="" /><b id="warehouse-currency">0</b></span></span></div>
             ${archiveBrowserMarkup('lobby-archive-browser')}
             <div class="archive-panel-tools"><span id="warehouse-count" hidden></span><p id="archive-detail" hidden></p>
               <ul id="codex-list" hidden></ul><details class="archive-story"><summary>剧情档案</summary><div id="story-archive"></div></details>
@@ -124,13 +175,20 @@ export function prepViewMarkup(): string {
               '<div class="lobby-panel-heading">',
               '<button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button><div class="lobby-panel-heading">',
             )}
+          <!-- 临时版邮件页：正式归属项会惠（官方邮件列表/已读/附件预览/领取）。
+               这里只承载「仓库爆仓补发」的领取闭环，替换时保留 #lobby-mail-list 等挂载点即可。 -->
           <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="mail" hidden aria-labelledby="lobby-mail-title">
             <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
             <div class="lobby-panel-heading"><div><p class="prep-kicker">思源信箱</p><h2 id="lobby-mail-title">邮件</h2></div><span class="lobby-panel-meta" id="lobby-mail-meta">0 封未读</span></div>
-            <p class="lobby-panel-intro">任务奖励、系统通知与队友留言都会送到这里。邮件界面尚未开放，奖励结算仍会直接进入仓库与交子余额。</p>
-            <div class="lobby-mail-empty">
+            <p class="lobby-panel-intro">撤离带出的物资超过仓库上限时，多出来的部分会送到这里。腾出格子后回来领取即可，邮件不会过期。</p>
+            <div class="lobby-mail-toolbar">
+              <button id="mail-claim-all" class="secondary" type="button">全部领取</button>
+              <span id="lobby-mail-status" class="lobby-mail-status" role="status" aria-live="polite"></span>
+            </div>
+            <ul id="lobby-mail-list" class="lobby-mail-list"></ul>
+            <div class="lobby-mail-empty" id="lobby-mail-empty">
               <p class="lobby-mail-empty-title">信箱空空如也</p>
-              <p class="lobby-mail-empty-hint">完成三章任务后，委托与奖励邮件会陆续送达。</p>
+              <p class="lobby-mail-empty-hint">仓库没满时，撤离物资会直接进仓库，不会打扰你。</p>
             </div>
           </section>
           <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="settings" hidden aria-labelledby="lobby-settings-title">
@@ -145,6 +203,24 @@ export function prepViewMarkup(): string {
 
 /** D's replaceable DOM shell. No business data is written by this module. */
 export function mountShell(root: HTMLElement): void {
+  const valueCard = `<section class="side-card value-card"><div class="section-kicker">本局物资价值 <span id="gate-label">尚未出发</span></div>
+            <progress id="value-progress" max="${RAID_RULES.threshold}" value="0" aria-label="撤离价值达成"></progress>
+            <p id="value-hint">只有本局搜到并仍携带的物品计入。</p>
+          </section>`;
+  const nightCard = `<section class="side-card night-card"><div class="section-kicker">夜间装备</div>
+            <div class="meter-line"><span>手电电量</span><b id="battery">100%</b></div>
+            <progress id="battery-progress" max="100" value="100" aria-label="手电电量"></progress>
+            <p class="muted" id="light-reserves">备用电池 2 · 照明棒 2</p>
+          </section>`;
+  const questCard = `<section class="side-card quest-card" id="quest-panel"><div class="section-kicker">思源密码 · 任务进度 <span id="quest-count">0 / 2</span></div>
+            <ul id="quest-steps" class="quest-steps"></ul>
+            <p id="quest-status" class="muted">线索：思源楼前残缺手记</p>
+          </section>`;
+  const resultCard = `<section class="side-card result-card" id="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden><h2 id="result-title">本次结算</h2><p id="result-detail"></p>
+            <p id="quest-unlock" class="quest-unlock" hidden></p><p id="quest-lock" class="muted" hidden></p>
+            <button id="retry-save" class="primary" hidden>重试保存</button><button id="next" class="primary" hidden>返回准备</button>
+          </section>`;
+  const debugCard = `<details id="debug-panel" class="debug" hidden><summary>开发调试</summary><button id="damage" class="secondary">模拟受到 25 点伤害</button><button id="fatal" class="text-button">模拟死亡</button><button id="debug-grant-uncommon" class="secondary">发放 1 件稀有（25）</button><button id="debug-grant-epic" class="secondary">发放 1 件史诗（60）</button><button id="debug-grant-notebook" class="secondary">发放残缺手记（本局主线）</button><button id="debug-grant-feather" class="secondary">发放异常羽毛（普通收藏）</button><button id="debug-tp-notebook" class="secondary">传送·思源楼前</button><button id="debug-tp-feather" class="secondary">传送·明湖石碑</button><button id="debug-tp-extract" class="secondary">传送·南门撤离点</button></details>`;
   root.innerHTML = `
     <div id="game-page">
     <section id="prologue" class="prologue" aria-label="序章对话" aria-modal="true" role="dialog" tabindex="-1">
@@ -178,68 +254,51 @@ export function mountShell(root: HTMLElement): void {
     <main>${prepViewMarkup()}
       <div class="play-layout">
         <section class="map-panel" aria-label="游戏地图">
-          <div class="map-top"><span><i class="status-dot"></i><b id="phase-label">准备出发</b></span>
-            <span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span class="map-actions"><button id="hud-rules" class="hud-button" aria-haspopup="dialog">规则</button></span></span></div>
-          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-fullscreen" aria-label="全屏横屏显示">全屏</button><button id="mobile-sound-game" aria-pressed="false">开启声音</button><button id="mobile-room" aria-controls="room-page">房间</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
-          <div id="team-status" class="team-status" aria-label="队伍状态" hidden><span id="team-connection" class="network-quality"></span><ul id="team-players"></ul></div>
+          <div class="mobile-toolbar"><span id="mobile-hud"></span><button id="mobile-sound-game" aria-pressed="false">开启声音</button><button id="mobile-room" aria-controls="room-page">房间</button><button id="mobile-rules">规则</button><button id="mobile-bag" aria-controls="prep-view">出发</button></div>
           <div class="map-viewport"><div id="game-canvas" role="application" aria-label="校园地图"></div>
+          <div id="sonic-pulse-overlay" class="sonic-pulse-overlay" aria-hidden="true" hidden></div>
+          <div class="raid-hud-left"><div class="raid-location"><span><i class="status-dot"></i><b id="phase-label">准备出发</b><em class="map-scene">海淀校区 · 夜巡</em></span></div>
+          ${tutorialMarkup()}<div id="team-status" class="team-status" aria-label="队伍状态" hidden><span id="team-connection" class="network-quality"></span><ul id="team-players"></ul></div></div>
+          <span id="raid-value" class="raid-value" role="status" aria-live="polite">本局价值：<b id="loot-value">0</b> / ${RAID_RULES.threshold}</span><div id="status-effects" class="status-effects" role="status" aria-live="polite" hidden></div><span class="map-hud-right"><span>生命 <b id="health">100</b> <em>/</em> 剩余 <b id="timer">10:00</b></span><span id="battery-compact" class="battery-compact">电量 100%</span><button id="open-raid-settings" class="hud-button" aria-haspopup="dialog">${iconSvg('settings', { size: 16 })} 设置 <kbd>Esc</kbd></button></span>
           <p id="map-toast" class="map-toast" role="status" aria-live="polite" hidden></p>
           <div id="key-prompt" class="key-prompt" hidden role="status">
             <div class="key-prompt-ring" aria-hidden="true"><span id="key-prompt-key" class="key-prompt-key">E</span></div>
             <span id="key-prompt-label" class="key-prompt-label">搜索</span>
           </div>
-          ${tutorialMarkup()}
-          <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-label="放大校园地图">
+          ${raidInventoryMarkup()}${raidHotbarMarkup()}${resultCard}
+          <button id="open-campus-map" class="campus-map-button" aria-haspopup="dialog" aria-controls="campus-map-dialog" aria-keyshortcuts="M" aria-label="放大校园地图（M）">
         <canvas id="campus-overview" class="campus-overview" width="180" height="180" aria-hidden="true"></canvas>
-            <span>校园图 · 点击放大</span>
+            <span>校园图 · M / 点击放大</span>
           </button>
           <div id="touch-controls" class="touch-controls" aria-label="触屏操作">
             <div class="touch-stick" role="group" aria-label="移动摇杆"><span class="stick-arrows" aria-hidden="true">↑<br>← &rarr;<br>↓</span><span class="stick-knob"></span></div>
             <div class="touch-aim touch-stick" role="group" aria-label="手电瞄准摇杆"><span class="aim-label">瞄准</span><span class="stick-knob"></span></div>
             <div class="touch-actions">
               <button data-touch-action="E" class="touch-interact" disabled>交互</button>
-              <button data-touch-action="SPACE" disabled>攻击</button>
+              <button data-touch-action="SPACE" disabled>使用</button>
               <button data-touch-action="Q" disabled>抱抱</button>
               <button data-touch-action="L" aria-pressed="true" disabled>手电</button>
               <button data-touch-action="R" disabled>换电池</button>
               <button data-touch-action="G" disabled>照明棒</button>
             </div>
           </div>
+          <div class="interaction"><span id="interaction-label">正在加载校园地图…</span><progress id="interaction-progress" max="1" value="0" aria-label="交互进度"></progress><button id="extract" class="hud-button" type="button">开始撤离</button></div>
           </div>
-          <div class="interaction"><span id="interaction-label">正在加载校园地图…</span><progress id="interaction-progress" max="1" value="0" aria-label="交互进度"></progress></div>
         </section>
-        <aside>
-          <section class="side-card value-card"><div class="section-kicker">本局物资价值 <span id="gate-label">尚未出发</span></div>
-            <div class="value"><b id="loot-value">0</b><span>/ 100</span></div>
-            <progress id="value-progress" max="100" value="0" aria-label="撤离价值达成"></progress>
-            <p id="value-hint">只有本局搜到并仍携带的物品计入。</p>
-          </section>
-          <section class="side-card night-card"><div class="section-kicker">夜间装备</div>
-            <div class="meter-line"><span>手电电量</span><b id="battery">100%</b></div>
-            <progress id="battery-progress" max="100" value="100" aria-label="手电电量"></progress>
-            <p class="muted" id="light-reserves">备用电池 2 · 照明棒 2</p>
-          </section>
-          <section class="side-card quest-card" id="quest-panel"><div class="section-kicker">思源密码 · 任务进度 <span id="quest-count">0 / 2</span></div>
-            <ul id="quest-steps" class="quest-steps"></ul>
-            <p id="quest-status" class="muted">线索：思源楼前残缺手记</p>
-          </section>
-          <section class="side-card" id="inventory-panel" hidden><div class="section-kicker">临时背包 <span id="bag-count">0 / 6</span></div>
-            <ul id="inventory" class="inventory"></ul>
-            <button id="extract" class="primary">在撤离点申请撤离</button>
-            <details class="danger-area"><summary>结束当前对局</summary><p>放弃会损失本局携带物。</p><button id="abandon" class="secondary">放弃探索</button></details>
-          </section>
-          <section class="side-card result-card" id="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden><h2 id="result-title">本次结算</h2><p id="result-detail"></p>
-            <p id="quest-unlock" class="quest-unlock" hidden></p><p id="quest-lock" class="muted" hidden></p>
-            <button id="retry-save" class="primary" hidden>重试保存</button><button id="next" class="primary" hidden>返回准备</button>
-          </section>
-          <details id="debug-panel" class="debug" hidden><summary>开发调试</summary><button id="damage" class="secondary">模拟受到 25 点伤害</button><button id="fatal" class="text-button">模拟死亡</button><button id="debug-grant-uncommon" class="secondary">发放 1 件稀有（25）</button><button id="debug-grant-epic" class="secondary">发放 1 件史诗（60）</button><button id="debug-grant-notebook" class="secondary">发放残缺手记（本局主线）</button><button id="debug-grant-feather" class="secondary">发放异常羽毛（普通收藏）</button><button id="debug-tp-notebook" class="secondary">传送·思源楼前</button><button id="debug-tp-feather" class="secondary">传送·明湖石碑</button><button id="debug-tp-extract" class="secondary">传送·南门撤离点</button></details>
-        </aside>
       </div>
-      <p id="notice" class="notice" role="status" aria-live="polite">南门集合，等待出发。</p>
+      <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
     </main></div><div id="rotate-phone" class="rotate-phone" hidden><strong>请将手机横过来</strong><p>横屏后继续探索；当前对局已暂停。</p></div>${gameRulesMarkup()}
       <dialog id="campus-map-dialog" class="campus-map-dialog" aria-labelledby="campus-map-title" aria-describedby="campus-map-note">
         <header><h2 id="campus-map-title">海淀主校区 · 校园图</h2><button id="close-campus-map" aria-label="关闭校园图">${iconSvg('close', { size: 20 })}</button></header>
         <div class="campus-map-scroll" tabindex="0" aria-label="校园图，可滚动查看各区域"><canvas id="campus-map-expanded" width="700" height="998" role="img" aria-label="海淀主校区地图，绿色圆点为撤离点，金色圆点为玩家当前位置"></canvas></div>
-        <p id="campus-map-note">金色圆点：当前位置 · 绿色圆点：撤离点 · 蓝色圆点：队友 · 查看时暂停 · 手机可滑动查看<br>校园夜景底图用于游戏导航，不能用于现实导航。</p>
+        <p id="campus-map-note">金色圆点：当前位置 · 金色菱形：当前剧情线索 · 绿色：已调查／撤离点 · 查看时暂停 · M / Esc 关闭<br>校园夜景底图用于游戏导航，不能用于现实导航。</p>
+      </dialog>
+      <dialog id="raid-settings" class="rules-dialog raid-settings" aria-labelledby="raid-settings-title">
+        <header class="rules-header"><h1 id="raid-settings-title">探索已暂停</h1><button id="resume-raid" class="secondary" type="button">继续游戏 · Esc</button></header>
+        <div class="rules-content"><div id="raid-settings-slot" class="settings"></div>
+          <div class="settings-links"><button id="hud-rules" class="secondary" type="button">游戏规则</button><button id="mobile-fullscreen" class="secondary" type="button" aria-label="全屏游戏">全屏</button></div>
+          <div id="raid-details-slot">${valueCard}${nightCard}${questCard}${debugCard}</div>
+        </div>
+        <footer class="rules-footer"><button id="abandon" class="secondary abandon-button" type="button">放弃并返回大厅</button></footer>
       </dialog>${storyDialogMarkup()}${confirmMarkup()}${roomPageMarkup()}`;
 }

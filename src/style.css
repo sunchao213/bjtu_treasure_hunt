@@ -17,6 +17,116 @@ dialog {
 .settings input {
   width: 100%;
 }
+.player-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.player-profile-card,
+.player-profile-history {
+  padding: 16px;
+}
+.player-profile-card h3,
+.player-profile-history h3 {
+  margin: 0 0 12px;
+  color: #f0dfbd;
+  font-size: 15px;
+}
+.player-profile-facts,
+.player-profile-stats {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.player-profile-facts div,
+.player-profile-stats div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #40372a;
+}
+.player-profile-facts dt,
+.player-profile-stats dt {
+  color: #bca67e;
+  font-size: 12px;
+}
+.player-profile-facts dd,
+.player-profile-stats dd {
+  margin: 0;
+  color: #ead8b5;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.player-profile-facts dd {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+.player-profile-history .profile-history {
+  max-height: 240px;
+}
+.player-profile-history .profile-history li {
+  padding: 9px 10px;
+  border: 1px solid #4d4231;
+  background: #2b261f;
+  color: #ddcfb1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.v19-room-dialog {
+  width: min(520px, 92vw);
+  padding: 22px;
+}
+.v19-room-dialog .room-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #566359;
+  background: #111313;
+  color: #e5e7e6;
+  font-size: 18px;
+  letter-spacing: 0.12em;
+}
+.v19-room-status {
+  min-height: 24px;
+  color: #c4d9c3;
+}
+.v19-room-consent {
+  margin-top: 16px;
+}
+.v19-room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.v19-room-actions button {
+  flex: 1 1 140px;
+  min-height: 44px;
+}
+.v19-room-members {
+  margin-top: 16px;
+  padding: 10px;
+  border: 1px solid #3f4a42;
+  background: #151917;
+}
+.v19-room-member {
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid #303a33;
+  color: #d9e3d8;
+}
+.v19-room-member:last-child {
+  border-bottom: 0;
+}
+@media (max-width: 600px) {
+  .player-profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .room-page {
   min-height: 100%;
   height: var(--game-height, 100dvh);
@@ -129,6 +239,13 @@ dialog {
   width: auto;
   min-height: auto;
   flex-shrink: 0;
+}
+.room-page .v19-risk-consent {
+  position: static;
+  width: auto;
+  height: auto;
+  margin-top: 16px;
+  color: #fff4dc;
 }
 .room-page .side-card {
   min-width: 0;
@@ -1047,7 +1164,7 @@ html:not([data-touch='true']) #app:not([data-phase='preparing']) #notice {
 #app[data-phase='preparing'] .play-layout {
   display: none;
 }
-#app[data-phase='preparing'] main {
+#app[data-phase='preparing'] #game-page main {
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
@@ -1065,7 +1182,7 @@ html:not([data-touch='true']) #app:not([data-phase='preparing']) #notice {
    被上面的 overflow:hidden 裁掉且整页无滚动路径 → 「开始探索」点不到。
    这里只给桌面端放开主区纵向滚动兜底（触屏端由 mobile-layout.css 的 #app 滚动负责），
    内容放得下时不产生滚动条，常规尺寸的观感不变。 */
-html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
+html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] #game-page main {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2028,7 +2145,7 @@ html:not([data-touch='true']) .prep-warning {
 }
 /* Touch devices share one landscape layout, including CSS-rotated phones. */
 @media (pointer: coarse) {
-  #app[data-phase='preparing'] main {
+  #app[data-phase='preparing'] #game-page main {
     display: block;
     height: auto;
     padding: 0 12px 12px;
@@ -2142,7 +2259,7 @@ h1 span {
 }
 .play-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 20px;
 }
@@ -3028,14 +3145,24 @@ summary {
   line-height: 1.9;
   color: #c4cebd;
 }
+/* 提示条：默认隐藏（大厅底部不再常驻），notify() 弹消息时浮在底部居中，3 秒自动消失 */
 .notice {
-  background: #242b26;
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  background: #242b26ee;
   padding: 12px 17px;
   border-radius: 8px;
   color: #c2d4b6;
   font-size: 12px;
   line-height: 1.8;
-  margin-top: 20px;
+  z-index: 30;
+  box-shadow: 0 4px 16px #00000066;
+  pointer-events: none;
+}
+.notice[hidden] {
+  display: none;
 }
 footer {
   display: flex;
@@ -3649,6 +3776,15 @@ html:not([data-touch='true']) #stage dialog[open] {
   transform: translate(-50%, -50%) scale(var(--stage-scale));
   transform-origin: center center;
 }
+/* 背包仓库是整屏面板：尺寸必须等于画框 1280×720，
+   否则会被 dialog[open] 的 stage-scale 再缩一次，只剩窗口七成大小、四周留黑边。
+   内部 .bp-stage（1672×941）由 JS 按 --bp-scale 贴合这个画框。 */
+html:not([data-touch='true']) #stage .v19-loadout-dialog[open] {
+  width: 1280px;
+  height: 720px;
+  max-width: none;
+  max-height: 720px;
+}
 html:not([data-touch='true']) #stage .room-dialog {
   max-width: 460px;
 }
@@ -3697,7 +3833,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
 #app[data-phase='preparing'] .masthead {
   display: none;
 }
-#app[data-phase='preparing'] main {
+#app[data-phase='preparing'] #game-page main {
   display: block;
   width: 0;
   height: 0;
@@ -3706,7 +3842,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   padding: 0;
   overflow: visible;
 }
-#app[data-phase='preparing'] main > :not(#prep-view) {
+#app[data-phase='preparing'] #game-page main > :not(#prep-view) {
   display: none !important;
 }
 #app[data-phase='preparing'] .v19-prep-page {
@@ -3735,7 +3871,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   width: 1280px;
   height: 720px;
   overflow: hidden;
-  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261119d') center / 1280px 720px
+  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261120b') center / 1280px 720px
     no-repeat;
   color: #fff0c2;
   font-family: 'Zpix', 'Microsoft YaHei', sans-serif;
@@ -3848,7 +3984,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   top: 14px;
   width: 84px;
   height: 94px;
-  background-image: url('/assets/ui/nav-mail.png?v=20261119c');
+  background-image: url('/assets/ui/nav-mail.png?v=20261120a');
   background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%;
@@ -4305,6 +4441,120 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   margin: 0;
   color: #a98f68;
   font-size: 13px;
+}
+/* 邮件页列表：只承载「仓库爆仓补发」，领空即删 */
+.lobby-mail-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+/* 和"退出登录"一样，别把次要按钮拉成整行灰条 */
+.lobby-mail-toolbar .secondary {
+  width: auto;
+  min-width: 120px;
+  margin: 0;
+}
+/* ── 邮件页（临时版，正式归属项会惠）────────────────────────────
+   只服务「仓库爆仓补发」的领取闭环；正式设计里的已读/分类/附件预览请自行覆盖这段。 */
+.lobby-mail-status {
+  color: #a98f68;
+  font-size: 13px;
+}
+.lobby-mail-status[data-state='info'] {
+  color: #e8c477;
+}
+.lobby-mail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 660px;
+  max-height: 46vh;
+  margin: 14px 0 0;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.mail-item {
+  padding: 14px 16px;
+  border: 1px solid #5c4021;
+  border-radius: 2px;
+  background: #17100de6;
+}
+.mail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mail-title {
+  color: #e8c477;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+.mail-time {
+  color: #7d6544;
+  font-size: 12px;
+}
+.mail-body {
+  margin: 8px 0 10px;
+  color: #c8ab7d;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.mail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 4px;
+  border: 1px solid #4a3319;
+  border-radius: 2px;
+  background: #221710;
+  color: #d8bd8e;
+  font-size: 12px;
+}
+.mail-chip img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.mail-chip b {
+  color: #e8c477;
+  font-weight: 400;
+}
+.mail-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.mail-hint {
+  color: #93794f;
+  font-size: 12px;
+}
+.mail-claim {
+  padding: 6px 16px;
+  border: 1px solid #8a6a35;
+  border-radius: 2px;
+  background: #2a1a10;
+  color: #ffe4a0;
+  font: 13px/1.2 'Zpix', 'Microsoft YaHei', sans-serif;
+  cursor: pointer;
+}
+.mail-claim:hover:not(:disabled) {
+  background: #3a2415;
+}
+.mail-claim:disabled {
+  border-color: #4a3a24;
+  color: #7d6a4a;
+  cursor: not-allowed;
 }
 .v19-gold-button {
   margin-top: 18px;

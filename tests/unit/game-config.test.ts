@@ -5,6 +5,7 @@ import {
   ITEM_DEFINITIONS,
   assertKnownItemId,
   HEALING_AMOUNTS,
+  isCarryInAllowed,
   isCatalogItemId,
   isKnownItemId,
 } from '../../src/config/game-config';
@@ -48,6 +49,13 @@ describe('product item catalog configuration', () => {
     expect(ITEM_DEFINITIONS['silver-watch']).toMatchObject({ rarity: 'legendary', value: 100 });
     expect(ITEM_DEFINITIONS['gpa-charm']).toMatchObject({ rarity: 'epic', value: 50 });
     expect(ITEM_DEFINITIONS['library-reward-ticket']).toMatchObject({ rarity: 'epic', value: 50 });
+  });
+
+  it('keeps quest evidence in the warehouse but forbids bringing it into a raid', () => {
+    expect(isCarryInAllowed('torn-notebook')).toBe(false);
+    expect(isCarryInAllowed('complete-record')).toBe(false);
+    expect(isCarryInAllowed('morning-coffee')).toBe(true);
+    expect(isCarryInAllowed('missing-item')).toBe(false);
   });
 
   it('rejects unknown definitions and accepts every configured search-point item', () => {

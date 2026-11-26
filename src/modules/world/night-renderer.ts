@@ -58,7 +58,7 @@ export function renderDarkness(
     illuminate(source, source.radius, 0, Math.PI * 2, 1);
   }
   if (lighting.enabled && lighting.battery > 0) {
-    illuminate(player, 310, aim - Math.PI / 5, (Math.PI * 2) / 5, 1);
+    illuminate(player, lighting.flashlightRange(), aim - Math.PI / 5, (Math.PI * 2) / 5, 1);
     for (const chest of revealedChests) {
       illuminate({ x: chest.x, y: chest.y - 24 }, 52, 0, Math.PI * 2, 1);
     }

@@ -8,7 +8,7 @@ import {
 import { FORMAL_SAVE_KEY, type FormalSaveData } from '../../src/modules/save/persistent-save';
 
 const empty = (): FormalSaveData => ({
-  schemaVersion: 3,
+  schemaVersion: 4,
   warehouse: [],
   currency: 0,
   codexIds: [],
@@ -16,6 +16,7 @@ const empty = (): FormalSaveData => ({
   activeRaid: null,
   settledRaidIds: [],
   lastResult: null,
+  mailbox: [],
 });
 const storage = (raw: string | null = null) => {
   let value = raw;
@@ -49,6 +50,25 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('cloud progress transactions', () => {
+  it('validates reserved starter weapon slots before committing a loadout', async () => {
+    const warehouse: FormalSaveData['warehouse'] = Array.from({ length: 3 }, (_, i) => ({
+      instanceId: `purchase:bike-${i}`,
+      itemId: 'yellow-bike',
+      origin: { kind: 'carry-in', source: 'purchase' },
+    }));
+    const api = endpoint({ ...empty(), warehouse });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    await expect(
+      save.beginRaid(
+        'overflow',
+        warehouse.map((item) => item.instanceId),
+        1,
+      ),
+    ).rejects.toThrow('capacity');
+    expect(api.write).not.toHaveBeenCalled();
+    expect(save.view().activeRaid).toBeNull();
+    save.close();
+  });
   it('commits a purchase to the cloud before changing the wallet or warehouse, and rolls back a failed save', async () => {
     const api = endpoint({ ...empty(), currency: 60 });
     const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
@@ -95,6 +115,25 @@ describe('cloud progress transactions', () => {
     expect(api.write).toHaveBeenCalledTimes(1);
     save.close();
   });
+
+  it('does not consume a quest notebook when a caller tries to bring it into a raid', async () => {
+    const notebook = {
+      instanceId: 'notebook-1',
+      itemId: 'torn-notebook',
+      origin: { kind: 'carry-in' as const },
+    };
+    const api = endpoint({ ...empty(), warehouse: [notebook] });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+
+    await expect(save.beginRaid('notebook-raid', [notebook.instanceId])).rejects.toThrow(
+      'Quest items cannot be brought into a raid',
+    );
+    expect(save.view().warehouse).toEqual([notebook]);
+    expect(save.view().activeRaid).toBeNull();
+    expect(api.write).not.toHaveBeenCalled();
+    save.close();
+  });
+
   it('loads cloud progress instead of overwriting it with an older browser copy', async () => {
     const remote = { ...empty(), codexIds: ['school-badge'] };
     const cache = storage(JSON.stringify(empty()));

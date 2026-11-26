@@ -37,7 +37,7 @@ export function roomPageMarkup(): string {
               <p id="room-settings-hint" class="muted">仅房主可修改；规则变更后，队友需要重新准备。</p>
             </fieldset>
             <dl class="room-rules-summary"><div><dt>探索时限</dt><dd>${RAID_RULES.durationMs / 60_000} 分钟</dd></div><div><dt>撤离条件</dt><dd>个人价值达到 ${RAID_RULES.threshold}</dd></div><div><dt>队友识别</dt><dd>相同角色 · 昵称区分</dd></div></dl>
-            <p class="muted room-note">同伴共享位置与地图布局；物资、战斗和撤离进度各自计算。所有成员结束后，可在原房间准备下一局。</p>
+            <p class="muted room-note">队友共享位置和宝箱，普通物资先到先得；战斗与撤离进度各自计算。所有成员结束后，可在原房间准备下一局。</p>
           </section>
           <section class="side-card room-preparation" aria-labelledby="room-prepare-title"><div class="section-kicker">行动准备</div><h2 id="room-prepare-title">选择装备，等待出发</h2><div id="room-preparation-slot"></div></section>
         </div>

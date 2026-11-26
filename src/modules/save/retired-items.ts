@@ -3,7 +3,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
 
 /** Remove the retired collectible before validating saves; retain all other data. */
 export function migrateRetiredItems(value: unknown): void {
-  if (!record(value) || ![1, 2, 3].includes(Number(value.schemaVersion))) return;
+  if (!record(value) || ![1, 2, 3, 4].includes(Number(value.schemaVersion))) return;
   const keep = (item: unknown) => !record(item) || item.itemId !== 'campus-map';
   if (Array.isArray(value.warehouse)) value.warehouse = value.warehouse.filter(keep);
   if (Array.isArray(value.codexIds)) {

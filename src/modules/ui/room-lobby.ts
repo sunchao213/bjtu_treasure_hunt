@@ -5,6 +5,7 @@ import type { ConfirmHandle } from './confirm-dialog';
 interface LobbyOptions {
   readonly network: NetworkSession;
   readonly confirm: ConfirmHandle;
+  readonly unlock: () => { unlocked: boolean; hint: string };
   readonly canPrepare: () => boolean;
   readonly canEnter: () => boolean;
   readonly onChange: () => void;
@@ -98,14 +99,15 @@ export function bindRoomLobby(options: LobbyOptions) {
         (player) => player.connected && (player.playerId === state?.hostId || player.ready),
       );
     const canPrepare = options.canPrepare();
-    get('room-entry').hidden = !!state;
-    get('room-lobby').hidden = !state;
-    get('network-status').textContent = message;
+    const hasActiveRoom = Boolean(activeRoomId);
+    get('room-entry').hidden = hasActiveRoom;
+    get('room-lobby').hidden = !hasActiveRoom;
+    get('network-status').textContent = options.unlock().unlocked ? message : options.unlock().hint;
     button('network-connect').hidden = connected;
     button('network-connect').disabled =
       network.getStatus() === 'connecting' || network.getStatus() === 'reconnecting';
-    button('network-create').disabled = !connected || pending || !options.canEnter();
-    button('network-join').disabled = !connected || pending || !options.canEnter();
+    button('network-create').disabled = pending || !options.canEnter();
+    button('network-join').disabled = pending || !options.canEnter();
     roomInput.disabled = pending;
     button('network-leave').disabled = !connected || pending;
     button('network-ready').hidden = host;
@@ -375,12 +377,43 @@ export function bindRoomLobby(options: LobbyOptions) {
   const pingTimer = setInterval(() => {
     if (network.getStatus() === 'connected') network.ping();
   }, 3000);
+  // Render the create/join entry immediately when the room page is opened.
+  // The page can be shown before the WebSocket finishes connecting.
+  render();
   return {
     render,
     leave,
     connect: () => {
+      if (!options.unlock().unlocked) return;
       if (network.getStatus() === 'offline') network.connect();
     },
+    createRoom: () => {
+      if (!options.canEnter()) return;
+      request('create', () => network.createRoom(), '正在创建房间…');
+    },
+    joinRoom: (roomId: string) => {
+      if (!options.canEnter()) return;
+      const value = roomId.trim();
+      if (!/^\d{6}$/.test(value)) {
+        message = '请输入 6 位数字房间号。';
+        options.onChange();
+        return;
+      }
+      request('join', () => network.join(value), '正在加入房间…');
+    },
+    setReady: () => {
+      const ready =
+        state?.players.find((player) => player.playerId === network.getPlayerId())?.ready ?? false;
+      if (!ready && !options.canPrepare()) return;
+      request('ready', () => network.setReady(!ready), ready ? '正在取消准备…' : '正在准备…');
+    },
+    startRoom: () => {
+      if (!options.canPrepare()) return;
+      request('start', () => network.startGame(), '正在通知队友进入校园…');
+    },
+    connectionStatus: () => network.getStatus(),
+    roomState: () => state,
+    roomMessage: () => message,
     isJoined: () => !!state,
     isLocked: () =>
       !!state?.started ||

@@ -31,6 +31,48 @@ function result(raidId: string, itemId = 'school-badge'): RaidResult {
 }
 
 describe('A to B reference persistence integration', () => {
+  it('settles a production 200-value raid using six ordinary and intermediate rewards without an advanced chest', async () => {
+    let now = 0;
+    const save = new ReferenceSave(new MemoryStorage());
+    const events = new EventBus();
+    const inventory = new ReferenceInventory(events, RAID_RULES.bagCapacity, ITEM_DEFINITIONS);
+    const controller = new RaidController(
+      inventory,
+      save,
+      events,
+      RAID_RULES,
+      ITEM_DEFINITIONS,
+      () => now,
+      () => 'tiered-raid',
+    );
+    await controller.start();
+    for (const [index, itemId] of [
+      'school-badge',
+      'school-badge',
+      'school-badge',
+      'school-badge',
+      'gpa-charm',
+      'library-reward-ticket',
+    ].entries()) {
+      expect(
+        inventory.addLoot({
+          instanceId: `tiered-${index}`,
+          itemId,
+          origin: { kind: 'raid-loot', obtainedInRaidId: 'tiered-raid' },
+        }).ok,
+      ).toBe(true);
+    }
+    expect(controller.getView().value).toBe(200);
+    controller.setExtractionPresence(true);
+    expect(controller.startExtraction().ok).toBe(true);
+    now += RAID_RULES.extractionDurationMs;
+    controller.tick();
+    await Promise.resolve();
+    expect(controller.getView()).toMatchObject({ phase: 'success', threshold: 200 });
+    expect(save.view().lastResult).toMatchObject({ outcome: 'success', value: 200 });
+    controller.dispose();
+  });
+
   it('runs the notebook/lake/extraction chain and saves chapter atomically with retry', async () => {
     let now = 0;
     const storage = new MemoryStorage();
@@ -41,7 +83,7 @@ describe('A to B reference persistence integration', () => {
       inventory,
       save,
       bus,
-      RAID_RULES,
+      { ...RAID_RULES, threshold: 100 },
       ITEM_DEFINITIONS,
       () => now,
       () => 'story',
@@ -97,7 +139,7 @@ describe('A to B reference persistence integration', () => {
       inventory,
       save,
       bus,
-      RAID_RULES,
+      { ...RAID_RULES, threshold: 100 },
       ITEM_DEFINITIONS,
       () => now,
       () => 'drop',
@@ -248,7 +290,7 @@ describe('A to B reference persistence integration', () => {
       inventory,
       save,
       bus,
-      RAID_RULES,
+      { ...RAID_RULES, threshold: 100 },
       ITEM_DEFINITIONS,
       () => now,
       () => 'integrated',

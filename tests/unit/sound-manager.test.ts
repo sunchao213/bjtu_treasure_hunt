@@ -81,6 +81,23 @@ afterEach(() => {
 });
 
 describe('shared mobile audio', () => {
+  it('keeps trial settings separate while the default settings key stays unchanged', () => {
+    const settings = new Map([
+      ['bjtu-audio-settings-v1', JSON.stringify({ volume: 0.7, brightness: 1 })],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => settings.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        settings.set(key, value);
+      },
+    });
+    sound = new SoundManager('bjtu-campus-3d:v1:audio');
+    sound.setSettings({ volume: 0.2 });
+    sound.dispose();
+    sound = new SoundManager();
+    expect(sound.getSettings().volume).toBe(0.7);
+    expect(JSON.parse(settings.get('bjtu-campus-3d:v1:audio')!).volume).toBe(0.2);
+  });
   it('preloads a Safari compatible music file relative to the deployment and waits for touch release', async () => {
     sound = new SoundManager();
     await ready();
@@ -198,5 +215,44 @@ describe('shared mobile audio', () => {
     expect(sound.getMusicState()).toBe('playing');
     sound.play('pick');
     expect(players.find((player) => player.src.endsWith('pick.wav'))?.play).toHaveBeenCalledOnce();
+  });
+
+  it('plays amplifier charge cue and attenuates ambient audio to 50% during tinnitus while preserving warnings', async () => {
+    sound = new SoundManager();
+    sound.setSettings({ volume: 0.8 });
+    await ready();
+    documentEvents.dispatchEvent(new Event('click'));
+
+    sound.setMusic(true);
+    sound.setLoop('footsteps', true);
+    sound.setLoop('alarm', true);
+    await vi.waitFor(() => expect(sound.getMusicState()).toBe('playing'));
+
+    // 触发耳鸣：创建环境衰减总线（0.5 增益）与低音量耳鸣振荡器，仅环境/脚步路由至衰减总线
+    const musicSource = sources('brainiac-maniac.m4a')[0]!;
+    const alarmSource = sources('alarm.wav')[0]!;
+    sound.setTinnitus(true);
+    expect(sound.isTinnitusActive()).toBe(true);
+    const tinnitusOscCount = context().createOscillator.mock.calls.length;
+    expect(tinnitusOscCount).toBe(1);
+    const tinnitusOsc = context().createOscillator.mock.results[0]!.value;
+    const ambientBus = context()
+      .gains.slice(1)
+      .find((g) => g.gain.value === 0.5);
+    expect(ambientBus).toBeDefined();
+    expect(musicSource.connect).toHaveBeenLastCalledWith(ambientBus);
+    expect(alarmSource.connect).toHaveBeenLastCalledWith(context().gains[0]);
+
+    // 蓄力电流预警直连 master（gains[0]），不受耳鸣衰减
+    sound.playAmplifierCharge();
+    expect(context().createOscillator.mock.calls.length).toBe(tinnitusOscCount + 1);
+    const lastGain = context().gains[context().gains.length - 1]!;
+    expect(lastGain.connect).toHaveBeenCalledWith(context().gains[0]);
+
+    // 关闭耳鸣后环境源节点重路由回 master 且耳鸣音停止
+    sound.setTinnitus(false);
+    expect(sound.isTinnitusActive()).toBe(false);
+    expect(musicSource.connect).toHaveBeenLastCalledWith(context().gains[0]);
+    expect(tinnitusOsc.stop).toHaveBeenCalledOnce();
   });
 });

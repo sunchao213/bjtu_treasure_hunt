@@ -1,7 +1,13 @@
 import type { ItemDefinition, ItemInstance, RaidRules } from '../shared/types/game';
 
+/** 仓库硬上限：100 格（20 行 × 5 列）。满仓后新物品不再入仓，改由信箱保管。 */
+export const WAREHOUSE_CAPACITY = 100;
+
+/** 随身背包上限：6 格（2 行 × 3 列），对应界面左侧「道具背包」 */
+export const BAG_CAPACITY = 6;
+
 export const RAID_RULES: RaidRules = {
-  threshold: 100,
+  threshold: 200,
   durationMs: 600_000,
   extractionDurationMs: 5_000,
   searchDurationMs: 2_000,
@@ -26,6 +32,11 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['strange-veined-ginkgo-leaf', '叶脉奇怪的银杏叶', 'legendary', 'collectible'],
     ['hunter-binoculars', '猎手望远镜', 'epic', 'collectible'],
     ['roller-skates', '轮滑鞋', 'common', 'utility', undefined, undefined, 15],
+    ['quick-note-card', '速记卡片', 'common', 'utility', undefined, 40, 10],
+    ['simple-detector', '简易探测器', 'common', 'utility', undefined, 60, 15],
+    ['star-compass', '星光罗盘', 'legendary', 'utility', undefined, undefined, 150],
+    ['silent-cloak', '静音斗篷', 'epic', 'utility', undefined, undefined, 60],
+    ['reflective-filter', '反光滤片', 'uncommon', 'utility', undefined, undefined, 30],
     ['marked-campus-map', '被涂改的校园地图', 'common', 'quest'],
     ['soothe-charm', '安抚护符', 'epic', 'quest'],
     ['complete-record', '完整记录', 'legendary', 'quest'],
@@ -34,6 +45,10 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['silver-watch', '银色手表', 'legendary', 'collectible', undefined, undefined, 100],
     ['training-bat', '训练棍', 'common', 'weapon'],
     ['stun-baton', '电击器', 'uncommon', 'weapon'],
+    ['folding-ruler', '折叠铁尺', 'common', 'weapon', undefined, 90],
+    ['long-broom', '长柄扫帚', 'common', 'weapon', undefined, 80],
+    ['window-breaker', '破窗锤', 'epic', 'weapon', undefined, 260],
+    ['night-watch-spear', '夜巡长枪', 'legendary', 'weapon', undefined, 500],
     ['bandage', '创可贴', 'common', 'healing', 1, 10],
     ['yellow-bike', '小黄车', 'uncommon', 'utility', 2, 50, 30],
     ['thick-down-jacket', '超厚羽绒服', 'uncommon', 'utility', 1, 100, 30],
@@ -75,6 +90,11 @@ export const ITEM_CATALOG_IDS = [
   'strange-veined-ginkgo-leaf',
   'hunter-binoculars',
   'roller-skates',
+  'quick-note-card',
+  'simple-detector',
+  'star-compass',
+  'silent-cloak',
+  'reflective-filter',
   'marked-campus-map',
   'soothe-charm',
   'complete-record',
@@ -87,7 +107,23 @@ export const ITEM_CATALOG_IDS = [
 export const ALL_ITEM_IDS = Object.keys(ITEM_DEFINITIONS) as readonly string[];
 
 /** Items created by the shop are functional supplies, not exploration discoveries. */
-export const PURCHASE_ITEM_IDS = ['bandage', 'yellow-bike', 'thick-down-jacket'] as const;
+export const PURCHASE_ITEM_IDS = [
+  'bandage',
+  'yellow-bike',
+  'thick-down-jacket',
+  'quick-note-card',
+  'simple-detector',
+  'folding-ruler',
+  'long-broom',
+  'window-breaker',
+  'night-watch-spear',
+] as const;
+
+/** Quest evidence belongs to its chapter's current raid and cannot be brought in. */
+export function isCarryInAllowed(itemId: string): boolean {
+  const kind = ITEM_DEFINITIONS[itemId]?.kind;
+  return kind !== undefined && kind !== 'collectible' && kind !== 'quest';
+}
 
 /** The production gallery contains discoveries; shop supplies stay in the warehouse only. */
 export const EXPLORATION_CATALOG_IDS = ITEM_CATALOG_IDS.filter(
@@ -98,7 +134,8 @@ export function isPurchasedItem(
   item: Pick<ItemInstance, 'itemId' | 'instanceId' | 'origin'>,
 ): boolean {
   return (
-    (PURCHASE_ITEM_IDS as readonly string[]).includes(item.itemId) ||
+    (item.origin.kind === 'carry-in' &&
+      (PURCHASE_ITEM_IDS as readonly string[]).includes(item.itemId)) ||
     (item.origin.kind === 'carry-in' && item.origin.source === 'purchase') ||
     item.instanceId.startsWith('purchase:')
   );
@@ -117,13 +154,32 @@ export const HEALING_AMOUNTS: Readonly<Record<string, number>> = {
   bandage: 10,
 };
 
-export const UTILITY_EFFECTS: Readonly<
-  Record<string, { speedMultiplier?: number; shield?: number; durationMs: number }>
-> = {
+export interface UtilityEffect {
+  readonly speedMultiplier?: number;
+  readonly shield?: number;
+  readonly durationMs: number;
+  readonly searchDurationReductionMs?: number;
+  readonly detectorDurationMs?: number;
+  readonly compassDurationMs?: number;
+  readonly stealthDurationMs?: number;
+  readonly stealthDetectionMultiplier?: number;
+  readonly flashlightRangeMultiplier?: number;
+}
+
+export const UTILITY_EFFECTS: Readonly<Record<string, UtilityEffect>> = {
   'yellow-bike': { speedMultiplier: 1.3, durationMs: 5_000 },
   'roller-skates': { speedMultiplier: 1.15, durationMs: 5_000 },
   'thick-down-jacket': { shield: 30, durationMs: 5_000 },
   'electric-bike-helmet': { shield: 15, durationMs: 5_000 },
+  'quick-note-card': { durationMs: 0, searchDurationReductionMs: 1_000 },
+  'simple-detector': { durationMs: 8_000, detectorDurationMs: 8_000 },
+  'star-compass': { durationMs: 30_000, compassDurationMs: 30_000 },
+  'silent-cloak': {
+    durationMs: 8_000,
+    stealthDurationMs: 8_000,
+    stealthDetectionMultiplier: 0.5,
+  },
+  'reflective-filter': { durationMs: 0, flashlightRangeMultiplier: 1.2 },
 };
 
 export type CatalogItemId = (typeof ITEM_CATALOG_IDS)[number];

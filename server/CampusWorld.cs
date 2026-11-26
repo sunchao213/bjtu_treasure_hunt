@@ -12,9 +12,7 @@ static class CampusWorld
             ?? throw new InvalidOperationException("Shared campus geometry is invalid.");
     }
 
-    public static Point Spawn(int seat) => new(
-        Geometry.Spawn.X + (seat % 5 - 2) * 72,
-        Geometry.Spawn.Y + (seat / 5) * 60);
+    public static Point Spawn(int seat) => Geometry.SpawnPositions[Math.Clamp(seat, 0, Geometry.SpawnPositions.Length - 1)];
 
     // Mirrors movePlayer: normalized input, bounded timesteps, substeps and axis sliding.
     public static Point Move(Point position, float dx, float dy, float elapsedMs)
@@ -38,11 +36,23 @@ static class CampusWorld
         return result;
     }
 
+    public static bool LineOfSight(Point a, Point b)
+    {
+        var steps = Math.Max(1, (int)Math.Ceiling(Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y)) / 4));
+        for (var i = 0; i <= steps; i++)
+        {
+            var x = a.X + (b.X - a.X) * i / steps;
+            var y = a.Y + (b.Y - a.Y) * i / steps;
+            if (Geometry.Obstacles.Any(w => x > w.X && x < w.X + w.Width && y > w.Y && y < w.Y + w.Height)) return false;
+        }
+        return true;
+    }
+
     private static bool Clear(Point point) =>
         !Geometry.Obstacles.Any(wall =>
             point.X + Geometry.PlayerRadius > wall.X && point.X - Geometry.PlayerRadius < wall.X + wall.Width &&
             point.Y + Geometry.PlayerRadius > wall.Y && point.Y - Geometry.PlayerRadius < wall.Y + wall.Height);
 }
 
-sealed record CampusGeometry(float Width, float Height, float PlayerRadius, float PlayerSpeed, Point Spawn, WorldRect Bounds, WorldRect[] Buildings, WorldRect Lake, WorldRect[] Obstacles);
+sealed record CampusGeometry(float Width, float Height, float PlayerRadius, float PlayerSpeed, Point Spawn, WorldRect Bounds, WorldRect[] Buildings, WorldRect Lake, WorldRect[] Obstacles, Point[] SpawnPositions);
 sealed record WorldRect(float X, float Y, float Width, float Height);
