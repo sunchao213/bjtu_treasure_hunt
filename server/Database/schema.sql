@@ -72,4 +72,62 @@ CREATE TABLE IF NOT EXISTS friend_reads (
     PRIMARY KEY (pair_key, user_id)
 );
 
-PRAGMA user_version=2;
+-- R16 排行榜成绩只在已认证账号的新结算云存档事务中追加一次，不可更新。
+CREATE TABLE IF NOT EXISTS raid_results (
+    user_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    raid_id TEXT NOT NULL,
+    settled_at_ms INTEGER NOT NULL CHECK (settled_at_ms >= 0),
+    outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failed')),
+    value INTEGER NOT NULL CHECK (value BETWEEN 0 AND 9007199254740991),
+    PRIMARY KEY (user_id, raid_id)
+);
+
+CREATE INDEX IF NOT EXISTS raid_results_window ON raid_results(outcome, settled_at_ms, user_id);
+CREATE TRIGGER IF NOT EXISTS raid_results_immutable
+BEFORE UPDATE ON raid_results
+BEGIN
+    SELECT RAISE(ABORT, 'raid result records are immutable');
+END;
+
+-- 快照在创建后固定窗口、昵称和聚合分数。好友资格在读取每一页时重新校验。
+CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL CHECK (scope IN ('friends', 'global')),
+    window_start_ms INTEGER NOT NULL,
+    window_end_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL,
+    expires_at_ms INTEGER NOT NULL CHECK (expires_at_ms > updated_at_ms)
+);
+
+CREATE INDEX IF NOT EXISTS leaderboard_snapshots_expiry ON leaderboard_snapshots(expires_at_ms);
+
+CREATE TABLE IF NOT EXISTS leaderboard_snapshot_entries (
+    snapshot_id TEXT NOT NULL REFERENCES leaderboard_snapshots(snapshot_id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    display_name TEXT NOT NULL,
+    total_value INTEGER NOT NULL CHECK (total_value >= 0),
+    best_value INTEGER NOT NULL CHECK (best_value >= 0),
+    successful_raids INTEGER NOT NULL CHECK (successful_raids > 0),
+    ordinal INTEGER NOT NULL CHECK (ordinal > 0),
+    rank INTEGER NOT NULL CHECK (rank > 0),
+    PRIMARY KEY (snapshot_id, player_id),
+    UNIQUE (snapshot_id, ordinal)
+);
+
+CREATE INDEX IF NOT EXISTS leaderboard_snapshot_page ON leaderboard_snapshot_entries(snapshot_id, ordinal);
+
+-- 游标使用随机不透明令牌；排序尾键保留在服务端，避免把内部账号 ID 编码到 URL。
+CREATE TABLE IF NOT EXISTS leaderboard_cursors (
+    cursor_id TEXT PRIMARY KEY,
+    snapshot_id TEXT NOT NULL REFERENCES leaderboard_snapshots(snapshot_id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL CHECK (scope IN ('friends', 'global')),
+    after_ordinal INTEGER NOT NULL CHECK (after_ordinal > 0),
+    after_player_id TEXT NOT NULL,
+    expires_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS leaderboard_cursors_expiry ON leaderboard_cursors(expires_at_ms);
+
+PRAGMA user_version=3;

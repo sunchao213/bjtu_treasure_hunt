@@ -8,6 +8,7 @@ import { assetUrl } from '../../app/asset-url';
 import { shopMarkup } from './shop';
 import { archiveBrowserMarkup } from './archive-browser';
 import { friendsPanelMarkup } from './friends-panel';
+import { leaderboardMarkup } from './leaderboard-panel';
 
 /**
  * F01 准备页整页首屏（与助教要求一致）：
@@ -76,8 +77,8 @@ export function prepViewMarkup(): string {
               <p>角色外观暂未开放。</p>
             </dialog>
             <dialog id="v19-ranking-dialog" class="v19-dialog" aria-labelledby="v19-ranking-title">
-              <header><h2 id="v19-ranking-title">排行榜</h2><button type="button" data-v19-close>关闭</button></header>
-              <p>排行榜暂未接入。</p>
+              <header><h2 id="v19-ranking-title">近七日排行</h2><button type="button" data-v19-close>关闭</button></header>
+              ${leaderboardMarkup()}
             </dialog>
             <dialog id="v19-loadout-dialog" class="v19-dialog v19-loadout-dialog" aria-labelledby="v19-loadout-title">
               <header><h2 id="v19-loadout-title">背包与出发装备</h2><button id="v19-loadout-close" type="button">返回大厅</button></header>
