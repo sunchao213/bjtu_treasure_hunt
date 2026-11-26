@@ -9,6 +9,14 @@ export interface NetworkPoint {
   readonly y: number;
 }
 
+export interface RoomCameraSnapshot {
+  readonly distance: number;
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly overview: boolean;
+  readonly flashlight: boolean;
+}
+
 export interface PlayerSnapshot {
   readonly playerId: string;
   readonly displayName: string;
@@ -20,6 +28,7 @@ export interface PlayerSnapshot {
   readonly ready: boolean;
   readonly finished: boolean;
   readonly dead?: boolean;
+  readonly camera?: RoomCameraSnapshot | null;
 }
 
 export interface RelicChestSnapshot extends NetworkPoint {
@@ -71,6 +80,7 @@ export type ClientMessage =
       readonly movement: NetworkPoint;
       readonly aim: number;
       readonly actions: readonly ('interact' | 'attack' | 'hug')[];
+      readonly camera?: RoomCameraSnapshot;
     }
   | { readonly type: 'ping'; readonly sentAt: number };
 
@@ -119,6 +129,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isPoint = (value: unknown): value is NetworkPoint =>
   isRecord(value) && Number.isFinite(value.x) && Number.isFinite(value.y);
 const nonEmpty = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+const isCamera = (value: unknown): value is RoomCameraSnapshot =>
+  isRecord(value) &&
+  Number.isFinite(value.distance) &&
+  Number(value.distance) >= 5 &&
+  Number(value.distance) <= 48 &&
+  Number.isFinite(value.yaw) &&
+  Math.abs(Number(value.yaw)) <= 3.142 &&
+  Number.isFinite(value.pitch) &&
+  Math.abs(Number(value.pitch)) <= 1.571 &&
+  typeof value.overview === 'boolean' &&
+  typeof value.flashlight === 'boolean';
 
 export function isClientMessage(value: unknown): value is ClientMessage {
   if (!isRecord(value) || !nonEmpty(value.type)) return false;
@@ -175,6 +196,7 @@ export function isClientMessage(value: unknown): value is ClientMessage {
     Number.isSafeInteger(value.sequence) &&
     value.sequence >= 0 &&
     isPoint(value.movement) &&
+    (value.camera === undefined || isCamera(value.camera)) &&
     Number.isFinite(value.aim) &&
     Array.isArray(value.actions) &&
     value.actions.every(
@@ -267,6 +289,7 @@ export function isServerMessage(value: unknown): value is ServerMessage {
         nonEmpty(player.displayName) &&
         (player.skinId === undefined || typeof player.skinId === 'string') &&
         isPoint(player.position) &&
+        (player.camera === null || player.camera === undefined || isCamera(player.camera)) &&
         Number.isFinite(player.aim) &&
         Number.isFinite(player.health) &&
         typeof player.connected === 'boolean' &&

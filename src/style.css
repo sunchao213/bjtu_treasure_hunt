@@ -76,52 +76,6 @@ dialog {
   font-size: 12px;
   line-height: 1.5;
 }
-.v19-room-dialog {
-  width: min(520px, 92vw);
-  padding: 22px;
-}
-.v19-room-dialog .room-input {
-  width: 100%;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 1px solid #566359;
-  background: #111313;
-  color: #e5e7e6;
-  font-size: 18px;
-  letter-spacing: 0.12em;
-}
-.v19-room-status {
-  min-height: 24px;
-  color: #c4d9c3;
-}
-.v19-room-consent {
-  margin-top: 16px;
-}
-.v19-room-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-.v19-room-actions button {
-  flex: 1 1 140px;
-  min-height: 44px;
-}
-.v19-room-members {
-  margin-top: 16px;
-  padding: 10px;
-  border: 1px solid #3f4a42;
-  background: #151917;
-}
-.v19-room-member {
-  margin: 0;
-  padding: 8px 0;
-  border-bottom: 1px solid #303a33;
-  color: #d9e3d8;
-}
-.v19-room-member:last-child {
-  border-bottom: 0;
-}
 @media (max-width: 600px) {
   .player-profile-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -4320,7 +4274,10 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   border-radius: 2px;
   background: #2a1a10;
   color: #ffe4a0;
-  font: 13px/1.2 'Zpix', 'Microsoft YaHei', sans-serif;
+  font:
+    13px/1.2 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
   cursor: pointer;
 }
 .mail-claim:hover:not(:disabled) {

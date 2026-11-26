@@ -25,6 +25,7 @@ import { QuickNoteEffectView } from './quick-note-effect-view';
 import { DetectorEffectView } from './detector-effect-view';
 import { UtilityItemEffectsView } from './utility-item-effects-view';
 import type { StoryTrigger } from '../modules/world/story-triggers';
+import type { RoomCameraSnapshot } from '../modules/network/network-protocol';
 
 declare const __GAME_ASSET_VERSION__: string;
 
@@ -45,6 +46,9 @@ export class CampusView implements WorldView {
   private readonly camera = new THREE.OrthographicCamera(-16, 16, 11, -11, 0.1, 120);
   private readonly followCamera = new THREE.PerspectiveCamera(48, 1, 0.1, 400);
   private readonly cameraRig = new PlayerCameraRig();
+  private readonly spectatorRig = new PlayerCameraRig();
+  private spectatorCamera?: RoomCameraSnapshot | null;
+  private localOverview = false;
   private readonly target = new THREE.Vector3(16, 0, 12);
   private readonly raycaster = new THREE.Raycaster();
   private readonly portalRay = new THREE.Raycaster();
@@ -112,7 +116,15 @@ export class CampusView implements WorldView {
   private actionStarted = 0;
   private disposed = false;
   private readonly observer: ResizeObserver;
-  private overview = false;
+  private get overview(): boolean {
+    return this.spectatorCamera === undefined
+      ? this.localOverview
+      : (this.spectatorCamera?.overview ?? false);
+  }
+
+  private get renderCameraRig(): PlayerCameraRig {
+    return this.spectatorCamera === undefined ? this.cameraRig : this.spectatorRig;
+  }
   private readonly normalFog: THREE.Fog | null;
   private readonly nightView?: CampusNightView;
   private readonly enemyView?: CampusEnemyView;
@@ -137,7 +149,7 @@ export class CampusView implements WorldView {
   }
 
   canOrbit(): boolean {
-    return !this.overview;
+    return !this.overview && this.spectatorCamera === undefined;
   }
   orbitCamera(dx: number, dy: number): void {
     this.cameraRig.orbit(dx, dy);
@@ -163,11 +175,22 @@ export class CampusView implements WorldView {
   }
   cameraInfo(): string {
     if (this.overview) return '镜头：区域总览';
-    return `镜头：人物环绕 · 方位 ${Math.round(THREE.MathUtils.radToDeg(this.cameraRig.viewYaw))}° · 俯角 ${Math.round(THREE.MathUtils.radToDeg(this.cameraRig.viewPitch))}° · 缩放 ${this.cameraRig.distance.toFixed(1)}`;
+    const rig = this.renderCameraRig;
+    return `镜头：人物环绕 · 方位 ${Math.round(THREE.MathUtils.radToDeg(rig.viewYaw))}° · 俯角 ${Math.round(THREE.MathUtils.radToDeg(rig.viewPitch))}° · 缩放 ${rig.distance.toFixed(1)}`;
+  }
+
+  cameraSnapshot(flashlight: boolean): RoomCameraSnapshot {
+    return {
+      yaw: this.cameraRig.viewYaw,
+      pitch: this.cameraRig.viewPitch,
+      distance: this.cameraRig.distance,
+      overview: this.localOverview,
+      flashlight,
+    };
   }
 
   toggleOverview(): boolean {
-    this.overview = !this.overview;
+    this.localOverview = !this.localOverview;
     this.scene.fog = this.overview ? null : this.normalFog;
     this.resize();
     return this.overview;
@@ -556,20 +579,32 @@ export class CampusView implements WorldView {
     const focus = toWorld(frame.cameraTarget ?? frame.position);
     this.nightView?.update(frame.cameraTarget ? { ...frame, position: frame.cameraTarget } : frame);
     this.player.visible = this.shadow.visible = !frame.hidePlayer;
+    const previousOverview = this.overview;
+    this.spectatorCamera = frame.cameraTarget ? (frame.camera ?? null) : undefined;
+    if (this.spectatorCamera) {
+      const { yaw, pitch, distance } = this.spectatorCamera;
+      this.spectatorRig.setState(yaw, pitch, distance);
+    } else if (this.spectatorCamera === null) {
+      this.spectatorRig.reset();
+    }
+    if (previousOverview !== this.overview) {
+      this.scene.fog = this.overview ? null : this.normalFog;
+      this.resize();
+    }
     this.chargingStationView.update(frame, elapsedMs);
     this.playerMaterial.color.set(frame.night.enabled ? 0xa6b7d1 : 0xffffff);
     const destination = this.isDistrict
       ? this.overview
         ? new THREE.Vector3(51, 0, 52)
         : new THREE.Vector3(
-            THREE.MathUtils.clamp(p.x, 17, this.config.map.width / 32 - 17),
+            THREE.MathUtils.clamp(focus.x, 17, this.config.map.width / 32 - 17),
             0,
-            THREE.MathUtils.clamp(p.z, 13, this.config.map.height / 32 - 13),
+            THREE.MathUtils.clamp(focus.z, 13, this.config.map.height / 32 - 13),
           )
       : new THREE.Vector3(
-          THREE.MathUtils.clamp(p.x, this.isSiyuan ? 20 : 12, this.isSiyuan ? 46 : 20),
+          THREE.MathUtils.clamp(focus.x, this.isSiyuan ? 20 : 12, this.isSiyuan ? 46 : 20),
           0,
-          THREE.MathUtils.clamp(p.z, this.isSiyuan ? 16 : 10, this.isSiyuan ? 30 : 14),
+          THREE.MathUtils.clamp(focus.z, this.isSiyuan ? 16 : 10, this.isSiyuan ? 30 : 14),
         );
     this.target.lerp(destination, 1 - Math.exp(-Math.min(deltaMs, 100) / 170));
     const angle = THREE.MathUtils.degToRad(55);
@@ -587,7 +622,11 @@ export class CampusView implements WorldView {
       this.camera.lookAt(this.target);
       this.camera.updateMatrixWorld();
     } else {
-      this.cameraRig.update(this.followCamera, new THREE.Vector3(focus.x, 0, focus.z), deltaMs);
+      this.renderCameraRig.update(
+        this.followCamera,
+        new THREE.Vector3(focus.x, 0, focus.z),
+        deltaMs,
+      );
     }
     const camera = this.overview ? this.camera : this.followCamera;
     this.syncStoryMarkers(frame.storyMarkers ?? [], frame.position, elapsedMs);
@@ -598,7 +637,7 @@ export class CampusView implements WorldView {
         ? 0.3 + frame.extraction.progress * 0.3
         : 0.24;
     }
-    this.treePlayerProbe.set(p.x, 0.8, p.z);
+    this.treePlayerProbe.set(focus.x, 0.8, focus.z);
     const markerCount = this.config.markers?.length ?? 0;
     const chargingStations = frame.chargingStations ?? [];
     this.treeLandmarkProbes.length = markerCount + chargingStations.length;
@@ -618,7 +657,7 @@ export class CampusView implements WorldView {
     this.utilityEffects?.update(
       frame.utilityEffects ?? [],
       frame.position,
-      screenFacing(frame.facing, this.overview ? 0 : this.cameraRig.viewYaw) === 'left',
+      screenFacing(frame.facing, this.overview ? 0 : this.renderCameraRig.viewYaw) === 'left',
     );
     this.player.scale.set(
       (0.8 * PLAYER_ANIMATIONS[frame.action].width) / 128,
@@ -771,11 +810,11 @@ export class CampusView implements WorldView {
     elapsedMs: number,
     costumeAim?: number,
   ): void {
-    const facing = screenFacing(direction, this.overview ? 0 : this.cameraRig.viewYaw);
+    const facing = screenFacing(direction, this.overview ? 0 : this.renderCameraRig.viewYaw);
     const frames = PLAYER_ANIMATIONS[action].frames;
     const index = animationFrame(action, facing, elapsedMs);
     if (costumeAim !== undefined) {
-      const yaw = this.overview ? 0 : this.cameraRig.viewYaw;
+      const yaw = this.overview ? 0 : this.renderCameraRig.viewYaw;
       const row = THREE.MathUtils.euclideanModulo(
         Math.round((Math.PI / 2 - costumeAim + yaw) / (Math.PI / 4)),
         8,

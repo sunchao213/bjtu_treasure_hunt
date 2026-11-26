@@ -62,6 +62,14 @@ export class PlayerCameraRig {
     this.pitch = this.viewPitch;
   }
 
+  setState(yaw: number, pitch: number, distance: number): void {
+    this.yaw = yaw;
+    this.pitch = MathUtils.clamp(pitch, MathUtils.degToRad(12), MathUtils.degToRad(75));
+    this.distance = MathUtils.clamp(distance, 5, 48);
+    this.viewYaw = this.yaw;
+    this.viewPitch = this.pitch;
+  }
+
   update(camera: PerspectiveCamera, position: Vector3, deltaMs: number): void {
     const lookT = 1 - Math.exp(-MathUtils.clamp(deltaMs, 0, 100) / 45);
     // Interpolate the shortest angular arc across ±PI, independent of event rate.

@@ -80,12 +80,32 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.shop-intro {
-  margin: 0;
-  color: #e4cdab;
-  font-size: 13px;
-  line-height: 1.5;
-  text-align: center;
+.shop-categories {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.shop-categories button {
+  min-width: 94px;
+  min-height: 36px;
+  border: 1px solid #8b623d;
+  background: #261912;
+  color: #e8c99a;
+  font-family: 'Zpix', 'Microsoft YaHei', sans-serif;
+}
+.shop-categories button[aria-pressed='true'] {
+  border-color: #e3ab62;
+  background: #633321;
+  color: #ffe5ab;
+}
+.shop-skins {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+.shop-skins .skin-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 142px), 1fr));
+  align-content: start;
 }
 .shop-grid {
   display: grid;
@@ -267,6 +287,14 @@ html[data-touch='true'] .shop-action {
   border: 2px solid #8d603a;
   background: radial-gradient(ellipse at 50% 30%, #60442c, #261a15 75%);
   text-align: center;
+}
+
+.skin-card .shop-action {
+  min-width: 86px;
+}
+
+#wardrobe-status:not(:empty) {
+  margin-top: 12px;
 }
 
 .skin-art {

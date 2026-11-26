@@ -309,7 +309,8 @@ app.Map("/ws", async context =>
                     var interacting = root.TryGetProperty("actions", out var actions) && actions.ValueKind == JsonValueKind.Array
                         && actions.EnumerateArray().Any(a => a.ValueKind == JsonValueKind.String && a.GetString() == "interact")
                         && !actions.EnumerateArray().Any(a => a.ValueKind == JsonValueKind.String && a.GetString() == "attack");
-                    var inputRoom = rooms.Move(client, ReadString(root, "roundId", ""), sequence, dx, dy, aim, interacting);
+                    var camera = root.TryGetProperty("camera", out var cameraValue) ? ReadCamera(cameraValue) : null;
+                    var inputRoom = rooms.Move(client, ReadString(root, "roundId", ""), sequence, dx, dy, aim, interacting, camera);
                     if (inputRoom is null) break;
                     await BroadcastRoom(joinedRoomId!, inputRoom, rooms, json);
                     break;
@@ -435,6 +436,24 @@ static string[]? ReadRelics(JsonElement root)
 static float ReadFiniteProperty(JsonElement root, string name) =>
     root.TryGetProperty(name, out var value) ? ReadFiniteNumber(value) : 0;
 
+static RoomCamera? ReadCamera(JsonElement value)
+{
+    if (value.ValueKind != JsonValueKind.Object
+        || !ReadBounded("distance", 48, out var distance) || distance < 5
+        || !ReadBounded("yaw", 3.142f, out var yaw) || !ReadBounded("pitch", 1.571f, out var pitch)
+        || !value.TryGetProperty("overview", out var overview) || overview.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+        || !value.TryGetProperty("flashlight", out var flashlight) || flashlight.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        return null;
+    return new(distance, yaw, pitch, overview.GetBoolean(), flashlight.GetBoolean());
+
+    bool ReadBounded(string name, float limit, out float number)
+    {
+        number = 0;
+        return value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.Number
+            && property.TryGetSingle(out number) && float.IsFinite(number) && MathF.Abs(number) <= limit;
+    }
+}
+
 static float ReadFiniteNumber(JsonElement value) =>
     value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out var number) && float.IsFinite(number) ? Math.Clamp(number, -10, 10) : 0;
 
@@ -485,6 +504,7 @@ static async Task BroadcastRoom(string roomId, Room room, RoomDirectory rooms, J
                 displayName = client.DisplayName,
                 position = client.Position ?? CampusWorld.Spawn(0),
                 aim = client.Aim,
+                camera = client.Camera,
                 health = client.Dead ? 0 : 100,
                 skinId = client.SkinId,
                 connected = client.Socket.State == WebSocketState.Open,
@@ -549,6 +569,7 @@ sealed class Client(WebSocket socket, string id)
     public string AccountId { get; set; } = "";
     public Point? Position { get; set; }
     public float Aim { get; set; }
+    public RoomCamera? Camera { get; set; }
     public long LastSequence { get; set; } = -1;
     public long LastInputAt { get; set; }
     public string? RoomId { get; set; }

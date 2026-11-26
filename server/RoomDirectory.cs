@@ -117,6 +117,7 @@ sealed class RoomDirectory
                 peer.SkinId = skins[peer.Id];
                 peer.Position = CampusWorld.Spawn(seat++);
                 peer.Aim = -MathF.PI / 2;
+                peer.Camera = null;
                 peer.LastInputAt = Environment.TickCount64;
             }
             return new(client.RoomId, room);
@@ -153,7 +154,7 @@ sealed class RoomDirectory
         }
     }
 
-    public Room? Move(Client client, string roundId, long sequence, float dx, float dy, float aim, bool interacting)
+    public Room? Move(Client client, string roundId, long sequence, float dx, float dy, float aim, bool interacting, RoomCamera? camera)
     {
         lock (Gate)
         {
@@ -166,6 +167,7 @@ sealed class RoomDirectory
             client.LastSequence = sequence;
             client.Position = CampusWorld.Move(client.Position ?? CampusWorld.Spawn(0), dx, dy, elapsed);
             client.Aim = Math.Clamp(aim, -MathF.PI, MathF.PI);
+            client.Camera = camera;
             if (MathF.Abs(dx) + MathF.Abs(dy) > 0.1f || !interacting) room.Loot?.Cancel(client);
             return room;
         }
@@ -213,6 +215,8 @@ sealed class RoomDirectory
 
     private static RoomAction NotInRoom() => new("NOT_IN_ROOM", "请先创建或加入房间。");
 }
+
+sealed record RoomCamera(float Distance, float Yaw, float Pitch, bool Overview, bool Flashlight);
 
 sealed record RoomAction
 {

@@ -6,6 +6,7 @@ import {
   isRoomCode,
   type ClientMessage,
   type PlayerSnapshot,
+  type RoomCameraSnapshot,
   type ServerMessage,
   type RoomState,
 } from './network-protocol';
@@ -295,6 +296,7 @@ export class NetworkSession {
     movement: { readonly x: number; readonly y: number },
     aim: number,
     actions: readonly ('interact' | 'attack' | 'hug')[] = [],
+    camera?: RoomCameraSnapshot,
   ): boolean {
     if (
       !this.inRoom ||
@@ -313,6 +315,7 @@ export class NetworkSession {
       movement,
       aim,
       actions,
+      ...(camera ? { camera } : {}),
     });
     if (!sent) this.sequence = Math.max(0, this.sequence - 1);
     return sent;

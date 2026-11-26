@@ -20,7 +20,7 @@ import type {
   RaidControllerPort,
 } from '../../shared/types/game';
 import type { NetworkSession, PlayerSnapshot } from '../network/network-session';
-import type { RelicChestSnapshot } from '../network/network-protocol';
+import type { RelicChestSnapshot, RoomCameraSnapshot } from '../network/network-protocol';
 import {
   occupiedSlots,
   sectionCanFit,
@@ -86,6 +86,7 @@ export interface FormalWorldServices {
   onFrame(interaction: string, progress: number, prompt?: KeyPrompt | null): void;
 }
 export interface WorldInput {
+  camera?: RoomCameraSnapshot;
   quickSlot?: number;
   usePressed?: boolean;
   move: Point;
@@ -377,11 +378,16 @@ export class FormalWorld {
       this.networkInputElapsed += deltaMs;
       if (this.networkInputElapsed >= 50) {
         this.networkInputElapsed %= 50;
-        this.services.network?.sendInput(input.move, this.aim, [
-          ...(input.interact ? ['interact' as const] : []),
-          ...(attacking ? ['attack' as const] : []),
-          ...(input.hug ? ['hug' as const] : []),
-        ]);
+        this.services.network?.sendInput(
+          input.move,
+          this.aim,
+          [
+            ...(input.interact ? ['interact' as const] : []),
+            ...(attacking ? ['attack' as const] : []),
+            ...(input.hug ? ['hug' as const] : []),
+          ],
+          input.camera,
+        );
       }
       if (
         !(this.services.network?.isInRoom() && this.services.network.getRoomState()?.started) &&
@@ -566,7 +572,16 @@ export class FormalWorld {
   frame(): WorldFrame {
     const map = activeMap();
     const view = this.services.controller.getView();
-    const spectator = this.teammates.get(this.services.spectating?.() ?? '');
+    const spectatorId = this.services.spectating?.() ?? '';
+    const spectator = this.teammates.get(spectatorId);
+    const spectatorSnapshot = this.services.network
+      ?.getRoomState()
+      ?.players.find((player) => player.playerId === spectatorId);
+    const visibleFrom = spectator?.position ?? this.position;
+    const visibleAim = spectator?.aim ?? this.aim;
+    const flashlight = spectator
+      ? (spectatorSnapshot?.camera?.flashlight ?? false)
+      : this.lighting.enabled && this.lighting.battery > 0;
     const relics = this.services.network?.getRoomState()?.relics ?? [];
     const relicMarkers = relics.map((relic) => ({
       id: `relic-${relic.ownerId}`,
@@ -664,6 +679,7 @@ export class FormalWorld {
                 ? 'walk'
                 : 'idle',
       cameraTarget: spectator?.position,
+      camera: spectatorSnapshot?.camera,
       hidePlayer:
         view.health <= 0 &&
         relics.some((relic) => relic.ownerId === this.services.network?.getPlayerId()),
@@ -678,23 +694,36 @@ export class FormalWorld {
         .filter(
           (p) =>
             p.id.startsWith('relic-') ||
-            this.lighting.flashlightReveals(p, this.position, this.aim, map.obstacles),
+            (flashlight &&
+              this.lighting.inFlashlightCone(p, visibleFrom, visibleAim, map.obstacles)),
         )
         .map((p) => p.id),
       night: {
         enabled: true,
-        flashlight: !!spectator || (this.lighting.enabled && this.lighting.battery > 0),
+        flashlight,
         battery: this.lighting.battery,
         spareBatteries: this.lighting.spareBatteries,
         flareCount: this.lighting.flareCount,
-        aim: spectator?.aim ?? this.aim,
-        flares: this.lighting.flares,
+        aim: visibleAim,
+        flares: spectator ? [] : this.lighting.flares,
       },
       combat: {
         enabled: true,
         enemies: this.combat.enemies,
         visibleEnemies: this.combat.enemies
-          .filter((e) => this.lighting.visible(e.position, this.position, this.aim, map.obstacles))
+          .filter((e) =>
+            spectator
+              ? (distance(e.position, visibleFrom) <= 62 &&
+                  lineOfSight(visibleFrom, e.position, map.obstacles)) ||
+                (flashlight &&
+                  this.lighting.inFlashlightCone(
+                    e.position,
+                    visibleFrom,
+                    visibleAim,
+                    map.obstacles,
+                  ))
+              : this.lighting.visible(e.position, this.position, this.aim, map.obstacles),
+          )
           .map((e) => e.id),
         soundWaves: this.combat.soundWaves.map((wave) => ({
           ...wave,

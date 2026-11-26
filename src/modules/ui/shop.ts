@@ -5,20 +5,22 @@ import { COMBAT_RULES } from '../../config/combat-config';
 import { warehouseItemIconAssetPath } from './warehouse-items';
 import { DEFAULT_SKIN_ID, SKIN_DEFINITIONS, type SkinId } from '../save/persistent-save';
 
-export function wardrobeMarkup(): string {
-  return `<div class="skin-grid">${SKIN_DEFINITIONS.map((skin) => {
-    const uniform = skin.id === DEFAULT_SKIN_ID;
-    const image = assetUrl(
-      uniform
-        ? 'assets/characters/player/player-idle.png'
-        : `assets/characters/skins/${skin.id}-preview.png`,
-    );
-    return `<article class="skin-card">
+export function wardrobeMarkup(inShop = false): string {
+  return `<div class="skin-grid">${SKIN_DEFINITIONS.filter((skin) => !inShop || skin.price > 0)
+    .map((skin) => {
+      const uniform = skin.id === DEFAULT_SKIN_ID;
+      const image = assetUrl(
+        uniform
+          ? 'assets/characters/player/player-idle.png'
+          : `assets/characters/skins/${skin.id}-preview.png`,
+      );
+      return `<article class="skin-card">
       <div class="skin-art${uniform ? ' skin-art-uniform' : ''}"><img src="${image}" alt="" loading="lazy"></div>
       <strong>${skin.name}</strong><small>${uniform ? '免费拥有' : `${skin.price} 交子`}</small>
-      <button type="button" class="shop-action" data-skin-action="${skin.id}">购买</button>
+      <button type="button" class="shop-action" data-skin-action="${skin.id}"${inShop ? ' data-skin-shop' : ''}>购买</button>
     </article>`;
-  }).join('')}</div>`;
+    })
+    .join('')}</div>`;
 }
 
 export function renderWardrobe(
@@ -32,8 +34,18 @@ export function renderWardrobe(
     const skin = SKIN_DEFINITIONS.find((entry) => entry.id === button.dataset.skinAction)!;
     const unlocked = owned.includes(skin.id);
     const wearing = equipped === skin.id;
-    button.disabled = !available || wearing || (!unlocked && currency < skin.price);
-    button.textContent = wearing ? '已穿着' : unlocked ? '装备' : '购买';
+    const inShop = button.hasAttribute('data-skin-shop');
+    button.disabled =
+      !available || wearing || (inShop && unlocked) || (!unlocked && currency < skin.price);
+    button.textContent = wearing
+      ? '已穿着'
+      : unlocked
+        ? inShop
+          ? '已拥有'
+          : '穿戴'
+        : currency < skin.price
+          ? `还差 ${skin.price - currency} 交子`
+          : '购买';
     button.setAttribute('aria-label', `${skin.name} · ${button.textContent}`);
   }
 }
@@ -64,14 +76,18 @@ export function shopMarkup(): string {
     <div class="shop-frame">
       <header class="shop-heading">
         <button class="shop-back" type="button" data-lobby-tab="prepare" aria-label="返回大厅" title="返回大厅"></button>
-        <h2 id="shop-title">道具商店</h2>
+        <h2 id="shop-title">商城</h2>
         <span class="shop-wallet"><span class="sr-only">交子余额</span><b id="shop-balance">0</b></span>
       </header>
-      <p class="shop-intro">重复收藏在成功撤离后自动兑换为交子。购买的道具存入仓库，可在出发准备中选择带入。</p>
-      <div class="shop-grid">${PURCHASE_ITEM_IDS.map((itemId) => {
-        const item = ITEM_DEFINITIONS[itemId]!;
-        const iconPath = warehouseItemIconAssetPath(itemId);
-        return `<article class="shop-card" data-shop-item="${itemId}">
+      <nav class="shop-categories" aria-label="商城分类">
+        <button type="button" data-shop-category="supplies" aria-pressed="true" aria-controls="shop-supplies">道具</button>
+        <button type="button" data-shop-category="skins" aria-pressed="false" aria-controls="shop-skins">时装</button>
+      </nav>
+      <div id="shop-supplies" class="shop-grid" data-shop-section="supplies">${PURCHASE_ITEM_IDS.map(
+        (itemId) => {
+          const item = ITEM_DEFINITIONS[itemId]!;
+          const iconPath = warehouseItemIconAssetPath(itemId);
+          return `<article class="shop-card" data-shop-item="${itemId}">
         <div class="shop-item-art wh-slot" data-rarity="${item.rarity}">
           ${iconPath ? `<img src="${assetUrl(iconPath.slice(1))}" alt="" decoding="async" draggable="false" />` : ''}
           <h3 class="wh-slot-name">${item.name}</h3>
@@ -82,14 +98,29 @@ export function shopMarkup(): string {
         <div class="shop-card-footer"><strong class="shop-price"><img src="${assetUrl('assets/ui/jiaozi.png')}" alt="" />${item.price}<span class="sr-only"> 交子</span></strong>
           <button type="button" class="shop-action" data-shop-buy="${itemId}">购买</button></div>
       </article>`;
-      }).join('')}</div>
+        },
+      ).join('')}</div>
+      <section id="shop-skins" class="shop-skins" data-shop-section="skins" aria-label="时装商品" hidden>${wardrobeMarkup(true)}</section>
       <footer class="shop-footer">
         <p id="shop-status" class="shop-status" role="status" aria-live="polite"></p>
-        <button id="shop-wardrobe" type="button" class="shop-action">查看时装</button>
         <button id="shop-prepare" type="button" class="shop-action">前往出发准备</button>
       </footer>
     </div>
   </section>`;
+}
+
+export function bindShopCategories(root: HTMLElement): void {
+  const categories = root.querySelectorAll<HTMLButtonElement>('[data-shop-category]');
+  const sections = root.querySelectorAll<HTMLElement>('[data-shop-section]');
+  for (const category of categories) {
+    category.onclick = () => {
+      for (const button of categories)
+        button.setAttribute('aria-pressed', String(button === category));
+      for (const section of sections)
+        section.hidden = section.dataset.shopSection !== category.dataset.shopCategory;
+      root.querySelector('#shop-status')!.textContent = '';
+    };
+  }
 }
 
 export function renderShop(

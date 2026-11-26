@@ -12,6 +12,7 @@ import './explore-loader.css';
 import './warehouse-panel.css';
 import './bag-panel.css';
 import './shop.css';
+import './room-page.css';
 import './immersive.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { GameFullscreen } from './modules/ui/game-fullscreen';
@@ -26,7 +27,7 @@ import {
   UTILITY_EFFECTS,
 } from './config/game-config';
 import { COMBAT_RULES } from './config/combat-config';
-import { renderShop, renderWardrobe, SHOP_EFFECTS } from './modules/ui/shop';
+import { bindShopCategories, renderShop, renderWardrobe, SHOP_EFFECTS } from './modules/ui/shop';
 import { renderMailPanel } from './modules/ui/mail-panel';
 import { createFriendsPanel } from './modules/ui/friends-panel';
 import { SocialClient } from './modules/social/social-client';
@@ -649,7 +650,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     };
     let sceneReady = false;
     let sceneError = '';
-    let refreshV19Room = (): void => {};
     const lobby = bindRoomLobby({
       network,
       confirm: confirmDialog,
@@ -662,11 +662,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         !changingSkin &&
         controller.getView().phase === 'preparing' &&
         !controller.getView().isBusy &&
-        raidConsent(),
-      onChange: () => {
-        render();
-        refreshV19Room();
-      },
+        element<HTMLInputElement>('risk-consent').checked,
+      onChange: () => render(),
       onPlayers: (players) =>
         sceneReady &&
         (players.length ? scene.syncRemotePlayers(players) : scene.clearRemotePlayers()),
@@ -681,10 +678,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           lobby.finish();
           return;
         }
-        const roomDialog = document.querySelector<HTMLDialogElement>('#v19-room-dialog');
-        if (roomDialog?.open) roomDialog.close();
-        else element('close-room').click();
-        if (!(await startExploration(true))) lobby.finish();
+        if (roomOpen) element('close-room').click();
+        if (!(await startExploration())) lobby.finish();
       },
     });
     events.on('DamageTaken', ({ health }) => {
@@ -1064,63 +1059,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         activeController.resume();
       }
     };
-    let roomTrigger = 'open-room';
+    let roomTrigger: HTMLElement | null = null;
     let gameScroll = 0;
-    const v19RoomDialog = element<HTMLDialogElement>('v19-room-dialog');
-    const renderV19Room = (): void => {
-      const state = lobby.roomState();
-      const connected = lobby.connectionStatus() === 'connected';
-      const status = element('v19-room-status');
-      const code = element<HTMLInputElement>('v19-room-code');
-      const create = element<HTMLButtonElement>('v19-room-create');
-      const join = element<HTMLButtonElement>('v19-room-join');
-      const members = element('v19-room-members');
-      const controls = element('v19-room-controls');
-      const ready = element<HTMLButtonElement>('v19-room-ready');
-      const start = element<HTMLButtonElement>('v19-room-start');
-      status.textContent = lobby.roomMessage();
-      create.disabled = !connected || !!state;
-      join.disabled = !connected || !!state;
-      code.disabled = !!state;
-      controls.hidden = !state;
-      members.hidden = !state;
-      if (!state) return;
-      if (document.activeElement !== code) code.value = state.roomId;
-      members.replaceChildren(
-        ...state.players.map((player) => {
-          const row = document.createElement('p');
-          row.className = 'v19-room-member';
-          row.textContent = `${player.displayName}${player.playerId === network.getPlayerId() ? '（你）' : ''} · ${player.playerId === state.hostId ? '房主' : player.ready ? '已准备' : '未准备'}`;
-          return row;
-        }),
-      );
-      const self = state.players.find((player) => player.playerId === network.getPlayerId());
-      ready.textContent = self?.ready ? '取消准备' : '准备';
-      ready.disabled =
-        state.started ||
-        (!element<HTMLInputElement>('risk-consent').checked &&
-          !element<HTMLInputElement>('v19-room-risk-consent').checked);
-      start.disabled = state.hostId !== network.getPlayerId() || state.started;
-    };
-    refreshV19Room = renderV19Room;
-    network.onMessage((message) => {
-      if (message.type === 'room-state' && v19RoomDialog.open) refreshV19Room();
-    });
-    element('v19-room-close').onclick = () => v19RoomDialog.close();
-    element('v19-room-create').onclick = () => lobby.createRoom();
-    element('v19-room-join').onclick = () =>
-      lobby.joinRoom(element<HTMLInputElement>('v19-room-code').value);
-    element('v19-room-ready').onclick = () => lobby.setReady();
-    element('v19-room-start').onclick = () => lobby.startRoom();
-    element('v19-room-leave').onclick = () => lobby.leave();
-    element<HTMLInputElement>('v19-room-risk-consent').onchange = () => refreshV19Room();
-    v19RoomDialog.addEventListener('close', () => {
-      roomOpen = false;
-      controller.resume();
-      scene.clearInteractions();
-      render();
-    });
-    renderV19Room();
     const roomEntrypoints = [
       ...['open-room', 'open-room-legacy', 'mobile-room'].map((id) =>
         element<HTMLButtonElement>(id),
@@ -1134,16 +1074,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           notify(unlock.hint);
           return;
         }
-        if (button.dataset.openRoom !== undefined) {
-          roomOpen = true;
-          controller.pause();
-          scene.clearInteractions();
-          renderV19Room();
-          v19RoomDialog.showModal();
-          lobby.connect();
-          return;
-        }
-        roomTrigger = button.id || 'open-room';
+        roomTrigger = button.id === 'open-room' ? (document.activeElement as HTMLElement) : button;
         gameScroll = app.scrollTop || window.scrollY;
         roomOpen = true;
         controller.pause();
@@ -1167,7 +1098,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('game-page').hidden = false;
       scene.clearInteractions();
       render();
-      element(roomTrigger).focus({ preventScroll: true });
+      roomTrigger?.focus({ preventScroll: true });
       app.scrollTop = gameScroll;
       if (!mobile()) window.scrollTo(0, gameScroll);
     };
@@ -1425,7 +1356,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element<HTMLDialogElement>('v19-mission-dialog').showModal();
     element('v19-skin-open').onclick = () =>
       element<HTMLDialogElement>('v19-skin-dialog').showModal();
-    element('shop-wardrobe').onclick = element('v19-skin-open').onclick;
     element('open-ranking').onclick = () => {
       leaderboardPanel.open();
       element<HTMLDialogElement>('v19-ranking-dialog').showModal();
@@ -1598,8 +1528,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         element('v19-loadout-dialog').querySelector<HTMLButtonElement>('[data-wh-prep]');
       if (prepEntry) prepEntry.disabled = roomOpen && lobby.isJoined();
       if (roomOpen && lobby.isJoined()) {
-        if (riskConsentLabel.parentElement !== element('room-preparation-slot'))
-          element('room-preparation-slot').append(riskConsentLabel);
+        const consentSlot = element('room-consent-slot');
+        if (riskConsentLabel.parentElement !== consentSlot) consentSlot.prepend(riskConsentLabel);
       } else if (riskConsentLabel.previousSibling !== riskConsentAnchor) {
         riskConsentAnchor.after(riskConsentLabel);
       }
@@ -1899,7 +1829,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         view.phase === 'preparing' && !view.isBusy && !lobby.isLocked() && !changingSkin,
       );
       renderWardrobe(
-        element('v19-skin-dialog'),
+        element('prep-view'),
         archive.ownedSkinIds,
         archive.equippedSkinId,
         archive.currency,
@@ -2225,24 +2155,34 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       if (!button || button.disabled) return;
       claimMail(button.dataset.mailClaim ?? null);
     });
-    element('v19-skin-dialog').addEventListener('click', async (event) => {
+    element('prep-view').addEventListener('click', async (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-skin-action]');
       if (!button || button.disabled || changingSkin || buyingItem !== null || lobby.isLocked())
         return;
       const skin = SKIN_DEFINITIONS.find((entry) => entry.id === button.dataset.skinAction);
-      if (!skin || controller.getView().phase !== 'preparing') return;
-      const status = element('wardrobe-status');
+      const view = controller.getView();
+      if (!skin || view.phase !== 'preparing' || view.isBusy) return;
+      const inShop = button.hasAttribute('data-skin-shop');
+      const status = element(inShop ? 'shop-status' : 'wardrobe-status');
       const owned = save.view().ownedSkinIds.includes(skin.id);
+      if (inShop && owned) return;
       changingSkin = true;
       status.textContent = '正在保存…';
+      status.dataset.state = 'pending';
       render();
       try {
         const ok = owned ? await save.equipSkin(skin.id) : (await save.purchaseSkin(skin.id)).ok;
         status.textContent = ok
-          ? `${owned ? '已装备' : '已购买'}${skin.name}`
+          ? owned
+            ? `已穿上${skin.name}。`
+            : inShop
+              ? `已购买${skin.name}，可在大厅「时装」中穿戴。`
+              : `已购买${skin.name}，现在可以穿戴。`
           : '时装状态未更新，请重试。';
+        status.dataset.state = ok ? 'success' : 'error';
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : '时装保存失败，请重试。';
+        status.dataset.state = 'error';
       } finally {
         changingSkin = false;
         render();
@@ -2250,9 +2190,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     });
     element('shop-prepare').onclick = () =>
       document.querySelector<HTMLButtonElement>('[data-lobby-tab="prepare"]')!.click();
+    bindShopCategories(element('prep-view'));
     element('prep-view').addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-shop-buy]');
-      if (!button || button.disabled || buyingItem !== null) return;
+      if (!button || button.disabled || buyingItem !== null || changingSkin) return;
       const itemId = button.dataset.shopBuy!;
       const view = controller.getView();
       if (view.phase !== 'preparing' || view.isBusy || lobby.isLocked()) return;
@@ -2286,17 +2227,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           render();
         });
     });
-    function raidConsent(): boolean {
-      return (
-        element<HTMLInputElement>('risk-consent').checked ||
-        element<HTMLInputElement>('v19-room-risk-consent').checked
-      );
-    }
-
-    async function startExploration(online = false): Promise<boolean> {
+    async function startExploration(): Promise<boolean> {
       if (
         !sceneReady ||
-        !(online ? raidConsent() : element<HTMLInputElement>('risk-consent').checked) ||
+        !element<HTMLInputElement>('risk-consent').checked ||
         controller.getView().isBusy ||
         buyingItem !== null ||
         changingSkin

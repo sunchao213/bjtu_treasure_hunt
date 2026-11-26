@@ -1,4 +1,3 @@
-import { RAID_RULES } from './config/game-config';
 import './style.css';
 import './auth.css';
 import { AuthClient, startAuthenticated, type AuthSession } from './modules/auth/auth-client';
@@ -26,32 +25,22 @@ window.addEventListener('pagehide', () => {
 });
 
 function frame(content: string): void {
+  document.documentElement.classList.add('auth-open');
   root.innerHTML = `<div class="auth-page">
-    <header class="masthead">
-      <a class="brand" href="./" aria-label="交大摸金录首页"><span class="brand-mark">交</span>
-        <span>交大摸金录<small>思源密码 / CAMPUS EXTRACTION</small></span></a>
-      <div class="build-label"><span class="status-dot"></span>海淀校区 · 夜巡</div>
-    </header>
     <main class="auth-layout">
-      <section class="auth-story side-card" aria-label="游戏介绍">
-        <div class="section-kicker">海淀校区 · 探索行动</div>
-        <h1>南门集合，准备出发。</h1>
-        <p>搜集校园物资，寻找思源密码。带着收获，平安撤离。</p>
-        <dl class="auth-guide">
-          <div><dt>行前准备</dt><dd>选择装备，确认本局携带物。</dd></div>
-          <div><dt>校园探索</dt><dd>寻找线索，搜集至少 ${RAID_RULES.threshold} 价值的物资。</dd></div>
-          <div><dt>平安归来</dt><dd>前往南门撤离，保存仓库与图鉴进度。</dd></div>
-        </dl>
-        <p class="muted">登录后开启单人探索与联机房间。</p>
+      <section class="auth-story" aria-label="交大摸金录">
+        <div class="auth-character" aria-hidden="true"></div>
+        <div class="auth-brand">
+          <h1>交大摸金录</h1>
+          <p>思源密码</p>
+        </div>
       </section>
-      <section class="auth-card side-card" aria-label="账号登录">${content}</section>
+      <section class="auth-card" aria-label="游戏账号">${content}</section>
     </main></div>`;
 }
 
 function loading(): void {
-  frame(
-    '<p class="auth-eyebrow">EXPLORER ACCESS</p><h2>正在验证登录状态</h2><p role="status">验证通过后加载游戏，请稍候…</p>',
-  );
+  frame('<h2>正在验证登录状态</h2><p role="status">验证通过后加载游戏，请稍候…</p>');
 }
 
 async function logout(): Promise<void> {
@@ -80,6 +69,7 @@ async function enterGame(): Promise<boolean> {
     async () => {
       const { startGame } = await import('./game');
       return async (user) => {
+        document.documentElement.classList.remove('auth-open');
         playing = true;
         expiry = setTimeout(reload, Math.max(0, Date.parse(observed!.expiresAt) - Date.now()));
         monitor = setInterval(() => void verifyPlayingSession(), 30_000);
@@ -97,7 +87,7 @@ window.addEventListener('focus', onFocus);
 document.addEventListener('visibilitychange', onVisibility);
 
 function showLogin(message = ''): void {
-  frame(`<p class="auth-eyebrow">EXPLORER ACCESS</p><h2 id="auth-title">欢迎回来</h2>
+  frame(`<h2 id="auth-title">欢迎回来</h2>
     <p id="auth-intro">登录账号，继续你的校园探索。</p>
     <div class="auth-tabs" role="group" aria-label="选择账号操作">
       <button id="tab-login" type="button" aria-pressed="true">登录</button>

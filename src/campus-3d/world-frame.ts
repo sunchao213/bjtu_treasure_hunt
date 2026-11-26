@@ -2,6 +2,7 @@ import type { RulerEffectFrame } from '../config/weapon-effects';
 import type { ChestTier } from '../config/chest-config';
 import type { ChargingStation } from '../modules/world/charging-stations';
 import type { Point, ItemInstance } from '../shared/types/game';
+import type { RoomCameraSnapshot } from '../modules/network/network-protocol';
 import type {
   DetectorEffectFrame,
   QuickNoteEffectFrame,
@@ -40,6 +41,7 @@ export interface WorldFrame {
   skinId?: string;
   aim?: number;
   cameraTarget?: Point;
+  camera?: RoomCameraSnapshot | null;
   hidePlayer?: boolean;
   position: Point;
   facing: Facing;

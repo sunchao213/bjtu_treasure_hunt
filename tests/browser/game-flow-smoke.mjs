@@ -352,7 +352,10 @@ async function searchEvidence(page, itemId, screenshotName) {
   await click(page, '#story-skip');
   await delay(150);
 }
-async function newPage(name, { mobile = false, failAsset = false, legacyCache = false } = {}) {
+async function newPage(
+  name,
+  { mobile = false, failAsset = false, legacyCache = false, currency = 0 } = {},
+) {
   const { browserContextId } = await command('Target.createBrowserContext', {
     disposeOnDetach: true,
   });
@@ -388,13 +391,59 @@ async function newPage(name, { mobile = false, failAsset = false, legacyCache = 
   await command('Page.navigate', { url: origin }, sessionId);
   await until(page, '!!document.querySelector("#auth-form")');
   if (legacyCache) await primeLegacySpriteCache(page);
-  await click(page, '#tab-register');
+  const username = `flow_${stamp}_${name}`;
+  const displayName = `测试${name}`;
+  const password = randomBytes(24).toString('base64url');
+  if (name === 'host') {
+    for (const [width, height] of [
+      [1280, 720],
+      [1024, 576],
+      [1440, 900],
+    ]) {
+      await command(
+        'Emulation.setDeviceMetricsOverride',
+        { width, height, deviceScaleFactor: 1, mobile: false },
+        page.id,
+      );
+      assert(
+        await evaluate(
+          page,
+          '(() => { const box = document.querySelector("#auth-submit").getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()',
+        ),
+        'login button stays in the viewport',
+      );
+    }
+    await screenshot(page, '36-login');
+  }
+  if (currency === 0) await click(page, '#tab-register');
+  else {
+    await evaluate(
+      page,
+      `(async () => {
+      const post = async (url, body) => {
+        const response = await fetch(url, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Game-Request': '1' },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw Error(url + ' returned ' + response.status);
+        return response.status === 204 ? null : response.json();
+      };
+      await post('/api/auth/register', ${JSON.stringify({ username, displayName, password })});
+      const { leaseToken, revision } = await post('/api/save/open', { clientId: crypto.randomUUID() });
+      await post('/api/save', { leaseToken, revision, data: {
+        schemaVersion: 4, currency: ${currency}, warehouse: [], mailbox: [], codexIds: [],
+        unlockedChapterIds: [], settledRaidIds: [], activeRaid: null, lastResult: null,
+      } });
+      await post('/api/auth/logout', {});
+    })()`,
+    );
+  }
   await evaluate(
     page,
     `(() => {
-    document.querySelector('#auth-username').value = ${JSON.stringify(`flow_${stamp}_${name}`)};
-    document.querySelector('#auth-name').value = ${JSON.stringify(`测试${name}`)};
-    document.querySelector('#auth-password').value = document.querySelector('#auth-confirm').value = ${JSON.stringify(randomBytes(24).toString('base64url'))};
+    document.querySelector('#auth-username').value = ${JSON.stringify(username)};
+    document.querySelector('#auth-name').value = ${JSON.stringify(displayName)};
+    document.querySelector('#auth-password').value = document.querySelector('#auth-confirm').value = ${JSON.stringify(password)};
   })()`,
   );
   await click(page, '#auth-submit');
@@ -2418,16 +2467,49 @@ try {
       pass('Cached 128px sprites → new 176px release → solo launch without clearing browser data');
     }
 
-    const host = await newPage('host');
+    const host = await newPage('host', { currency: 1376 });
     assert.equal(await evaluate(host, 'document.querySelector("#start").disabled'), true);
     assert.equal(await evaluate(host, '!!document.querySelector("#room-panel")'), false);
     await screenshot(host, '01-lobby');
+    await click(host, '.v19-shop-bottom');
+    await click(host, '[data-shop-category="skins"]');
+    await until(
+      host,
+      '!document.querySelector("#shop-skins").hidden && document.querySelector("#shop-supplies").hidden',
+    );
+    assert.equal(await evaluate(host, 'document.querySelectorAll("[data-skin-shop]").length'), 6);
+    await screenshot(host, '37-shop-skins');
+    await click(host, '#shop-skins [data-skin-action="red-trailblazer"]');
+    await until(
+      host,
+      'document.querySelector("#shop-balance").textContent === "688" && document.querySelector("#shop-skins [data-skin-action=red-trailblazer]").textContent === "已拥有"',
+    );
+    await click(host, '.shop-back');
     await click(host, '#v19-skin-open');
     await until(host, 'document.querySelector("#v19-skin-dialog").open');
-    assert.equal(await evaluate(host, 'document.querySelectorAll("[data-skin-action]").length'), 7);
-    assert.equal(await evaluate(host, 'document.querySelectorAll(".skin-card small").length'), 7);
+    assert.equal(
+      await evaluate(
+        host,
+        'document.querySelectorAll("#v19-skin-dialog [data-skin-action]").length',
+      ),
+      7,
+    );
+    await click(host, '#v19-skin-dialog [data-skin-action="red-trailblazer"]');
+    await until(host, 'document.querySelector("#wardrobe-status").textContent.includes("已穿上")');
+    await click(host, '#v19-skin-dialog [data-skin-action="lavender-mage"]');
+    await until(
+      host,
+      'document.querySelector("#v19-skin-dialog [data-skin-action=lavender-mage]").textContent === "穿戴"',
+    );
     await screenshot(host, '34-wardrobe');
     await click(host, '#v19-skin-dialog [data-v19-close]');
+    await click(host, '.v19-shop-bottom');
+    await until(
+      host,
+      'document.querySelector("#shop-balance").textContent === "0" && document.querySelector("#shop-skins [data-skin-action=lavender-mage]").textContent === "已拥有"',
+    );
+    await click(host, '.shop-back');
+    pass('Buy in the shop, equip and buy in the wardrobe, and share the wallet and ownership');
     await consent(host);
     if (!roomsOnly) {
       await click(host, '#start');
@@ -2937,8 +3019,9 @@ try {
       );
     }
 
-    await click(host, '#mode-room');
+    await click(host, '.v19-teammate-one');
     await until(host, '!document.querySelector("#network-create").disabled');
+    await screenshot(host, '38-room-entry');
     await click(host, '#network-create');
     await until(host, '/^[0-9]{6}$/.test(document.querySelector("#room-state-title").textContent)');
     const code = await evaluate(host, 'document.querySelector("#room-state-title").textContent');
@@ -3078,10 +3161,34 @@ try {
       true,
     );
     await until(guest, 'testScene.teammates.size === 0 && testScene.view.teammates.size === 0');
-    await until(guest, '!!testScene.nearbyRelic()');
     await command('Page.bringToFront', {}, guest.id);
     if (await evaluate(guest, 'document.querySelector("#raid-settings").open'))
       await press(guest, 'Escape', 'Escape', 27);
+    await evaluate(guest, 'testScene.view.orbitCamera(95, 40); testScene.view.zoomCamera(500)');
+    await until(
+      host,
+      'testScene.frame().camera?.yaw < -0.45 && testScene.frame().camera?.pitch > 0.4 && testScene.frame().camera?.distance > 8',
+    );
+    await until(host, 'testScene.view.cameraInfo().includes("缩放 8.2")');
+    await click(guest, '#camera-overview');
+    await until(
+      host,
+      'testScene.frame().camera?.overview && testScene.view.cameraInfo() === "镜头：区域总览"',
+    );
+    await click(guest, '#camera-overview');
+    await until(
+      host,
+      'testScene.frame().camera?.overview === false && testScene.view.cameraInfo().includes("缩放 8.2")',
+    );
+    const flashlight = await evaluate(guest, 'testScene.lighting.enabled');
+    await press(guest, 'l', 'KeyL', 76);
+    await until(
+      host,
+      `testScene.frame().camera?.flashlight === ${!flashlight} && testScene.frame().night.flashlight === ${!flashlight}`,
+    );
+    await press(guest, 'l', 'KeyL', 76);
+    await screenshot(host, '39-spectator');
+    await until(guest, '!!testScene.nearbyRelic()');
     await press(guest, 'e', 'KeyE', 69);
     await until(guest, 'document.querySelector("dialog[aria-label=队友遗物箱]").open');
     await screenshot(guest, '35-relic-chest');
@@ -3134,7 +3241,7 @@ try {
       'Two accounts: join → ready → start together → sync movement → finish → next round → return to solo',
     );
     pass(
-      'Online death: follow a surviving teammate and allow one relic item to be collected while the other remains',
+      'Online death: mirror a surviving teammate’s camera and flashlight, and allow selective relic pickup',
     );
 
     const mobile = await newPage('mobile', { mobile: true });

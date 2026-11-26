@@ -137,8 +137,14 @@ export class FormalWorldScene extends FormalWorld {
         previous = now;
         if (!this.contextLost) {
           const input = this.controls!.read(this.position, this.aim);
-          this.tick(delta, input);
+          this.tick(delta, {
+            ...input,
+            camera: this.services.network?.isInRoom()
+              ? this.view!.cameraSnapshot(this.lighting.enabled && this.lighting.battery > 0)
+              : undefined,
+          });
           this.view!.render(this.frame(), now, delta);
+          this.cameraControls!.hidden = !!this.services.spectating?.();
           this.sceneServices.touch.finishFrame();
           if (now - mapAt > 100) {
             this.drawMaps();
