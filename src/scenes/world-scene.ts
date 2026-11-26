@@ -15,6 +15,8 @@ import {
   MONSTER_SPRITE_SHEETS,
   monsterAnimationFor,
   monsterScaleFor,
+  monsterConcealed,
+  monsterOpacityFor,
 } from '../config/monster-sprites';
 import { generateLootSpawns, questSpawnPlan, type LootSpawn } from '../modules/world/loot-spawns';
 import {
@@ -1290,12 +1292,9 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     for (const enemy of this.combat.enemies) {
-      const visible = this.lighting.visible(
-        enemy.position,
-        this.position,
-        this.aim,
-        activeMap().obstacles,
-      );
+      const visible =
+        enemy.state !== 'vanished' &&
+        this.lighting.visible(enemy.position, this.position, this.aim, activeMap().obstacles);
       const object = this.enemyObjects.get(enemy.id);
       object
         ?.setPosition(enemy.position.x, enemy.position.y)
@@ -1305,7 +1304,11 @@ export class WorldScene extends Phaser.Scene {
         this.updateEnemyVisual(enemy, object);
         object.setVisible(visible && (!died || !this.enemyDeathFinished.has(enemy.id)));
       }
-      if (visible && (!died || !this.enemyDeathFinished.has(enemy.id))) {
+      if (
+        visible &&
+        !monsterConcealed(enemy) &&
+        (!died || !this.enemyDeathFinished.has(enemy.id))
+      ) {
         this.flashlight
           .fillStyle(0x40202b)
           .fillRect(enemy.position.x - 18, enemy.position.y - 70, 36, 4);
@@ -2055,7 +2058,15 @@ export class WorldScene extends Phaser.Scene {
     } else if (lastPosition && Math.abs(enemy.position.x - lastPosition.x) > 0.05) {
       sprite.setFlipX(enemy.position.x < lastPosition.x);
     }
-    sprite.setAlpha(windup && enemy.kind !== 'amplifier' ? 0.72 : calmed ? 0.78 : 1);
+    sprite.setAlpha(
+      monsterConcealed(enemy)
+        ? monsterOpacityFor(enemy)
+        : windup && enemy.kind !== 'amplifier'
+          ? 0.72
+          : calmed
+            ? 0.78
+            : 1,
+    );
     if (mutationWarning) {
       sprite.setTint(0xffb347);
     } else if (enemy.kind === 'amplifier' && windup && enemy.windupLocked) {

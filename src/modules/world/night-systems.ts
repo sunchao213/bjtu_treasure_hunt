@@ -208,6 +208,9 @@ export interface SoundWave {
 }
 
 export type EnemyState =
+  | 'lurking'
+  | 'pouncing'
+  | 'vanished'
   | 'patrol'
   | 'chase'
   | 'windup'
@@ -241,7 +244,7 @@ export function isCombatWeaponId(itemId: string): itemId is CombatWeaponId {
 export function combatWeaponConfig(weaponId: CombatWeaponId) {
   return COMBAT_WEAPON_CONFIGS[weaponId];
 }
-/** Patrol animals share duck combat numbers. The field only picks a sprite. */
+/** Patrol animals share health and drops; cats use a separate ambush behavior. */
 export const PATROL_SPECIES = ['duck', 'cat', 'swan'] as const;
 export type PatrolSpecies = (typeof PATROL_SPECIES)[number];
 export interface Enemy {
@@ -264,6 +267,45 @@ export interface Enemy {
   attackAngle?: number;
   windupLocked?: boolean;
   encounterRegion?: string;
+}
+
+/** Choose reachable cover beside tree trunks or building walls, never inside them. */
+export function findCatHideout(
+  anchor: Point,
+  map: CombatMap,
+  accepts: (point: Point) => boolean = () => true,
+): Point {
+  const rules = COMBAT_RULES.enemy.cat;
+  const gap = 24;
+  const candidates: Point[] = [];
+  for (const wall of map.obstacles) {
+    if (distanceToRect(anchor, wall) > rules.hideSearchRadius) continue;
+    const x = Math.max(wall.x, Math.min(anchor.x, wall.x + wall.width));
+    const y = Math.max(wall.y, Math.min(anchor.y, wall.y + wall.height));
+    candidates.push(
+      { x: wall.x - gap, y },
+      { x: wall.x + wall.width + gap, y },
+      { x, y: wall.y - gap },
+      { x, y: wall.y + wall.height + gap },
+    );
+  }
+  return (
+    candidates
+      .filter(
+        (p) =>
+          p.x >= 45 &&
+          p.y >= 50 &&
+          p.x <= map.width - 45 &&
+          p.y <= map.height - 50 &&
+          distance(anchor, p) <= rules.hideSearchRadius &&
+          !map.obstacles.some((wall) => overlaps(p, 18, wall)) &&
+          !nearExtraction(p, COMBAT_RULES.spawning.extractionSafeDistance, map) &&
+          (!map.canSpawn || map.canSpawn(p)) &&
+          lineOfSight(anchor, p, map.obstacles) &&
+          accepts(p),
+      )
+      .sort((a, b) => distance(anchor, a) - distance(anchor, b))[0] ?? { ...anchor }
+  );
 }
 
 export function enemyMaxHealth(kind: Enemy['kind']): number {
@@ -580,28 +622,27 @@ export class NightCombat {
     }
     if (this.hugSpawnTimer <= 0) {
       this.hugSpawnTimer = rules.hugSpawnIntervalMs;
-      if (this.aliveEnemyCount() < rules.maxAlive) {
+      for (let i = 0; i < rules.hugSpawnCount && this.aliveEnemyCount() < rules.maxAlive; i++) {
         const position = findPosition();
-        if (position) {
-          const enemy: Enemy = {
-            id: `spawn-hug-${this.nextSpawnId++}`,
-            kind: 'hug',
-            position: { ...position },
-            home: { ...position },
-            route: [{ ...position }],
-            waypoint: 0,
-            health: COMBAT_RULES.hug.health,
-            state: 'patrol',
-            timer: 0,
-            cooldown: 0,
-            hugProgress: 0,
-            calmHitCount: 0,
-            mutated: false,
-            wanders: false,
-          };
-          this.enemies.push(enemy);
-          spawned.push(enemy);
-        }
+        if (!position) break;
+        const enemy: Enemy = {
+          id: 'spawn-hug-' + this.nextSpawnId++,
+          kind: 'hug',
+          position: { ...position },
+          home: { ...position },
+          route: [{ ...position }],
+          waypoint: 0,
+          health: COMBAT_RULES.hug.health,
+          state: 'patrol',
+          timer: 0,
+          cooldown: 0,
+          hugProgress: 0,
+          calmHitCount: 0,
+          mutated: false,
+          wanders: false,
+        };
+        this.enemies.push(enemy);
+        spawned.push(enemy);
       }
     }
     return spawned;
@@ -676,6 +717,19 @@ export class NightCombat {
         continue;
       }
       this.attackHit = true;
+      if (enemy.kind === 'patrol' && enemy.species === 'cat') {
+        enemy.health = Math.max(0, enemy.health - damage);
+        enemy.state = enemy.health === 0 ? 'dead' : weapon.stunMs ? 'stunned' : 'windup';
+        enemy.timer =
+          enemy.health === 0
+            ? 0
+            : weapon.stunMs
+              ? weapon.stunMs.patrol
+              : COMBAT_RULES.enemy.cat.windupMs;
+        enemy.attackAngle = angleBetween(enemy.position, player);
+        if (enemy.health === 0) defeated.push(enemy);
+        continue;
+      }
       if (enemy.kind === 'hug' && !enemy.mutated) {
         enemy.health = Math.max(0, enemy.health - damage);
         if (enemy.health === 0) {
@@ -722,6 +776,105 @@ export class NightCombat {
       }
     }
     return defeated;
+  }
+
+  private updateCat(
+    enemy: Enemy,
+    dt: number,
+    player: Point,
+    walls: readonly Rect[],
+    bounds: Rect,
+    detectionScale: number,
+    playerInvulnerable: boolean,
+  ): number {
+    const rules = COMBAT_RULES.enemy.cat;
+    enemy.cooldown = Math.max(0, enemy.cooldown - dt);
+    const beginHiding = () => {
+      enemy.state = 'lurking';
+      enemy.home = findCatHideout(
+        enemy.position,
+        this.map(),
+        (p) =>
+          distance(p, player) >= rules.triggerRange &&
+          this.enemies.every(
+            (other) =>
+              other === enemy || other.state === 'dead' || distance(p, other.position) >= 32,
+          ),
+      );
+    };
+    switch (enemy.state) {
+      case 'vanished':
+        enemy.timer -= dt;
+        if (enemy.timer <= 0) beginHiding();
+        return 0;
+      case 'stunned':
+        enemy.timer -= dt;
+        if (enemy.timer <= 0) beginHiding();
+        return 0;
+      case 'windup':
+        enemy.timer -= dt;
+        if (enemy.timer <= 0) {
+          enemy.state = 'pouncing';
+          enemy.timer = rules.pounceMs;
+        }
+        return 0;
+      case 'pouncing': {
+        // Lock direction at the tell: sidestepping can dodge, walls stop the lunge.
+        const angle = enemy.attackAngle ?? angleBetween(enemy.position, player);
+        const before = enemy.position;
+        const elapsed = Math.min(dt, enemy.timer);
+        enemy.position = movePlayer(
+          before,
+          { x: Math.cos(angle), y: Math.sin(angle) },
+          elapsed,
+          rules.pounceSpeed,
+          rules.collisionRadius,
+          bounds,
+          walls,
+        );
+        enemy.timer -= dt;
+        const hit =
+          distance(enemy.position, player) <= COMBAT_RULES.enemy.attack.contactRange &&
+          lineOfSight(enemy.position, player, walls);
+        const blocked =
+          distance(before, enemy.position) < ((rules.pounceSpeed * elapsed) / 1000) * 0.5;
+        let damage = 0;
+        if (hit && !playerInvulnerable && this.invulnerability <= 0) {
+          this.invulnerability = COMBAT_RULES.player.invulnerabilityMs;
+          damage = COMBAT_RULES.enemy.patrol.damage;
+        }
+        if (hit || blocked || enemy.timer <= 0) {
+          enemy.state = 'vanished';
+          enemy.timer = rules.vanishMs;
+          enemy.cooldown = rules.cooldownMs;
+        }
+        return damage;
+      }
+      case 'lurking':
+        break;
+      default:
+        beginHiding();
+    }
+    if (
+      enemy.cooldown === 0 &&
+      distance(enemy.position, player) <= rules.triggerRange * detectionScale &&
+      lineOfSight(enemy.position, player, walls)
+    ) {
+      enemy.state = 'windup';
+      enemy.timer = rules.windupMs;
+      enemy.attackAngle = angleBetween(enemy.position, player);
+    } else if (distance(enemy.position, enemy.home) > 6) {
+      enemy.position = movePlayer(
+        enemy.position,
+        { x: enemy.home.x - enemy.position.x, y: enemy.home.y - enemy.position.y },
+        dt,
+        COMBAT_RULES.enemy.patrol.speed,
+        rules.collisionRadius,
+        bounds,
+        walls,
+      );
+    }
+    return 0;
   }
 
   private warnMutation(enemy: Enemy): void {
@@ -858,6 +1011,18 @@ export class NightCombat {
     );
     for (const enemy of this.enemies) {
       if (enemy.state === 'dead') {
+        continue;
+      }
+      if (enemy.kind === 'patrol' && enemy.species === 'cat') {
+        damage += this.updateCat(
+          enemy,
+          dt,
+          player,
+          walls,
+          bounds,
+          detectionScale,
+          playerInvulnerable,
+        );
         continue;
       }
       if (enemy.state === 'mutation-warning') {

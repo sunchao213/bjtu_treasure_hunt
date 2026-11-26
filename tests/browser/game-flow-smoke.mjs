@@ -66,6 +66,8 @@ const utilityEffectsOnly = process.argv.includes('--utility-effects-only');
 const detectorOnly = process.argv.includes('--detector-only');
 const quickNoteOnly = process.argv.includes('--quick-note-only');
 const rulerOnly = process.argv.includes('--ruler-only');
+const catOnly = process.argv.includes('--cat-only');
+const spawningOnly = process.argv.includes('--spawning-only');
 
 function command(method, params = {}, sessionId) {
   const id = ++nextId;
@@ -1601,6 +1603,194 @@ async function verifyQuickNoteFlow() {
   }
 }
 
+async function verifySpawningFlow() {
+  const page = await newPage('spawning');
+  await consent(page);
+  await click(page, '#start');
+  await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+  await until(
+    page,
+    '!document.querySelector(".explore-loader") || document.querySelector(".explore-loader").hidden',
+  );
+  await click(page, '#tutorial-skip');
+  await attachScene(page);
+  const initial = await evaluate(
+    page,
+    `(() => {
+    const combat=testScene.combat; const savedSpawn=combat.updateSpawns.bind(combat);
+    combat.updateSpawns=()=>[];
+    combat.update=()=>({damage:0,calmed:[],slowHit:false,tinnitusHit:false,soundWaveHit:false,amplifierWindups:[]});
+    const amps=combat.enemies.filter(e=>e.kind==='amplifier');
+    globalThis.initialEnemies=combat.enemies; globalThis.spawnMap=combat.map(); globalThis.spawnBatch=savedSpawn;
+    const library=amps.find(e=>e.id==='library-amplifier');
+    testScene.position={x:library.home.x,y:library.home.y+200}; testScene.aim=-Math.PI/2; testScene.lighting.enabled=true;testScene.view.resetCamera();
+    return {count:combat.enemies.length,amps:amps.map(e=>({id:e.id,home:e.home})),reachable:spawnMap.canSpawn(library.home)};
+  })()`,
+  );
+  assert.equal(initial.count, 12);
+  assert.equal(initial.amps.length, 2);
+  assert.equal(initial.reachable, true);
+  assert.deepEqual(initial.amps.find((e) => e.id === 'library-amplifier').home, {
+    x: 2700,
+    y: 1070,
+  });
+  assert.deepEqual(initial.amps.find((e) => e.id === 'central-amplifier').home, {
+    x: 1060,
+    y: 1520,
+  });
+  for (const [width, height] of [
+    [1280, 720],
+    [1440, 900],
+    [1024, 576],
+  ]) {
+    await command(
+      'Emulation.setDeviceMetricsOverride',
+      { width, height, deviceScaleFactor: 1, mobile: false },
+      page.id,
+    );
+    await delay(200);
+    assert(
+      await evaluate(
+        page,
+        'document.documentElement.scrollWidth===document.documentElement.clientWidth && document.documentElement.scrollHeight===document.documentElement.clientHeight',
+      ),
+    );
+    await screenshot(page, 'library-amplifier-' + width + 'x' + height);
+  }
+  const batch = await evaluate(
+    page,
+    `(() => {
+    const c=testScene.combat; c.enemies=[];c.spawnTimer=0;c.amplifierSpawnTimer=Infinity;c.hugSpawnTimer=80000;
+    let cursor=0;const candidates=[];
+    for(let y=100;y<spawnMap.height-100;y+=220)for(let x=100;x<spawnMap.width-100;x+=220){const p={x,y};if(spawnMap.canSpawn(p))candidates.push(p);}
+    const find=()=>candidates[cursor++]??null;
+    const ordinary=spawnBatch(0,find);c.spawnTimer=Infinity;
+    const before=spawnBatch(79999,find); const hugs=spawnBatch(1,find); const repeated=spawnBatch(0,find);
+    const result={ordinary:ordinary.map(e=>e.kind),before:before.length,hugs:hugs.map(e=>e.kind),repeated:repeated.length};
+    c.enemies=initialEnemies;return result;
+  })()`,
+  );
+  assert.deepEqual(batch.ordinary, Array(6).fill('patrol'));
+  assert.equal(batch.before, 0);
+  assert.deepEqual(batch.hugs, Array(3).fill('hug'));
+  assert.equal(batch.repeated, 0);
+  pass(
+    'Initial library and central amplifiers; six ordinary spawns, three hugs at 80 seconds; three desktop viewports without scroll',
+  );
+}
+
+async function verifyCatFlow() {
+  for (const mobile of [false, true]) {
+    const page = await newPage(mobile ? 'catmob' : 'catpc', { mobile });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await until(
+      page,
+      '!document.querySelector(".explore-loader") || document.querySelector(".explore-loader").hidden',
+    );
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    await evaluate(
+      page,
+      `(() => {
+      const combat = testScene.combat;
+      const cat = combat.enemies.find(e => e.species === 'cat');
+      if (!cat) throw Error('No cat generated');
+      globalThis.catTest = cat;
+      globalThis.catStep = combat.update.bind(combat);
+      globalThis.catMap = combat.map();
+      combat.updateSpawns = () => [];
+      combat.enemies = [cat];
+      combat.update = () => ({damage:0, calmed:[], slowHit:false, tinnitusHit:false, soundWaveHit:false, amplifierWindups:[]});
+      const clear = p => !catMap.obstacles.some(r => p.x+20>r.x && p.x-20<r.x+r.width && p.y+20>r.y && p.y-20<r.y+r.height);
+      const origin = testScene.position;
+      let found;
+      for(let dy=-200;dy<=200&&!found;dy+=40) for(let dx=-200;dx<=200&&!found;dx+=40) {
+        const p={x:origin.x+dx,y:origin.y+dy};
+        if(p.x<100||p.y<100||p.x>catMap.width-100||p.y>catMap.height-200) continue;
+        if(Array.from({length:11},(_,i)=>({x:p.x,y:p.y+i*10})).every(clear)) found=p;
+      }
+      if(!found) throw Error('No open ambush test lane');
+      cat.position={...found};cat.home={...found};cat.state='lurking';cat.cooldown=0;
+      testScene.position={x:found.x,y:found.y+200};
+      testScene.aim=-Math.PI/2;
+      testScene.lighting.enabled=true;
+      testScene.view.resetCamera();
+      globalThis.stepCat = (ms) => {
+        let damage=0;
+        for(let t=0;t<ms;t+=20) damage+=catStep(Math.min(20,ms-t),testScene.position,true,false,true,catMap.obstacles,{x:0,y:0,width:catMap.width,height:catMap.height}).damage;
+        return damage;
+      };
+      stepCat(1000);
+    })()`,
+    );
+    assert.equal(await evaluate(page, 'catTest.state'), 'lurking');
+    await until(
+      page,
+      'testScene.view.enemyView.visuals.get(catTest.id)?.body.material.opacity === 0.18',
+    );
+    assert.equal(
+      await evaluate(page, 'testScene.view.enemyView.visuals.get(catTest.id).health.visible'),
+      false,
+    );
+    assert.equal(
+      await evaluate(page, 'testScene.view.enemyView.visuals.get(catTest.id).ring.visible'),
+      false,
+    );
+    assert.equal(
+      await evaluate(page, 'testScene.view.enemyView.visuals.get(catTest.id).billboard.scale.x'),
+      0.65,
+    );
+    const sizes = mobile
+      ? [[390, 844]]
+      : [
+          [1280, 720],
+          [1440, 900],
+          [1024, 576],
+        ];
+    for (const [width, height] of sizes) {
+      await command(
+        'Emulation.setDeviceMetricsOverride',
+        { width, height, deviceScaleFactor: 1, mobile },
+        page.id,
+      );
+      await delay(200);
+      assert(
+        await evaluate(
+          page,
+          'document.documentElement.scrollWidth===document.documentElement.clientWidth && document.documentElement.scrollHeight===document.documentElement.clientHeight',
+        ),
+      );
+      await screenshot(page, 'cat-lurking-' + width + 'x' + height);
+    }
+    await evaluate(
+      page,
+      'testScene.position={x:catTest.position.x,y:catTest.position.y+100};testScene.view.resetCamera();stepCat(20)',
+    );
+    assert.equal(await evaluate(page, 'catTest.state'), 'windup');
+    await until(page, 'testScene.view.enemyView.visuals.get(catTest.id).label.visible');
+    await screenshot(page, mobile ? 'cat-mobile-warning' : 'cat-desktop-warning');
+    await evaluate(page, 'stepCat(220)');
+    assert.equal(await evaluate(page, 'catTest.state'), 'pouncing');
+    assert.equal(await evaluate(page, 'stepCat(320)'), 14);
+    assert.equal(await evaluate(page, 'catTest.state'), 'vanished');
+    await until(page, '!testScene.view.enemyView.visuals.get(catTest.id).root.visible');
+    await screenshot(page, mobile ? 'cat-mobile-vanished' : 'cat-desktop-vanished');
+    await evaluate(page, 'stepCat(1200)');
+    assert.equal(await evaluate(page, 'catTest.state'), 'lurking');
+    await until(
+      page,
+      'testScene.view.enemyView.visuals.get(catTest.id).body.material.opacity===0.18',
+    );
+    pass(
+      (mobile ? 'Mobile' : 'Desktop') +
+        ' cat: proximity ambush, small silhouette, hidden markers, telegraph, fast pounce, single damage, invisibility and return; zero page scroll',
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  }
+}
+
 async function verifyDetectorFlow() {
   for (const mobile of [false, true]) {
     const page = await newPage(mobile ? 'detectmob' : 'detectpc', { mobile });
@@ -2182,8 +2372,12 @@ try {
     }
   });
 
-  if (rulerOnly) {
+  if (spawningOnly) {
+    await verifySpawningFlow();
+  } else if (rulerOnly) {
     await verifyRulerEffectFlow();
+  } else if (catOnly) {
+    await verifyCatFlow();
   } else if (quickNoteOnly) {
     await verifyQuickNoteFlow();
   } else if (detectorOnly) {

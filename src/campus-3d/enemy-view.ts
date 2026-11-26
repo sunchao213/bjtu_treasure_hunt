@@ -4,6 +4,8 @@ import {
   MONSTER_FRAME_SIZE,
   MONSTER_SPRITE_SHEETS,
   monsterAnimationFor,
+  monsterConcealed,
+  monsterOpacityFor,
 } from '../config/monster-sprites';
 import { COMBAT_RULES } from '../config/combat-config';
 import { enemyMaxHealth } from '../modules/world/night-systems';
@@ -15,6 +17,7 @@ interface EnemyVisual {
   root: THREE.Group;
   billboard: THREE.Group;
   body: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  healthBack: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   health: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   telegraph: THREE.Group;
@@ -76,6 +79,7 @@ export class CampusEnemyView {
     );
     if (this.disposed) return;
     for (const [key, text, color] of [
+      ['cat-windup', '猫咪扑击 · 侧移躲避', '#ffb3a0'],
       ['request', '长按 Q 抱抱', '#a5efbe'],
       ['windup', '即将攻击 · 躲开', '#ffb3a0'],
       ['amplifier-windup', '声波蓄力 · 横向躲避', '#ff8e96'],
@@ -170,6 +174,7 @@ export class CampusEnemyView {
       billboard,
       body,
       health,
+      healthBack: back,
       ring,
       telegraph,
       telegraphFill,
@@ -270,7 +275,14 @@ export class CampusEnemyView {
       }
       const warning = enemy.state === 'windup' || enemy.state === 'mutation-warning';
       const friendly = enemy.kind === 'hug' && !enemy.mutated;
-      const scaleFactor = enemy.mutated ? 1.18 : enemy.kind === 'amplifier' ? 1.12 : 1;
+      const isCat = enemy.kind === 'patrol' && enemy.species === 'cat';
+      const concealed = monsterConcealed(enemy);
+      const scaleFactor = isCat ? 1 : enemy.mutated ? 1.18 : enemy.kind === 'amplifier' ? 1.12 : 1;
+      v.body.material.transparent = true;
+      v.body.material.opacity = monsterOpacityFor(enemy);
+      v.body.material.alphaTest = concealed ? 0.01 : 0.4;
+      v.health.visible = v.healthBack.visible = v.ring.visible = !concealed;
+      v.billboard.scale.setScalar(isCat ? COMBAT_RULES.enemy.cat.scale : 1);
       v.body.scale.y = scaleFactor;
       v.body.scale.x = Math.sign(v.body.scale.x || 1) * scaleFactor;
       const ampCharging = enemy.kind === 'amplifier' && enemy.state === 'windup';
@@ -305,15 +317,17 @@ export class CampusEnemyView {
       }
       v.health.scale.x = Math.max(0, Math.min(1, enemy.health / enemyMaxHealth(enemy.kind)));
       const labelKey =
-        enemy.kind === 'amplifier' && enemy.state === 'windup'
-          ? enemy.windupLocked
-            ? 'amplifier-locked'
-            : 'amplifier-windup'
-          : enemy.state;
+        isCat && enemy.state === 'windup'
+          ? 'cat-windup'
+          : enemy.kind === 'amplifier' && enemy.state === 'windup'
+            ? enemy.windupLocked
+              ? 'amplifier-locked'
+              : 'amplifier-windup'
+            : enemy.state;
       const label = this.labels.get(labelKey);
       v.label.visible = !!label && enemy.state !== 'dead';
       if (label) v.label.material = label;
-      v.root.visible = frame.combat.visibleEnemies.includes(enemy.id);
+      v.root.visible = enemy.state !== 'vanished' && frame.combat.visibleEnemies.includes(enemy.id);
       if (enemy.state === 'dead') v.root.visible = v.root.visible && now - v.started < 1400;
       v.x = enemy.position.x;
       v.y = enemy.position.y;
