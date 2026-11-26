@@ -11,6 +11,7 @@ import './leaderboard.css';
 import './explore-loader.css';
 import './warehouse-panel.css';
 import './bag-panel.css';
+import './shop.css';
 import './immersive.css';
 import { bindMobileLayout, isTouchLayout, requestLandscape } from './modules/ui/mobile-layout';
 import { GameFullscreen } from './modules/ui/game-fullscreen';
