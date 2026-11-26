@@ -9,10 +9,10 @@ import {
   ITEM_DEFINITIONS,
   RAID_RULES,
 } from './config/game-config';
-import { renderShop, SHOP_EFFECTS } from './modules/ui/shop';
+import { renderShop, renderSkins, SHOP_EFFECTS } from './modules/ui/shop';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
-import { FORMAL_SAVE_KEY } from './modules/save/persistent-save';
+import { FORMAL_SAVE_KEY, SKIN_DEFINITIONS, type SkinId } from './modules/save/persistent-save';
 import { acquireSaveLock } from './modules/save/single-writer';
 import { mountShell } from './modules/ui/reference-shell';
 import { bindGameRules } from './modules/ui/game-rules';
@@ -434,6 +434,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let interacted = '';
     let searchProgress = 0;
     let buyingItem: string | null = null;
+    let buyingSkinId: SkinId | null = null;
+    const shopBusy = () => buyingItem !== null || buyingSkinId !== null;
     // F02：记录读条开始时的状态，用来判断读条为什么被取消。
     let extractionSnapshot: ExtractionSnapshot | null = null;
     let enteredExtractionZone = false;
@@ -457,13 +459,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       canEnter: () =>
         onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
         sceneReady &&
-        buyingItem === null &&
+        !shopBusy() &&
         controller.getView().phase === 'preparing' &&
         !controller.getView().isBusy,
       canPrepare: () =>
         onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
         sceneReady &&
-        buyingItem === null &&
+        !shopBusy() &&
         controller.getView().phase === 'preparing' &&
         !controller.getView().isBusy &&
         element<HTMLInputElement>('risk-consent').checked,
@@ -505,6 +507,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     applySettings();
     const scene = new WorldScene({
       displayName: user.displayName,
+      skinId: () => save.view().activeRaidSkinId ?? save.view().equippedSkinId,
       network,
       controller: activeController,
       inventory: activeInventory,
@@ -927,7 +930,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('inventory-panel').hidden = !playable;
       element('result-panel').hidden = !['settling', 'success', 'failed'].includes(view.phase);
       element<HTMLButtonElement>('start').disabled = !canStartRaid({
-        busy: view.isBusy || !sceneReady || buyingItem !== null,
+        busy: view.isBusy || !sceneReady || shopBusy(),
         consented: lobby.isJoined() || element<HTMLInputElement>('risk-consent').checked,
       });
       element('start').textContent = !sceneReady
@@ -995,7 +998,15 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         archive.warehouse,
         archive.currency,
         buyingItem,
-        view.phase === 'preparing' && !view.isBusy && !lobby.isLocked(),
+        view.phase === 'preparing' && !view.isBusy && !lobby.isLocked() && buyingSkinId === null,
+      );
+      renderSkins(
+        element('prep-view'),
+        archive.ownedSkinIds,
+        archive.equippedSkinId,
+        buyingSkinId,
+        archive.currency,
+        view.phase === 'preparing' && !view.isBusy && !lobby.isLocked() && buyingItem === null,
       );
       element('archive-detail').textContent = archive.unlockedChapterIds.length
         ? `已完成 ${archive.unlockedChapterIds.length} 章；当前任务：${activeChapter.title}；图鉴 ${archive.codexIds.length} 种。`
@@ -1215,6 +1226,49 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     element('shop-prepare').onclick = () =>
       document.querySelector<HTMLButtonElement>('[data-lobby-tab="prepare"]')!.click();
     element('prep-view').addEventListener('click', (event) => {
+      const skinButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
+        '[data-skin-action]',
+      );
+      if (skinButton && !skinButton.disabled && buyingSkinId === null) {
+        const skinId = skinButton.dataset.skinAction as SkinId;
+        const skin = SKIN_DEFINITIONS.find((entry) => entry.id === skinId);
+        const archive = save.view();
+        const owned = archive.ownedSkinIds.includes(skinId);
+        if (!skin || controller.getView().phase !== 'preparing' || lobby.isLocked()) return;
+        buyingSkinId = skinId;
+        element('shop-status').textContent = owned
+          ? `正在为你穿上${skin.name}…`
+          : `正在购买${skin.name}…`;
+        element('shop-status').dataset.state = 'pending';
+        render();
+        const change = owned ? save.equipSkin(skinId) : save.purchaseSkin(skinId);
+        void change
+          .then((result) => {
+            const success = typeof result === 'boolean' ? result : result.ok;
+            const message = success
+              ? owned
+                ? `已换上${skin.name}。`
+                : `已拥有${skin.name}，服装样式、发型和颜色都可以在大厅预览。`
+              : owned
+                ? '时装更换未保存，请重试。'
+                : `交子不足，${skin.name}未购买。`;
+            element('shop-status').textContent = message;
+            element('shop-status').dataset.state = success ? 'success' : 'error';
+            notify(message);
+          })
+          .catch((error: unknown) => {
+            element('shop-status').textContent =
+              error instanceof Error
+                ? `时装保存失败：${error.message}`
+                : '时装暂未保存，请检查网络后重试。';
+            element('shop-status').dataset.state = 'error';
+          })
+          .finally(() => {
+            buyingSkinId = null;
+            render();
+          });
+        return;
+      }
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-shop-buy]');
       if (!button || button.disabled || buyingItem !== null) return;
       const itemId = button.dataset.shopBuy!;
@@ -1253,7 +1307,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         !sceneReady ||
         !element<HTMLInputElement>('risk-consent').checked ||
         controller.getView().isBusy ||
-        buyingItem !== null
+        shopBusy()
       )
         return false;
       // Start playback within the click gesture, before fullscreen or save awaits.

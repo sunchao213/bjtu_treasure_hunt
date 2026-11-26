@@ -50,6 +50,7 @@ import {
   QUEST_CHAPTER_ID,
 } from '../modules/quests/quest-service';
 import { evidenceStoryBeat, steleStoryBeat } from '../modules/quests/chapter-content';
+import { DEFAULT_SKIN_ID, SKIN_DEFINITIONS, type SkinId } from '../modules/save/persistent-save';
 
 export interface KeyPrompt {
   readonly key: 'E' | 'Q';
@@ -58,6 +59,7 @@ export interface KeyPrompt {
 
 interface SceneServices {
   displayName?: string;
+  skinId?: () => SkinId;
   controller: RaidControllerPort;
   inventory: InventoryPort;
   /** 当前进行中的章节 id，由大厅按存档实时给出（章节推进后下一局自动换章）。 */
@@ -77,10 +79,22 @@ interface SceneServices {
 const ENTITY_DEPTH_BASE = 100;
 const NIGHT_MASK_DEPTH = 4000;
 const EFFECTS_DEPTH = 4100;
-const PLAYER_ATTACK_FRAME = { width: 314, height: 167 };
+const PLAYER_ATTACK_FRAME = { frameWidth: 314, frameHeight: 167 };
+const PLAYER_STATES = ['idle', 'walk', 'attack', 'hurt', 'death'] as const;
+const WARDROBE_DIRECTIONS = [
+  'down',
+  'down-right',
+  'right',
+  'up-right',
+  'up',
+  'up-left',
+  'left',
+  'down-left',
+] as const;
+const UNIFORM_DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 
 type CampusBuilding = (typeof WORLD.buildings)[number];
-type PlayerDirection = 'up' | 'down' | 'left' | 'right';
+type PlayerDirection = (typeof WARDROBE_DIRECTIONS)[number];
 type PlayerAction = 'none' | 'attack' | 'hurt' | 'death';
 
 const DEFAULT_BUILDING_PALETTE = {
@@ -114,6 +128,7 @@ export class WorldScene extends Phaser.Scene {
   private playerSprite?: Phaser.GameObjects.Sprite;
   private playerFacing: PlayerDirection = 'down';
   private playerAnimationKey = '';
+  private playerSkinId: SkinId = DEFAULT_SKIN_ID;
   private playerAction: PlayerAction = 'none';
   private playerActionMs = 0;
   private aura?: Phaser.GameObjects.Arc;
@@ -145,7 +160,7 @@ export class WorldScene extends Phaser.Scene {
   >();
   private readonly remotePlayers = new Map<
     string,
-    { target: Point; aim: number; object: Phaser.GameObjects.Container }
+    { target: Point; aim: number; object: Phaser.GameObjects.Container; skinId: SkinId }
   >();
   private readonly nameplates = new Map<
     Phaser.GameObjects.Container,
@@ -189,6 +204,7 @@ export class WorldScene extends Phaser.Scene {
 
   preload(): void {
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+      if (SKIN_DEFINITIONS.some((skin) => file.key.startsWith(`${skin.id}-`))) return;
       this.startupFailed = true;
       this.services.onLoadError?.(`校园资源加载失败（${file.key}），请检查网络并重新加载。`);
     });
@@ -198,17 +214,22 @@ export class WorldScene extends Phaser.Scene {
       frameWidth: 256,
       frameHeight: 256,
     });
-    for (const state of ['idle', 'walk', 'attack', 'hurt', 'death']) {
+    for (const state of PLAYER_STATES) {
       this.load.spritesheet(
         `player-${state}`,
         assetUrl(`assets/characters/player/player-${state}.png`),
-        { frameWidth: 128, frameHeight: 160 },
+        state === 'attack' ? PLAYER_ATTACK_FRAME : { frameWidth: 128, frameHeight: 160 },
       );
     }
-    this.load.spritesheet('player-attack', assetUrl('assets/characters/player/player-attack.png'), {
-      frameWidth: PLAYER_ATTACK_FRAME.width,
-      frameHeight: PLAYER_ATTACK_FRAME.height,
-    });
+    for (const skin of SKIN_DEFINITIONS.slice(1)) {
+      for (const state of PLAYER_STATES) {
+        this.load.spritesheet(
+          `${skin.id}-${state}`,
+          assetUrl(`assets/characters/skins/${skin.id}-${state}.png`),
+          state === 'attack' ? PLAYER_ATTACK_FRAME : { frameWidth: 128, frameHeight: 160 },
+        );
+      }
+    }
     this.load.spritesheet(
       'tiny-town-sheet',
       assetUrl('assets/environment/kenney-tiny-town/Tilemap/tilemap_packed.png'),
@@ -256,15 +277,23 @@ export class WorldScene extends Phaser.Scene {
       }
       if (!snapshot.connected) continue;
       received.add(snapshot.playerId);
-      const existing = this.remotePlayers.get(snapshot.playerId);
+      const skinId = this.validSkinId(snapshot.skinId);
+      let existing = this.remotePlayers.get(snapshot.playerId);
+      if (existing && existing.skinId !== skinId) {
+        existing.object.destroy();
+        this.remotePlayers.delete(snapshot.playerId);
+        existing = undefined;
+      }
       if (existing) {
         existing.target = { ...snapshot.position };
         existing.aim = snapshot.aim;
         this.nameplates.get(existing.object)?.text.setText(snapshot.displayName.slice(0, 18));
         continue;
       }
-      const sprite = this.createPlayerSprite();
-      sprite.anims.play(`player-idle-${this.directionFromAngle(snapshot.aim)}`);
+      const sprite = this.createPlayerSprite(skinId);
+      sprite.anims.play(
+        `${this.playerKey(skinId)}idle-${this.directionFromAngle(snapshot.aim, skinId)}`,
+      );
       const marker = this.add
         .container(snapshot.position.x, snapshot.position.y, [
           this.add.ellipse(0, 10, 25, 9, 0x061f23, 0.35),
@@ -277,6 +306,7 @@ export class WorldScene extends Phaser.Scene {
         target: { ...snapshot.position },
         aim: snapshot.aim,
         object: marker,
+        skinId,
       });
     }
     for (const [playerId, remote] of this.remotePlayers) {
@@ -512,7 +542,7 @@ export class WorldScene extends Phaser.Scene {
       } else if (pointer && !touchLayout) {
         this.aimAtPointer(pointer);
       }
-      this.playerFacing = this.directionFromAngle(this.aim);
+      this.playerFacing = this.directionFromAngle(this.aim, this.playerSkinId);
       this.updatePlayerAnimation(this.moving);
       this.services.onInput?.({
         moveX: Math.max(-1, Math.min(1, movement.x)),
@@ -623,7 +653,7 @@ export class WorldScene extends Phaser.Scene {
       } else if (pointer && !touchLayout) {
         this.aimAtPointer(pointer);
       }
-      this.playerFacing = this.directionFromAngle(this.aim);
+      this.playerFacing = this.directionFromAngle(this.aim, this.playerSkinId);
       this.updatePlayerAnimation(this.moving);
       this.services.onInput?.({
         moveX: Math.max(-1, Math.min(1, movement.x)),
@@ -821,32 +851,47 @@ export class WorldScene extends Phaser.Scene {
       { action: 'hurt', frames: 5, frameRate: 10, repeat: 0 },
       { action: 'death', frames: 5, frameRate: 8, repeat: 0 },
     ] as const;
-    const directions: PlayerDirection[] = ['up', 'down', 'left', 'right'];
     for (const definition of definitions) {
-      for (const [row, direction] of directions.entries()) {
-        const key = `player-${definition.action}-${direction}`;
-        if (this.anims.exists(key)) {
-          continue;
+      for (const skin of SKIN_DEFINITIONS) {
+        const directions = skin.id === DEFAULT_SKIN_ID ? UNIFORM_DIRECTIONS : WARDROBE_DIRECTIONS;
+        const prefix = this.playerKey(skin.id);
+        const texture = `${prefix}${definition.action}`;
+        if (!this.textures.exists(texture)) continue;
+        for (const [row, direction] of directions.entries()) {
+          const key = `${prefix}${definition.action}-${direction}`;
+          if (this.anims.exists(key)) continue;
+          this.anims.create({
+            key,
+            frames: this.anims.generateFrameNumbers(texture, {
+              start: row * definition.frames,
+              end: row * definition.frames + definition.frames - 1,
+            }),
+            frameRate: definition.frameRate,
+            repeat: definition.repeat,
+          });
         }
-        this.anims.create({
-          key,
-          frames: this.anims.generateFrameNumbers(`player-${definition.action}`, {
-            start: row * definition.frames,
-            end: row * definition.frames + definition.frames - 1,
-          }),
-          frameRate: definition.frameRate,
-          repeat: definition.repeat,
-        });
       }
     }
   }
 
-  private createPlayerSprite(): Phaser.GameObjects.Sprite {
+  private createPlayerSprite(skinId: SkinId = DEFAULT_SKIN_ID): Phaser.GameObjects.Sprite {
     return this.add
-      .sprite(0, 0, 'player-idle', 0)
+      .sprite(0, 0, `${this.playerKey(skinId)}idle`, 0)
       .setName('sprite')
       .setOrigin(0.5, 1)
       .setScale(0.44);
+  }
+
+  private playerKey(skinId: SkinId): string {
+    return skinId === DEFAULT_SKIN_ID ? 'player-' : `${skinId}-`;
+  }
+
+  private validSkinId(skinId: unknown): SkinId {
+    const skin = SKIN_DEFINITIONS.find((entry) => entry.id === skinId)?.id;
+    return skin &&
+      PLAYER_STATES.every((state) => this.textures.exists(`${this.playerKey(skin)}${state}`))
+      ? skin
+      : DEFAULT_SKIN_ID;
   }
 
   private updateRoomPlayers(deltaMs: number): void {
@@ -859,7 +904,7 @@ export class WorldScene extends Phaser.Scene {
       remote.object.y += dy * blend;
       remote.object.setDepth(this.entityDepth(remote.object.y));
       const sprite = remote.object.getByName<Phaser.GameObjects.Sprite>('sprite');
-      const key = `player-${moving ? 'walk' : 'idle'}-${this.directionFromAngle(remote.aim)}`;
+      const key = `${this.playerKey(remote.skinId)}${moving ? 'walk' : 'idle'}-${this.directionFromAngle(remote.aim, remote.skinId)}`;
       if (sprite && sprite.anims.currentAnim?.key !== key) {
         sprite.anims.play(key, true);
       }
@@ -870,7 +915,7 @@ export class WorldScene extends Phaser.Scene {
     action: Exclude<PlayerAction, 'none'> | 'idle' | 'walk',
     direction: PlayerDirection,
   ): void {
-    const key = `player-${action}-${direction}`;
+    const key = `${this.playerKey(this.playerSkinId)}${action}-${direction}`;
     if (!this.playerSprite || !this.anims.exists(key) || this.playerAnimationKey === key) {
       return;
     }
@@ -906,7 +951,11 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private directionFromAngle(angle: number): PlayerDirection {
+  private directionFromAngle(angle: number, skinId: SkinId): PlayerDirection {
+    if (skinId !== DEFAULT_SKIN_ID) {
+      const octant = Math.round((Math.PI / 2 - angle) / (Math.PI / 4));
+      return WARDROBE_DIRECTIONS[(octant + 8) % 8] ?? 'down';
+    }
     const horizontal = Math.cos(angle);
     const vertical = Math.sin(angle);
     if (Math.abs(horizontal) > Math.abs(vertical)) {
@@ -1566,6 +1615,14 @@ export class WorldScene extends Phaser.Scene {
     this.playerAction = 'none';
     this.playerActionMs = 0;
     this.playerAnimationKey = '';
+    this.playerSkinId = this.validSkinId(
+      raidId
+        ? roundId
+          ? network?.getLocalPlayer()?.skinId
+          : this.services.skinId?.()
+        : DEFAULT_SKIN_ID,
+    );
+    this.playerSprite?.setTexture(`${this.playerKey(this.playerSkinId)}idle`);
     this.lastNightDraw = -Infinity;
     this.player?.setPosition(this.position.x, this.position.y);
     this.player?.setDepth(this.entityDepth(this.position.y));

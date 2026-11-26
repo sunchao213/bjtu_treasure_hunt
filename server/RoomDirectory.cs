@@ -93,7 +93,7 @@ sealed class RoomDirectory
         }
     }
 
-    public RoomAction Start(Client client, Func<string, bool> canPlayOnline)
+    public RoomAction Start(Client client, Func<string, bool> canPlayOnline, Func<string, string> getEquippedSkin)
     {
         lock (Gate)
         {
@@ -105,12 +105,15 @@ sealed class RoomDirectory
             if (locked.Length > 0) return new("ONLINE_LOCKED", $"以下成员尚未通关全部三个章节并保存进度：{string.Join("、", locked)}。未开局，未扣除带入物品。");
             if (room.Clients.Values.Any(peer => peer.Id != room.HostId && !peer.Ready))
                 return new("NOT_ALL_READY", "还有队友未准备，请等待所有成员准备。");
+            foreach (var peer in room.Clients.Values)
+                peer.SkinId = getEquippedSkin(peer.AccountId);
             room.Started = true;
             room.RoundId = Guid.NewGuid().ToString("N");
             room.Loot = new RoomLoot();
             var seat = 0;
             foreach (var peer in room.Clients.Values)
             {
+                peer.RaidSkinId = peer.SkinId;
                 peer.Finished = false;
                 peer.Position = CampusWorld.Spawn(seat++);
                 peer.Aim = -MathF.PI / 2;

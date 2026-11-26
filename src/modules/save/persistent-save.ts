@@ -11,12 +11,27 @@ import { retainSettlementItems } from './settlement-retention';
 
 // Keep the storage key stable so existing browsers can migrate in place.
 export const FORMAL_SAVE_KEY = 'bjtu-treasure-hunt:save:v2';
-export const FORMAL_SCHEMA_VERSION = 3 as const;
+export const FORMAL_SCHEMA_VERSION = 4 as const;
+export const DEFAULT_SKIN_ID = 'school-uniform';
+const WARDROBE_SKIN_PRICE = 688;
+export const SKIN_DEFINITIONS = [
+  { id: DEFAULT_SKIN_ID, name: '默认校服', price: 0 },
+  { id: 'red-trailblazer', name: '赤焰探险少女', price: WARDROBE_SKIN_PRICE },
+  { id: 'lavender-mage', name: '星灯魔法师', price: WARDROBE_SKIN_PRICE },
+  { id: 'navy-adventurer', name: '金纹探险家', price: WARDROBE_SKIN_PRICE },
+  { id: 'silver-researcher', name: '银发研究员', price: WARDROBE_SKIN_PRICE },
+  { id: 'lab-scientist', name: '白袍研究员', price: WARDROBE_SKIN_PRICE },
+  { id: 'orange-rescuer', name: '橙焰救援员', price: WARDROBE_SKIN_PRICE },
+] as const;
+export type SkinId = (typeof SKIN_DEFINITIONS)[number]['id'];
 
 export interface FormalSaveData {
   schemaVersion: typeof FORMAL_SCHEMA_VERSION;
   warehouse: ItemInstance[];
   currency: number;
+  ownedSkinIds: SkinId[];
+  equippedSkinId: SkinId;
+  activeRaidSkinId: SkinId | null;
   codexIds: string[];
   unlockedChapterIds: string[];
   activeRaid: { raidId: string; loadout: ItemInstance[] } | null;
@@ -24,9 +39,12 @@ export interface FormalSaveData {
   lastResult: RaidResult | null;
 }
 
-type PreviousSaveData = Omit<FormalSaveData, 'schemaVersion' | 'activeRaid'> & {
-  schemaVersion: 1 | 2;
-  activeRaid: { raidId: string } | null;
+type PreviousSaveData = Omit<
+  FormalSaveData,
+  'schemaVersion' | 'activeRaid' | 'ownedSkinIds' | 'equippedSkinId' | 'activeRaidSkinId'
+> & {
+  schemaVersion: 1 | 2 | 3;
+  activeRaid: { raidId: string; loadout?: ItemInstance[] } | null;
 };
 
 export type SaveImportResult = {
@@ -102,9 +120,16 @@ function validSettlementResult(result: RaidResult, loadout: readonly ItemInstanc
   );
 }
 
-function validData(value: unknown, version: 3): value is FormalSaveData;
-function validData(value: unknown, version: 1 | 2): value is PreviousSaveData;
-function validData(value: unknown, version: 1 | 2 | 3): value is FormalSaveData | PreviousSaveData {
+function isSkinId(value: unknown): value is SkinId {
+  return SKIN_DEFINITIONS.some((skin) => skin.id === value);
+}
+
+function validData(value: unknown, version: 4): value is FormalSaveData;
+function validData(value: unknown, version: 1 | 2 | 3): value is PreviousSaveData;
+function validData(
+  value: unknown,
+  version: 1 | 2 | 3 | 4,
+): value is FormalSaveData | PreviousSaveData {
   if (
     !record(value) ||
     value.schemaVersion !== version ||
@@ -113,6 +138,19 @@ function validData(value: unknown, version: 1 | 2 | 3): value is FormalSaveData 
     !uniqueStrings(value.codexIds) ||
     !uniqueStrings(value.unlockedChapterIds) ||
     !uniqueStrings(value.settledRaidIds) ||
+    !(
+      version < 4 ||
+      (Array.isArray(value.ownedSkinIds) &&
+        value.ownedSkinIds.every(isSkinId) &&
+        value.ownedSkinIds.includes(DEFAULT_SKIN_ID) &&
+        new Set(value.ownedSkinIds).size === value.ownedSkinIds.length &&
+        isSkinId(value.equippedSkinId) &&
+        value.ownedSkinIds.includes(value.equippedSkinId) &&
+        ((value.activeRaidSkinId === null && value.activeRaid === null) ||
+          (isSkinId(value.activeRaidSkinId) &&
+            value.activeRaid !== null &&
+            value.ownedSkinIds.includes(value.activeRaidSkinId))))
+    ) ||
     !(
       value.activeRaid === null ||
       (record(value.activeRaid) &&
@@ -135,7 +173,7 @@ function validData(value: unknown, version: 1 | 2 | 3): value is FormalSaveData 
   if (warehouseIds.size !== value.warehouse.length) {
     return false;
   }
-  if (version === 3 && value.activeRaid !== null) {
+  if (version >= 3 && value.activeRaid !== null) {
     const loadout = value.activeRaid.loadout;
     if (
       !Array.isArray(loadout) ||
@@ -166,7 +204,7 @@ function validData(value: unknown, version: 1 | 2 | 3): value is FormalSaveData 
       lastResult.outcome === 'success' &&
       !lastResult.items.every(
         (item) =>
-          (version === 3 && item.origin.kind === 'carry-in') ||
+          (version >= 3 && item.origin.kind === 'carry-in') ||
           (item.origin.kind === 'raid-loot' && item.origin.obtainedInRaidId === lastResult.raidId),
       )
     ) {
@@ -191,6 +229,9 @@ function decodeFormal(raw: string): { data: FormalSaveData; sourceSchemaVersion:
       },
       sourceSchemaVersion: FORMAL_SCHEMA_VERSION,
     };
+  }
+  if (validData(value, 3)) {
+    return { data: migratePrevious(value), sourceSchemaVersion: 3 };
   }
   if (validData(value, 2)) {
     return { data: migratePrevious(value), sourceSchemaVersion: 2 };
@@ -232,14 +273,22 @@ function migratePrevious(legacy: PreviousSaveData): FormalSaveData {
     schemaVersion: FORMAL_SCHEMA_VERSION,
     warehouse: structuredClone(legacy.warehouse),
     currency: typeof legacy.currency === 'number' ? legacy.currency : 0,
+    ownedSkinIds: [DEFAULT_SKIN_ID],
+    equippedSkinId: DEFAULT_SKIN_ID,
+    activeRaidSkinId: null,
     codexIds: [...legacy.codexIds],
     unlockedChapterIds: [...legacy.unlockedChapterIds],
     activeRaid: null,
     settledRaidIds: [...legacy.settledRaidIds],
     lastResult: legacy.lastResult ? structuredClone(legacy.lastResult) : null,
   };
-  // Old active raids have no trustworthy carry-in manifest; never guess returns.
-  if (legacy.activeRaid) {
+  if (legacy.activeRaid?.loadout && legacy.schemaVersion === 3) {
+    migrated.activeRaid = {
+      raidId: legacy.activeRaid.raidId,
+      loadout: structuredClone(legacy.activeRaid.loadout),
+    };
+    migrated.activeRaidSkinId = DEFAULT_SKIN_ID;
+  } else if (legacy.activeRaid) {
     migrated.settledRaidIds.push(legacy.activeRaid.raidId);
     migrated.lastResult = {
       raidId: legacy.activeRaid.raidId,
@@ -307,6 +356,7 @@ export class PersistentSave implements SavePort {
     }
     const next = this.view();
     next.activeRaid = null;
+    next.activeRaidSkinId = null;
     next.settledRaidIds.push(active.raidId);
     next.lastResult = {
       raidId: active.raidId,
@@ -346,6 +396,7 @@ export class PersistentSave implements SavePort {
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
     next.activeRaid = { raidId, loadout: structuredClone(loadout) };
+    next.activeRaidSkinId = this.data.equippedSkinId;
     this.commit(next);
     return loadout;
   }
@@ -383,6 +434,7 @@ export class PersistentSave implements SavePort {
       next.currency = retained.currency;
     }
     next.activeRaid = null;
+    next.activeRaidSkinId = null;
     next.settledRaidIds.push(result.raidId);
     next.lastResult = structuredClone(result);
     this.commit(next);
@@ -404,7 +456,11 @@ export class PersistentSave implements SavePort {
   }
 
   reset(): void {
-    this.commit(this.initial());
+    this.commit({
+      ...this.initial(),
+      ownedSkinIds: [...this.data.ownedSkinIds],
+      equippedSkinId: this.data.equippedSkinId,
+    });
   }
 
   purchaseItem(
@@ -428,6 +484,32 @@ export class PersistentSave implements SavePort {
     return { ok: true, value: structuredClone(item) };
   }
 
+  purchaseSkin(skinId: string): { ok: boolean; owned: boolean } {
+    const skin = SKIN_DEFINITIONS.find((entry) => entry.id === skinId);
+    if (!skin || this.data.activeRaid) return { ok: false, owned: false };
+    if (this.data.ownedSkinIds.includes(skin.id)) return { ok: true, owned: true };
+    if (this.data.currency < skin.price) return { ok: false, owned: false };
+    const next = this.view();
+    next.currency -= skin.price;
+    next.ownedSkinIds.push(skin.id);
+    this.commit(next);
+    return { ok: true, owned: true };
+  }
+
+  equipSkin(skinId: string): boolean {
+    if (
+      this.data.activeRaid ||
+      !isSkinId(skinId) ||
+      !this.data.ownedSkinIds.includes(skinId) ||
+      this.data.equippedSkinId === skinId
+    )
+      return false;
+    const next = this.view();
+    next.equippedSkinId = skinId;
+    this.commit(next);
+    return true;
+  }
+
   private commit(next: FormalSaveData): void {
     if (!validData(next, FORMAL_SCHEMA_VERSION)) {
       throw new Error('Refusing to commit invalid formal save data.');
@@ -441,6 +523,9 @@ export class PersistentSave implements SavePort {
       schemaVersion: FORMAL_SCHEMA_VERSION,
       warehouse: [],
       currency: 0,
+      ownedSkinIds: [DEFAULT_SKIN_ID],
+      equippedSkinId: DEFAULT_SKIN_ID,
+      activeRaidSkinId: null,
       codexIds: [],
       unlockedChapterIds: [],
       activeRaid: null,

@@ -257,9 +257,13 @@ try {
   assert.equal(initial.data, null);
   assert.equal(initial.revision, 0);
   const cloudData = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     warehouse: [],
     codexIds: ['school-badge'],
+    currency: 0,
+    ownedSkinIds: ['school-uniform', 'red-trailblazer'],
+    equippedSkinId: 'red-trailblazer',
+    activeRaidSkinId: null,
     unlockedChapterIds: [],
     activeRaid: null,
     settledRaidIds: [
@@ -287,6 +291,16 @@ try {
     'cloud snapshots larger than the auth request body limit are accepted',
   );
   assert.equal((await saved.json()).revision, 1);
+  for (const invalidFashion of [
+    { ...cloudData, equippedSkinId: 'https://example.invalid/skin.png' },
+    { ...cloudData, equippedSkinId: 'silver-researcher' },
+    { ...cloudData, equippedSkinId: 'school-uniform', activeRaidSkinId: 'red-trailblazer' },
+  ]) {
+    assert.equal(
+      (await cloudPost('', { ...write, revision: 1, data: invalidFashion }, cookie)).status,
+      400,
+    );
+  }
   const selfProfile = await (
     await fetch(`${base}/api/profile/self`, { headers: { Cookie: cookie } })
   ).json();

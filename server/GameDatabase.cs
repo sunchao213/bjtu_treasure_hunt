@@ -165,6 +165,21 @@ sealed partial class GameDatabase
         return OnlineChapters.All(completed.Contains);
     }
 
+    public string GetEquippedSkinId(string userId)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT data FROM player_saves WHERE user_id=$user;";
+        command.Parameters.AddWithValue("$user", userId);
+        if (command.ExecuteScalar() is not string raw) return "school-uniform";
+        using var document = JsonDocument.Parse(raw);
+        var data = document.RootElement;
+        if (!data.TryGetProperty("schemaVersion", out var version) || !version.TryGetInt32(out var schema) || schema != 4
+            || !data.TryGetProperty("equippedSkinId", out var skin) || skin.ValueKind != JsonValueKind.String
+            || !SaveValidation.IsSkinId(skin.GetString())) return "school-uniform";
+        return skin.GetString()!;
+    }
+
     public object WriteSave(LoginSession session, SaveWriteRequest input)
     {
         using var connection = Open();

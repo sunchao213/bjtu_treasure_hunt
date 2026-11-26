@@ -11,6 +11,7 @@ export interface NetworkPoint {
 export interface PlayerSnapshot {
   readonly playerId: string;
   readonly displayName: string;
+  readonly skinId?: string;
   readonly position: NetworkPoint;
   readonly aim: number;
   readonly health: number;
@@ -207,6 +208,7 @@ export function isServerMessage(value: unknown): value is ServerMessage {
         isRecord(player) &&
         nonEmpty(player.playerId) &&
         nonEmpty(player.displayName) &&
+        (player.skinId === undefined || typeof player.skinId === 'string') &&
         isPoint(player.position) &&
         Number.isFinite(player.aim) &&
         Number.isFinite(player.health) &&

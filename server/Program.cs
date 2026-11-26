@@ -217,6 +217,8 @@ app.Map("/ws", async context =>
                 case "transfer-host":
                     if (type is "create-room" or "join-room" or "set-ready" or "start-game")
                     {
+                        if (type is "create-room" or "join-room")
+                            client.SkinId = database.GetEquippedSkinId(session.User.Id);
                         try
                         {
                             if (!database.CanPlayOnline(session.User.Id))
@@ -252,7 +254,7 @@ app.Map("/ws", async context =>
                             "create-room" => rooms.Create(client),
                             "join-room" => rooms.Join(client, ReadString(root, "roomId", "")),
                             "set-ready" => rooms.Ready(client, root.GetProperty("ready").GetBoolean()),
-                            "start-game" => rooms.Start(client, database.CanPlayOnline),
+                            "start-game" => rooms.Start(client, database.CanPlayOnline, database.GetEquippedSkinId),
                             "room-settings" => rooms.Settings(client, root.GetProperty("maxPlayers").GetInt32(), root.GetProperty("admissionOpen").GetBoolean()),
                             "transfer-host" => rooms.TransferHost(client, ReadString(root, "playerId", "")),
                             _ => rooms.Finish(client, ReadString(root, "roundId", "")),
@@ -436,6 +438,7 @@ static async Task BroadcastRoom(string roomId, Room room, RoomDirectory rooms, J
                 connected = client.Socket.State == WebSocketState.Open,
                 ready = client.Ready,
                 finished = client.Finished,
+                skinId = room.Started ? client.RaidSkinId : client.SkinId,
             }).ToArray(),
         };
     }
@@ -485,6 +488,8 @@ sealed class Client(WebSocket socket, string id)
     public string? RoomId { get; set; }
     public bool Ready { get; set; }
     public bool Finished { get; set; }
+    public string SkinId { get; set; } = "school-uniform";
+    public string RaidSkinId { get; set; } = "school-uniform";
     public SemaphoreSlim SendGate { get; } = new(1, 1);
 }
 

@@ -1,3 +1,5 @@
+import { SKIN_DEFINITIONS } from '../save/persistent-save';
+
 type ApiRecord = Record<string, unknown>;
 type Friend = { uid: string; displayName: string; status: string; incoming: boolean };
 
@@ -33,6 +35,12 @@ export function bindSocialPanels(): void {
     profileStatus.textContent = '正在读取档案…';
     try {
       const profile = await api('/api/profile/self');
+      const save =
+        typeof profile.save === 'object' && profile.save !== null
+          ? (profile.save as ApiRecord)
+          : {};
+      node('profile-outfit').textContent =
+        `当前穿着 ${SKIN_DEFINITIONS.find((skin) => skin.id === save.equippedSkinId)?.name ?? SKIN_DEFINITIONS[0].name}`;
       node<HTMLInputElement>('profile-public').checked = profile.publicCollections === true;
       history.replaceChildren();
       const raids = Array.isArray(profile.raids) ? profile.raids : [];
@@ -185,6 +193,7 @@ export function bindSocialPanels(): void {
   };
 
   node<HTMLButtonElement>('profile-refresh').onclick = () => void loadProfile();
+  document.querySelector('[data-lobby-tab="profile"]')?.addEventListener('click', loadProfile);
   node<HTMLInputElement>('profile-public').onchange = async (event) => {
     const publicCollections = (event.currentTarget as HTMLInputElement).checked;
     try {

@@ -1203,16 +1203,88 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   max-width: 100%;
   min-height: 0;
 }
+.lobby-panel[data-lobby-panel='shop'] {
+  --shop-gold: #efcc8d;
+  --shop-bronze: #966139;
+  --shop-corner: #edb65e;
+  --shop-pixel-corners:
+    linear-gradient(var(--shop-corner), var(--shop-corner)) top left / 8px 2px,
+    linear-gradient(var(--shop-corner), var(--shop-corner)) top left / 2px 8px,
+    linear-gradient(var(--shop-corner), var(--shop-corner)) top right / 8px 2px,
+    linear-gradient(var(--shop-corner), var(--shop-corner)) top right / 2px 8px,
+    linear-gradient(var(--shop-corner), var(--shop-corner)) bottom left / 8px 2px,
+    linear-gradient(var(--shop-corner), var(--shop-corner)) bottom left / 2px 8px,
+    linear-gradient(var(--shop-corner), var(--shop-corner)) bottom right / 8px 2px,
+    linear-gradient(var(--shop-corner), var(--shop-corner)) bottom right / 2px 8px;
+  background:
+    radial-gradient(ellipse at 48% 8%, #a9622326, transparent 62%),
+    repeating-linear-gradient(90deg, #9e67320d 0 1px, transparent 1px 58px),
+    repeating-linear-gradient(0deg, #09060566 0 2px, transparent 2px 27px), #17100e;
+}
+.shop-heading {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 68px;
+  padding: 10px 0;
+  border-color: #70482b;
+}
+.lobby-panel .shop-heading h2 {
+  color: var(--shop-gold);
+  font-size: clamp(22px, 3cqw, 28px);
+  text-shadow: 2px 2px #0e0806;
+}
 .shop-wallet {
-  color: #d1ad6a;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--shop-bronze);
+  background: #241711;
+  box-shadow:
+    0 0 0 2px #110b08,
+    inset 0 0 0 2px #452c1b;
+  color: var(--shop-gold);
   white-space: nowrap;
 }
 .shop-wallet b {
-  font-size: 24px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.shop-coin {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  background: linear-gradient(140deg, #fff0aa, #ce8b36 70%, #834623);
+  clip-path: polygon(
+    25% 0,
+    75% 0,
+    75% 15%,
+    100% 15%,
+    100% 85%,
+    75% 85%,
+    75% 100%,
+    25% 100%,
+    25% 85%,
+    0 85%,
+    0 15%,
+    25% 15%
+  );
+}
+.shop-coin::after {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border: 1px solid #ab6427;
+  background: #48301e;
 }
 .shop-status {
-  min-height: 24px;
-  color: #a4b3a6;
+  min-height: 21px;
+  margin: 5px 0;
+  color: #d9b992;
+  font-size: 13px;
   line-height: 1.6;
 }
 .shop-status[data-state='error'] {
@@ -1266,6 +1338,172 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
 .shop-card-footer small {
   font-size: 12px;
   font-weight: 400;
+}
+.shop-supplies-title {
+  margin: 24px 0 0;
+  color: var(--shop-gold);
+}
+.skin-store {
+  position: relative;
+  padding: clamp(10px, 2cqw, 22px);
+  border: 2px solid #754321;
+  background: var(--shop-pixel-corners), linear-gradient(155deg, #3b2418, #211410 55%, #321e15);
+  background-repeat: no-repeat;
+  box-shadow:
+    0 0 0 2px #100905,
+    0 4px #0b0705,
+    inset 0 0 0 1px #321c10,
+    inset 0 0 0 3px #92633c;
+}
+.skin-store-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 16px;
+}
+.skin-store-heading h3 {
+  margin: 0;
+  padding: 5px 16px 6px;
+  border: 1px solid var(--shop-bronze);
+  background: var(--shop-pixel-corners), linear-gradient(#362317, #1d130f);
+  background-repeat: no-repeat;
+  box-shadow:
+    0 2px #120906,
+    inset 0 0 0 2px #1a100b;
+  color: var(--shop-gold);
+  font-size: 21px;
+  text-shadow: 2px 2px #0f0806;
+}
+.skin-store-heading p {
+  margin: 0;
+  color: #cfad89;
+  font-size: 12px;
+}
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(138px, 100%), 1fr));
+  gap: clamp(9px, 1.4cqw, 14px);
+}
+.skin-card {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+  padding: 2px;
+  border: 1px solid var(--shop-bronze);
+  background: var(--shop-pixel-corners), #40291c;
+  background-repeat: no-repeat;
+  box-shadow:
+    0 3px #0d0806,
+    inset 0 0 0 1px #21130d;
+}
+.skin-card.is-equipped {
+  --shop-bronze: #de9e51;
+  --shop-corner: #ffd782;
+  box-shadow:
+    0 3px #0d0806,
+    0 0 9px #e7a34440;
+}
+.skin-display {
+  display: grid;
+  place-items: end center;
+  min-height: 120px;
+  padding-top: 7px;
+  border: 1px solid #130c09;
+  background:
+    radial-gradient(ellipse at 50% 78%, #573721, transparent 75%), linear-gradient(#241812, #150f0c);
+  box-shadow: inset 0 0 0 1px #583b29;
+}
+.skin-preview {
+  width: 96px;
+  height: 120px;
+  background-image: var(--skin-sheet);
+  background-repeat: no-repeat;
+  background-size: contain;
+  image-rendering: pixelated;
+}
+.skin-preview-uniform {
+  background-position: -480px 0;
+  background-size: 1920px 120px;
+  animation: skin-preview-idle 1250ms steps(5, jump-none) infinite;
+}
+@keyframes skin-preview-idle {
+  to {
+    background-position: -864px 0;
+  }
+}
+.skin-card-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid #120b08;
+  border-top-color: #745033;
+  background: linear-gradient(#342218, #221611);
+  text-align: center;
+}
+.skin-card-info h4 {
+  margin: 0;
+  color: #f1d7ac;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.skin-price {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--shop-gold);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.skin-card-state {
+  margin-bottom: 2px;
+  color: #dbbe94;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.skin-card-state:empty {
+  display: none;
+}
+.skin-card.is-equipped .skin-card-state {
+  color: #ffd086;
+}
+.skin-action {
+  min-width: 0;
+  min-height: 35px;
+  margin-top: auto;
+  padding: 5px 4px;
+  border: 1px solid #c48854;
+  background: linear-gradient(#70352a, #481d18);
+  box-shadow:
+    inset 0 0 0 2px #421c16,
+    0 2px #160a07;
+  color: #ffe2b6;
+  font-family: inherit;
+  font-size: 12px;
+}
+.skin-action:enabled:hover {
+  background: linear-gradient(#925037, #652a23);
+  border-color: #f4bb73;
+}
+.skin-action:disabled {
+  opacity: 1;
+  border-color: #5f4736;
+  background: #2c201a;
+  box-shadow: inset 0 0 0 2px #1f1510;
+  color: #c7ae95;
+}
+@media (pointer: coarse) {
+  .skin-action {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skin-preview-uniform {
+    animation: none;
+  }
 }
 .lobby-commandbar {
   display: flex;

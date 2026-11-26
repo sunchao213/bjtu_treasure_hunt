@@ -1,4 +1,5 @@
 import type { ActionResult, ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
+import type { SkinId } from './persistent-save';
 import {
   FORMAL_SAVE_KEY,
   PersistentSave,
@@ -101,6 +102,15 @@ export class CloudSave implements SavePort {
       if (next.view().activeRaid) return { ok: false, error: 'INVALID_STATE' };
       return next.purchaseItem(itemId);
     }, true);
+  }
+  purchaseSkin(skinId: SkinId): Promise<{ ok: boolean; owned: boolean }> {
+    return this.update((next) => {
+      if (next.view().activeRaid) return { ok: false, owned: false };
+      return next.purchaseSkin(skinId);
+    }, true);
+  }
+  equipSkin(skinId: SkinId): Promise<boolean> {
+    return this.update((next) => next.equipSkin(skinId), true);
   }
 
   private update<T>(

@@ -25,7 +25,7 @@ export function prepViewMarkup(): string {
             <button class="lobby-nav-item" type="button" data-lobby-tab="warehouse">仓库</button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="profile">档案</button>
             <button class="lobby-nav-item" type="button" data-lobby-tab="social">好友与聊天 <span id="social-unread" aria-label="未读消息">0</span></button>
-            <button class="lobby-nav-item" type="button" data-lobby-tab="shop">道具商店</button>
+            <button class="lobby-nav-item" type="button" data-lobby-tab="shop">道具与时装</button>
             <p class="lobby-nav-label">系统</p>
             <button class="lobby-nav-item" type="button" data-lobby-tab="settings">设置</button>
             <div class="lobby-nav-footer"><span class="status-dot"></span>账号云存档<br /><small>准备 · 探索 · 撤离</small></div>
@@ -68,6 +68,7 @@ export function prepViewMarkup(): string {
           <section class="lobby-panel lobby-panel-wide" data-lobby-panel="profile" hidden aria-labelledby="lobby-profile-title">
             <div class="lobby-panel-heading"><div><p class="prep-kicker">个人记录</p><h2 id="lobby-profile-title">行动档案</h2></div><button id="profile-refresh" class="secondary" type="button">刷新档案</button></div>
             <p id="profile-status" class="lobby-panel-intro" role="status">正在读取档案…</p>
+            <p id="profile-outfit" class="lobby-panel-intro">当前穿着 默认校服</p>
             <label class="consent"><input id="profile-public" type="checkbox" />允许好友查看展示藏品与最近 20 局摘要</label>
             <h3>对局历史</h3><ol id="profile-history" class="profile-history"></ol>
           </section>

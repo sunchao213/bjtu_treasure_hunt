@@ -102,7 +102,7 @@ describe('formal persistence and migration', () => {
     }
   });
 
-  it('imports v1 reference data into v3 without changing the legacy key', async () => {
+  it('imports v1 reference data into v4 without changing the legacy key', async () => {
     const storage = new MemoryStorage();
     const reference = new ReferenceSave(storage);
     await reference.beginRaid('legacy', []);
@@ -110,10 +110,10 @@ describe('formal persistence and migration', () => {
     const legacyRaw = storage.getItem(SAVE_KEY);
 
     const formal = new PersistentSave(storage);
-    expect(formal.importReference()).toEqual({ sourceSchemaVersion: 1, targetSchemaVersion: 3 });
+    expect(formal.importReference()).toEqual({ sourceSchemaVersion: 1, targetSchemaVersion: 4 });
     expect(storage.getItem(SAVE_KEY)).toBe(legacyRaw);
     expect(storage.getItem(FORMAL_SAVE_KEY)).not.toBeNull();
-    expect(formal.view().schemaVersion).toBe(3);
+    expect(formal.view().schemaVersion).toBe(4);
     expect(formal.view().warehouse).toEqual([result('legacy').items[3]]);
     expect(formal.view().currency).toBe(3 * RAID_RULES.values.uncommon);
     expect(new PersistentSave(storage).view().codexIds).toEqual(['school-badge']);
@@ -145,7 +145,7 @@ describe('formal persistence and migration', () => {
       storage.fail = false;
       const save = new PersistentSave(storage);
       expect(save.view()).toMatchObject({
-        schemaVersion: 3,
+        schemaVersion: 4,
         activeRaid: null,
         warehouse: old.warehouse,
         codexIds: old.codexIds,
@@ -163,7 +163,7 @@ describe('formal persistence and migration', () => {
         expect(save.view().lastResult).toEqual(old.lastResult);
       }
       const imported = new PersistentSave(new MemoryStorage());
-      expect(imported.importRaw(raw)).toEqual({ sourceSchemaVersion: 2, targetSchemaVersion: 3 });
+      expect(imported.importRaw(raw)).toEqual({ sourceSchemaVersion: 2, targetSchemaVersion: 4 });
       expect(imported.view()).toEqual(save.view());
     }
   });

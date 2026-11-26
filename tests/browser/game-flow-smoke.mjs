@@ -781,13 +781,69 @@ try {
   // Use the account that actually completed all three chapters as the host.
   await click(storyPage, '#next');
   host = storyPage;
+  const fashionUid = await evaluate(
+    host,
+    '(async () => (await (await fetch("/api/auth/me")).json()).user.id)()',
+  );
+  const fashionDb = new DatabaseSync(join(directory, 'data', 'game.db'));
+  try {
+    fashionDb
+      .prepare(
+        "UPDATE player_saves SET data=json_set(data, '$.currency', 728), revision=revision+1 WHERE user_id=?",
+      )
+      .run(fashionUid);
+  } finally {
+    fashionDb.close();
+  }
+  await evaluate(host, 'globalThis.reloadPending = true');
+  await command('Page.reload', {}, host.id);
+  await until(
+    host,
+    'typeof globalThis.reloadPending === "undefined" && document.querySelector("#game-load-status")?.dataset.state === "ready"',
+  );
+  if (await evaluate(host, 'document.querySelector("#prologue-skip")?.checkVisibility()'))
+    await click(host, '#prologue-skip');
+  await click(host, '[data-lobby-tab="shop"]');
+  await evaluate(host, 'document.querySelector("[data-lobby-panel=shop]").scrollTop = 0');
+  const wardrobeImages = await evaluate(
+    host,
+    `Promise.all(Array.from(document.querySelectorAll('.skin-preview'), element => new Promise(resolve => {
+      const source = getComputedStyle(element).backgroundImage.match(/url\\(["']?(.*?)["']?\\)/)?.[1];
+      if (!source) return resolve({ source: null, width: 0 });
+      const image = new Image();
+      image.onload = () => resolve({ source, width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => resolve({ source, width: 0 });
+      image.src = new URL(source, location.href).href;
+    })))`,
+  );
+  assert.equal(wardrobeImages.length, 7);
+  assert(
+    wardrobeImages.every((image) => image.width >= 128 && image.height >= 160),
+    JSON.stringify(wardrobeImages),
+  );
+  await screenshot(host, '14-fashion-wardrobe');
+  await click(host, '[data-skin-action="lavender-mage"]');
+  await until(host, 'document.querySelector("#shop-balance").textContent === "40"');
+  await until(
+    host,
+    'document.querySelector("[data-skin-card=school-uniform]").classList.contains("is-equipped")',
+  );
+  await click(host, '[data-skin-action="lavender-mage"]');
+  await until(
+    host,
+    'document.querySelector("[data-skin-card=lavender-mage]").classList.contains("is-equipped")',
+  );
+  await click(host, '[data-lobby-tab="profile"]');
+  await until(host, 'document.querySelector("#profile-outfit").textContent.includes("星灯魔法师")');
+  await click(host, '[data-lobby-tab="prepare"]');
+  await consent(host);
   await click(host, '#mode-room');
   await until(host, '!document.querySelector("#network-create").disabled');
   await click(host, '#network-create');
   await until(host, '/^[0-9]{6}$/.test(document.querySelector("#room-state-title").textContent)');
   const code = await evaluate(host, 'document.querySelector("#room-state-title").textContent');
   const guest = await newPage('guest');
-  // Only the second account is a completed-progress fixture, in the isolated test DB.
+  // Only the guest uses a completed-progress fixture in the isolated test DB.
   const guestId = await evaluate(
     guest,
     '(async () => (await (await fetch("/api/auth/me")).json()).user.id)()',
@@ -884,6 +940,20 @@ try {
       await click(page, '#tutorial-skip');
   }
   const roomBefore = guest.frames.findLast((frame) => frame.type === 'room-state' && frame.started);
+  assert.equal(
+    roomBefore.players.find((player) => player.playerId === hostId).skinId,
+    'lavender-mage',
+  );
+  await attachScene(guest);
+  await until(
+    guest,
+    `testScene.remotePlayers.get('${hostId}')?.object.getByName('sprite').texture.key.startsWith('lavender-mage-')`,
+  );
+  await attachScene(host);
+  await until(host, "testScene.playerSprite.texture.key.startsWith('lavender-mage-')");
+  pass(
+    'Wardrobe: purchase without automatic equip, self-profile, and the same character on both browsers',
+  );
   const hostX = roomBefore.players.find((player) => player.playerId === hostId).position.x;
   await move(host);
   await delay(500);
@@ -1048,6 +1118,16 @@ try {
   );
 
   const mobile = await newPage('mobile', { mobile: true });
+  await click(mobile, '[data-lobby-tab="shop"]');
+  assert(
+    await evaluate(
+      mobile,
+      '(() => { const grid = document.querySelector(".skin-grid"); return grid.scrollWidth === grid.clientWidth && getComputedStyle(grid).gridTemplateColumns.split(" ").length >= 2; })()',
+    ),
+    'the wardrobe fits two or more columns without horizontal overflow on touch devices',
+  );
+  await screenshot(mobile, '15-mobile-wardrobe');
+  await click(mobile, '[data-lobby-tab="prepare"]');
   await consent(mobile);
   await click(mobile, '#start');
   await until(

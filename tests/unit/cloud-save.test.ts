@@ -5,12 +5,19 @@ import {
   HttpCloudSaveApi,
   type CloudSaveApi,
 } from '../../src/modules/save/cloud-save-api';
-import { FORMAL_SAVE_KEY, type FormalSaveData } from '../../src/modules/save/persistent-save';
+import {
+  DEFAULT_SKIN_ID,
+  FORMAL_SAVE_KEY,
+  type FormalSaveData,
+} from '../../src/modules/save/persistent-save';
 
 const empty = (): FormalSaveData => ({
-  schemaVersion: 3,
+  schemaVersion: 4,
   warehouse: [],
   currency: 0,
+  ownedSkinIds: [DEFAULT_SKIN_ID],
+  equippedSkinId: DEFAULT_SKIN_ID,
+  activeRaidSkinId: null,
   codexIds: [],
   unlockedChapterIds: [],
   activeRaid: null,
@@ -81,6 +88,24 @@ describe('cloud progress transactions', () => {
     expect(save.view().currency).toBe(0);
     expect(save.view().warehouse).toHaveLength(1);
     expect(api.write).toHaveBeenCalledTimes(1);
+    save.close();
+  });
+
+  it('persists fashion purchases once and restores the selected appearance before departure', async () => {
+    const api = endpoint({ ...empty(), currency: 928 });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    expect(await save.purchaseSkin('lavender-mage')).toEqual({ ok: true, owned: true });
+    expect(save.view()).toMatchObject({ currency: 240, equippedSkinId: DEFAULT_SKIN_ID });
+    expect(await save.purchaseSkin('lavender-mage')).toEqual({ ok: true, owned: true });
+    expect(save.view().currency).toBe(240);
+    expect(await save.equipSkin('lavender-mage')).toBe(true);
+    expect(save.view().equippedSkinId).toBe('lavender-mage');
+    expect(await save.equipSkin('silver-researcher')).toBe(false);
+    await save.beginRaid('fashion-locked-at-launch', []);
+    expect(save.view().activeRaidSkinId).toBe('lavender-mage');
+    expect(await save.equipSkin(DEFAULT_SKIN_ID)).toBe(false);
+    expect(await save.purchaseSkin('silver-researcher')).toEqual({ ok: false, owned: false });
+    expect(save.view().activeRaidSkinId).toBe('lavender-mage');
     save.close();
   });
 
@@ -182,7 +207,11 @@ describe('cloud progress transactions', () => {
   });
 
   it('recovers an interrupted raid on the server before exposing the recovered progress', async () => {
-    const api = endpoint({ ...empty(), activeRaid: { raidId: 'interrupted', loadout: [] } });
+    const api = endpoint({
+      ...empty(),
+      activeRaid: { raidId: 'interrupted', loadout: [] },
+      activeRaidSkinId: DEFAULT_SKIN_ID,
+    });
     const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
     expect(await save.recoverInterrupted()).toBe(true);
     expect(save.view().lastResult?.reason).toBe('interrupted');

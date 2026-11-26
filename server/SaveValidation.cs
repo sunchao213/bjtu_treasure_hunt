@@ -5,11 +5,20 @@ static class SaveValidation
 {
     public static bool IsValid(JsonElement data)
     {
-        if (data.ValueKind != JsonValueKind.Object || !data.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var version) || version != 3
+        if (data.ValueKind != JsonValueKind.Object || !data.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var version) || version is not (3 or 4)
             || !Array(data, "warehouse", out var warehouse) || !Items(warehouse, out var warehouseIds)
             || !Strings(data, "codexIds", out _) || !Strings(data, "unlockedChapterIds", out _)
             || !Strings(data, "settledRaidIds", out var settled)
             || !data.TryGetProperty("activeRaid", out var active) || !data.TryGetProperty("lastResult", out var last)) return false;
+        if (version == 4 && (!Strings(data, "ownedSkinIds", out var ownedSkinIds)
+            || !ownedSkinIds.Contains("school-uniform")
+            || ownedSkinIds.Any(id => !IsSkinId(id))
+            || !Text(data, "equippedSkinId", out var equippedSkinId) || !ownedSkinIds.Contains(equippedSkinId)
+            || !data.TryGetProperty("activeRaidSkinId", out var activeSkin)
+            || (active.ValueKind == JsonValueKind.Null
+                ? activeSkin.ValueKind != JsonValueKind.Null
+                : activeSkin.ValueKind != JsonValueKind.String
+                    || !ownedSkinIds.Contains(activeSkin.GetString()!)))) return false;
         if (active.ValueKind != JsonValueKind.Null)
         {
             if (!Text(active, "raidId", out var raidId) || settled.Contains(raidId)
@@ -29,6 +38,10 @@ static class SaveValidation
             return origin.GetProperty("kind").GetString() == "carry-in" || origin.GetProperty("obtainedInRaidId").GetString() == lastId;
         });
     }
+
+    public static bool IsSkinId(string? skin) =>
+        skin is "school-uniform" or "red-trailblazer" or "lavender-mage" or "navy-adventurer"
+            or "silver-researcher" or "lab-scientist" or "orange-rescuer";
 
     private static bool Text(JsonElement parent, string key, out string value)
     {

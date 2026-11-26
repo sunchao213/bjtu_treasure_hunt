@@ -133,9 +133,12 @@ async function connect(index) {
   );
   const opened = await (await cloudPost('/open', { clientId: randomUUID() })).json();
   const data = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     warehouse: [],
     currency: 0,
+    ownedSkinIds: ['school-uniform', 'red-trailblazer'],
+    equippedSkinId: 'red-trailblazer',
+    activeRaidSkinId: null,
     codexIds: [],
     unlockedChapterIds: [],
     activeRaid: null,
@@ -335,9 +338,14 @@ try {
   );
   assert.equal(lastState(host).started, false, 'a failed gate does not start the room');
   const restoreDb = new DatabaseSync(join(directory, 'game.db'));
+  const memberSaveWithSkin = {
+    ...memberSave,
+    ownedSkinIds: ['school-uniform', 'navy-adventurer'],
+    equippedSkinId: 'navy-adventurer',
+  };
   restoreDb
     .prepare('UPDATE player_saves SET data=? WHERE user_id=?')
-    .run(JSON.stringify(memberSave), members[1].accountId);
+    .run(JSON.stringify(memberSaveWithSkin), members[1].accountId);
   restoreDb.close();
   const started = await request(
     host,
@@ -355,6 +363,14 @@ try {
   await waitFor(
     () => members.every((peer) => lastState(peer).roundId === started.roundId),
     'same round delivered to all members',
+  );
+  assert(
+    members.every(
+      (peer) =>
+        lastState(peer).players.find((player) => player.playerId === members[1].id)?.skinId ===
+        'navy-adventurer',
+    ),
+    'every member sees the equipped outfit read from the save at round start',
   );
   const spawns = new Map(started.players.map((player) => [player.playerId, player.position]));
   assert.equal(
