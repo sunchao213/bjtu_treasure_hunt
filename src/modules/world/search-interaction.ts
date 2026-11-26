@@ -6,6 +6,7 @@ export class SearchInteraction {
   private startedAtMs = 0;
   private activeDurationMs: number;
   private nextDurationMs: number | null = null;
+  private activeUsesNextDuration = false;
   private readonly opened = new Set<string>();
   constructor(
     private readonly durationMs: number,
@@ -36,6 +37,7 @@ export class SearchInteraction {
       const applyNextDuration = durationOrApplyNext !== false;
       const baseDurationMs =
         typeof durationOrApplyNext === 'number' ? durationOrApplyNext : this.durationMs;
+      this.activeUsesNextDuration = applyNextDuration && this.nextDurationMs !== null;
       this.target = id;
       this.startedAtMs = this.clock();
       this.activeDurationMs =
@@ -45,6 +47,14 @@ export class SearchInteraction {
       if (applyNextDuration) this.nextDurationMs = null;
     }
     return true;
+  }
+  /** Read-only presentation state; the existing start/cancel rules own consumption. */
+  nextDurationState(): 'ready' | 'searching' | undefined {
+    return this.nextDurationMs !== null
+      ? 'ready'
+      : this.activeUsesNextDuration
+        ? 'searching'
+        : undefined;
   }
   progress(): number {
     return this.target === null
@@ -63,6 +73,7 @@ export class SearchInteraction {
   }
   cancel(): void {
     this.target = null;
+    this.activeUsesNextDuration = false;
     this.activeDurationMs = this.durationMs;
   }
   reset(): void {

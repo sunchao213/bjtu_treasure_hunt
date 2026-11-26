@@ -14,8 +14,14 @@ import { BandageHealingView } from './bandage-healing-view';
 import {
   BANDAGE_HEALING_EFFECT,
   COFFEE_HEALING_EFFECT,
+  DETECTOR_EFFECT,
+  QUICK_NOTE_EFFECT,
   UTILITY_ITEM_EFFECTS,
 } from '../config/item-effects';
+import { RulerEffectView } from './ruler-effect-view';
+import { RULER_EFFECT } from '../config/weapon-effects';
+import { QuickNoteEffectView } from './quick-note-effect-view';
+import { DetectorEffectView } from './detector-effect-view';
 import { UtilityItemEffectsView } from './utility-item-effects-view';
 import type { StoryTrigger } from '../modules/world/story-triggers';
 
@@ -109,6 +115,9 @@ export class CampusView implements WorldView {
   private treeView?: CampusTreeView;
   private bandageHealing?: BandageHealingView;
   private coffeeHealing?: BandageHealingView;
+  private detectorEffect?: DetectorEffectView;
+  private quickNoteEffect?: QuickNoteEffectView;
+  private rulerEffect?: RulerEffectView;
   private utilityEffects?: UtilityItemEffectsView;
   private readonly treePlayerProbe = new THREE.Vector3();
   private readonly treeLandmarkProbes: THREE.Vector3[];
@@ -390,6 +399,21 @@ export class CampusView implements WorldView {
       load(UTILITY_ITEM_EFFECTS['roller-skates'].asset),
     ]);
     this.utilityEffects = new UtilityItemEffectsView(this.scene, bike, shieldAura, jacket, skates);
+    const [detectorActivation, detectorMarker] = await Promise.all([
+      load(DETECTOR_EFFECT.asset),
+      load(DETECTOR_EFFECT.markerAsset),
+    ]);
+    this.detectorEffect = new DetectorEffectView(this.scene, detectorActivation, detectorMarker);
+    const [quickNoteUse, quickNoteReady] = await Promise.all([
+      load(QUICK_NOTE_EFFECT.asset),
+      load(QUICK_NOTE_EFFECT.readyAsset),
+    ]);
+    this.quickNoteEffect = new QuickNoteEffectView(this.scene, quickNoteUse, quickNoteReady);
+    const [rulerSlash, rulerSparks] = await Promise.all([
+      load(RULER_EFFECT.slashAsset),
+      load(RULER_EFFECT.sparksAsset),
+    ]);
+    this.rulerEffect = new RulerEffectView(this.scene, rulerSlash, rulerSparks);
     await this.enemyView?.init();
     await Promise.all(
       (Object.keys(CHEST_TIERS) as ChestTier[]).map(async (tier) => {
@@ -581,6 +605,9 @@ export class CampusView implements WorldView {
     this.player.position.set(p.x, 0.03, p.z);
     this.bandageHealing?.update(frame.bandageHealingElapsedMs, frame.position);
     this.coffeeHealing?.update(frame.coffeeHealingElapsedMs, frame.position);
+    this.detectorEffect?.update(frame.detectorEffect, frame.position, camera);
+    this.quickNoteEffect?.update(frame.quickNoteEffect, frame.position, camera);
+    this.rulerEffect?.update(frame.rulerEffect, camera, frame.position);
     this.utilityEffects?.update(
       frame.utilityEffects ?? [],
       frame.position,

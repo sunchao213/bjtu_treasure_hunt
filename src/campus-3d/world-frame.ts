@@ -1,7 +1,12 @@
+import type { RulerEffectFrame } from '../config/weapon-effects';
 import type { ChestTier } from '../config/chest-config';
 import type { ChargingStation } from '../modules/world/charging-stations';
 import type { Point, ItemInstance } from '../shared/types/game';
-import type { UtilityItemEffectFrame } from '../config/item-effects';
+import type {
+  DetectorEffectFrame,
+  QuickNoteEffectFrame,
+  UtilityItemEffectFrame,
+} from '../config/item-effects';
 import type { Enemy, SoundWave } from '../modules/world/night-systems';
 import type { Facing, PlayerAnimation } from './animation';
 import type { NightFrame } from './night';
@@ -12,8 +17,11 @@ export interface GroundItem {
   position: Point;
 }
 export interface WorldFrame {
+  rulerEffect?: RulerEffectFrame;
   chargingStations?: readonly ChargingStation[];
   utilityEffects?: readonly UtilityItemEffectFrame[];
+  detectorEffect?: DetectorEffectFrame;
+  quickNoteEffect?: QuickNoteEffectFrame;
   /** Elapsed time of a successful local bandage use; absent outside its one-shot animation. */
   bandageHealingElapsedMs?: number;
   /** Successful local coffee healing; follows the same one-shot lifecycle as bandages. */
