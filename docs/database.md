@@ -38,6 +38,10 @@ $env:Auth__DataDirectory = 'E:\BJTU-data'
 
 浏览器账号旧存档仅在云端无存档时自动上传；云端已有数据时优先远端。添加登录前的共享存档在游戏内手动确认迁移。HTTP 写入仅从当前会话确定账号，不接受客户端指定其他账号。服务校验快照结构、来源和基本一致性，但当前不负责权威战斗与掉落计算。
 
+## 排行榜数据（R16）
+
+当前数据库 schema 为 `user_version=3`，新增 `raid_results`、`leaderboard_snapshots` 和 `leaderboard_snapshot_entries`。每局成绩由服务端在新结算云存档事务中追加一次，快照保存 24 小时，旧库启动时幂等建表。详细窗口、排序、分页与客户端成绩可信度边界见[排行榜说明](leaderboards.md)。
+
 ## 备份与恢复
 
 ```powershell

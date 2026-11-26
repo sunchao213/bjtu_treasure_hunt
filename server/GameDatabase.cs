@@ -41,8 +41,8 @@ sealed partial class GameDatabase
         command.CommandText = "PRAGMA journal_mode=WAL;";
         command.ExecuteScalar();
         command.CommandText = "PRAGMA user_version;";
-        // user_version=2 起包含好友、私聊与已读游标（R15）；更高版本由更新的宿主负责迁移。
-        if (Convert.ToInt32(command.ExecuteScalar()) > 2) throw new InvalidDataException("Database schema is newer than this game host.");
+        // v2 起包含好友与私聊；v3 加入每局不可变成绩和排行榜快照。
+        if (Convert.ToInt32(command.ExecuteScalar()) > 3) throw new InvalidDataException("Database schema is newer than this game host.");
         using (var transaction = connection.BeginTransaction())
         {
             command.Transaction = transaction;
@@ -218,9 +218,45 @@ sealed partial class GameDatabase
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         command.Parameters.AddWithValue("$expires", expires);
         if (command.ExecuteNonQuery() != 1) throw new SaveConflictException("云存档占用已失效，请刷新重试。");
+        if (current is not null) RecordNewSettlement(connection, transaction, session.User.Id, current, input.Data);
         CaptureRaidHistory(connection, transaction, session.User.Id, input.Data);
         transaction.Commit();
         return new { revision = nextRevision, leaseExpiresAt = expires };
+    }
+
+    private static void RecordNewSettlement(SqliteConnection connection, SqliteTransaction transaction, string userId, string currentRaw, JsonElement next)
+    {
+        try
+        {
+            using var previous = JsonDocument.Parse(currentRaw);
+            var previousSettled = previous.RootElement.GetProperty("settledRaidIds");
+            var settled = next.GetProperty("settledRaidIds");
+            var result = next.GetProperty("lastResult");
+            if (result.ValueKind != JsonValueKind.Object) return;
+            var raidId = result.GetProperty("raidId").GetString();
+            if (string.IsNullOrWhiteSpace(raidId)
+                || previousSettled.EnumerateArray().Any(item => item.GetString() == raidId)
+                || !settled.EnumerateArray().Any(item => item.GetString() == raidId)) return;
+
+            var outcome = result.GetProperty("outcome").GetString();
+            if (outcome is not ("success" or "failed")) return;
+            var value = result.GetProperty("value").GetInt64();
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "INSERT OR IGNORE INTO raid_results(user_id, raid_id, settled_at_ms, outcome, value) VALUES($user, $raid, $settled, $outcome, $value);";
+            command.Parameters.AddWithValue("$user", userId);
+            command.Parameters.AddWithValue("$raid", raidId);
+            command.Parameters.AddWithValue("$settled", now);
+            command.Parameters.AddWithValue("$outcome", outcome);
+            command.Parameters.AddWithValue("$value", value);
+            command.ExecuteNonQuery();
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+        {
+            // SaveValidation already guards the shape. Do not let a legacy optional field
+            // turn a valid cloud-save write into a failure; malformed entries are not ranked.
+        }
     }
 
     public object Heartbeat(LoginSession session, string token)

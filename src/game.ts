@@ -7,6 +7,7 @@ import './style.css';
 import './mobile-layout.css';
 import './archive-browser.css';
 import './friends.css';
+import './leaderboard.css';
 import './explore-loader.css';
 import './warehouse-panel.css';
 import './bag-panel.css';
@@ -28,6 +29,8 @@ import { renderShop, SHOP_EFFECTS } from './modules/ui/shop';
 import { renderMailPanel } from './modules/ui/mail-panel';
 import { createFriendsPanel } from './modules/ui/friends-panel';
 import { SocialClient } from './modules/social/social-client';
+import { LeaderboardClient } from './modules/social/leaderboard-client';
+import { createLeaderboardPanel } from './modules/ui/leaderboard-panel';
 import { ReferenceInventory } from './modules/inventory/reference-inventory';
 import { RaidController } from './modules/raid/raid-controller';
 import { FORMAL_SAVE_KEY } from './modules/save/persistent-save';
@@ -417,6 +420,8 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     notify,
   });
   friendsPanel.mount();
+  const leaderboardPanel = createLeaderboardPanel(new LeaderboardClient());
+  leaderboardPanel.mount();
   let mapToastTimer: number | undefined;
   /** F02：撤离相关的拒绝与中断原因要落在画面内，侧栏状态行只作补充。 */
   const showMapToast = (message: string, ms = 3200): void => {
@@ -1255,8 +1260,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element<HTMLDialogElement>('v19-mission-dialog').showModal();
     element('v19-skin-open').onclick = () =>
       element<HTMLDialogElement>('v19-skin-dialog').showModal();
-    element('open-ranking').onclick = () =>
+    element('open-ranking').onclick = () => {
+      leaderboardPanel.open();
       element<HTMLDialogElement>('v19-ranking-dialog').showModal();
+    };
     for (const button of document.querySelectorAll<HTMLButtonElement>('[data-v19-close]')) {
       button.onclick = () => button.closest('dialog')?.close();
     }
