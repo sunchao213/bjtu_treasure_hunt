@@ -1,6 +1,7 @@
 import { CHEST_TIERS } from '../../config/chest-config';
 import { RaidHotbar } from '../inventory/raid-hotbar';
 import { COMBAT_RULES } from '../../config/combat-config';
+import { RULER_EFFECT, type RulerEffectFrame } from '../../config/weapon-effects';
 import {
   BANDAGE_HEALING_EFFECT,
   COFFEE_HEALING_EFFECT,
@@ -119,6 +120,7 @@ export class FormalWorld {
   private hurtThisFrame = false;
   private hurtUntil = 0;
   private attackUntil = 0;
+  private rulerAttack: (Omit<RulerEffectFrame, 'elapsedMs'> & { startedAt: number }) | null = null;
   private hitStopMs = 0;
   private interaction = '准备好后，开始本次校园探索';
   private keyPrompt: KeyPrompt | null = null;
@@ -264,6 +266,7 @@ export class FormalWorld {
   }
   private resetRaid(raidId: string | null): void {
     this.lastRaidId = raidId;
+    this.rulerAttack = null;
     this.bandageHealingStartedAt = null;
     this.coffeeHealingStartedAt = null;
     this.quickNoteStartedAt = null;
@@ -398,6 +401,14 @@ export class FormalWorld {
             this.services.notify('电击器次数已耗尽，请切换道具。');
           }
           const before = this.combat.attackCooldown;
+          const rulerTargets =
+            weaponId === 'folding-ruler' && before <= 0
+              ? this.combat.enemies.map((enemy) => ({
+                  enemy,
+                  health: enemy.health,
+                  position: { ...enemy.position },
+                }))
+              : [];
           const dead = this.combat.attack(
             this.position,
             this.aim,
@@ -406,6 +417,20 @@ export class FormalWorld {
             weaponId,
           );
           if (before <= 0 && this.combat.attackCooldown > 0) {
+            if (weaponId === 'folding-ruler') {
+              this.rulerAttack = {
+                startedAt: this.clock(),
+                origin: { ...this.position },
+                aim: this.aim,
+                hits: rulerTargets
+                  .filter(
+                    ({ enemy, health, position }) =>
+                      enemy.health < health &&
+                      this.lighting.visible(position, this.position, this.aim, map.obstacles),
+                  )
+                  .map(({ position }) => position),
+              };
+            }
             this.attackUntil = this.clock() + COMBAT_RULES.player.attack.swingMs + 140;
             this.services.sound.play('hit');
             if (baton && this.combat.weaponUsesRemaining === 0) {
@@ -540,7 +565,21 @@ export class FormalWorld {
     const quickNoteElapsedMs =
       this.quickNoteStartedAt === null ? undefined : this.clock() - this.quickNoteStartedAt;
     const quickNoteStatus = this.search.nextDurationState();
+    const rulerElapsedMs = this.rulerAttack ? this.clock() - this.rulerAttack.startedAt : -1;
     return {
+      rulerEffect:
+        this.rulerAttack &&
+        rulerElapsedMs >= 0 &&
+        rulerElapsedMs < RULER_EFFECT.slashMs &&
+        !this.services.controller.isPaused() &&
+        ['active', 'extracting'].includes(view.phase)
+          ? {
+              elapsedMs: rulerElapsedMs,
+              origin: this.rulerAttack.origin,
+              aim: this.rulerAttack.aim,
+              hits: this.rulerAttack.hits,
+            }
+          : undefined,
       quickNoteEffect:
         quickNoteElapsedMs !== undefined &&
         quickNoteElapsedMs >= 0 &&
@@ -641,6 +680,7 @@ export class FormalWorld {
     };
   }
   dispose(): void {
+    this.rulerAttack = null;
     this.services.sound.setTinnitus?.(false);
     this.releaseDamage();
     this.releaseItemConsumed();

@@ -65,6 +65,7 @@ const durabilityOnly = process.argv.includes('--durability-only');
 const utilityEffectsOnly = process.argv.includes('--utility-effects-only');
 const detectorOnly = process.argv.includes('--detector-only');
 const quickNoteOnly = process.argv.includes('--quick-note-only');
+const rulerOnly = process.argv.includes('--ruler-only');
 
 function command(method, params = {}, sessionId) {
   const id = ++nextId;
@@ -1282,6 +1283,183 @@ async function verifyHealingFlow(itemId = 'bandage') {
   }
 }
 
+async function verifyRulerEffectFlow() {
+  for (const mobile of [false, true]) {
+    const page = await newPage(mobile ? 'rulermob' : 'rulerpc', { mobile });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await until(
+      page,
+      '!document.querySelector(".explore-loader") || document.querySelector(".explore-loader").hidden',
+    );
+    await click(page, '#tutorial-skip');
+    await attachScene(page);
+    if (!mobile)
+      await command(
+        'Emulation.setDeviceMetricsOverride',
+        { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false },
+        page.id,
+      );
+    await evaluate(
+      page,
+      `(() => {
+      const combat = testScene.combat;
+      const map = combat.map();
+      const source = combat.enemies.find(e => e.kind === 'patrol' && e.species !== 'cat');
+      if (!source) throw Error('No patrol target');
+      globalThis.rulerTarget = structuredClone(source);
+      combat.enemies = [];
+      combat.updateSpawns = () => [];
+      // Keep real attack collision/damage/cooldowns, hold enemy movement for stable screenshots.
+      combat.update = (dt) => { combat.tick(Math.min(100,dt)); return {
+        damage:0,calmed:[],slowHit:false,tinnitusHit:false,soundWaveHit:false,amplifierWindups:[]}; };
+      const origin = testScene.position;
+      const clear = p => !map.obstacles.some(r => p.x+65>r.x && p.x-65<r.x+r.width && p.y+65>r.y && p.y-65<r.y+r.height);
+      let found;
+      for(let dy=-160;dy<=160&&!found;dy+=40) for(let dx=-160;dx<=160&&!found;dx+=40) {
+        const p={x:origin.x+dx,y:origin.y+dy};
+        if(p.x>100&&p.y>100&&p.x<map.width-100&&p.y<map.height-100&&clear(p))found=p;
+      }
+      if(!found)throw Error('No clear ruler test area');
+      testScene.position=found; testScene.aim=-Math.PI/2; testScene.view.resetCamera();
+      testScene.services.inventory.addLoot({instanceId:'ruler-vfx',itemId:'folding-ruler',
+        origin:{kind:'raid-loot',obtainedInRaidId:testScene.services.controller.getView().raidId}});
+      testScene.syncHotbar(); testScene.assignQuickSlot(0,'ruler-vfx');testScene.selectQuickSlot(0);
+      globalThis.rulerClock=Date.now(); testScene.clock=()=>rulerClock;
+      globalThis.rulerInput={move:{x:0,y:0},aim:-Math.PI/2,interact:false,attack:false,hug:false,flashlight:false,refill:false,flare:false};
+      globalThis.rulerStrike=(aim=-Math.PI/2)=>{
+        combat.attackCooldown=0; testScene.hitStopMs=0; rulerClock+=400;
+        testScene.tick(0,{...rulerInput,aim,attack:true});rulerClock+=60;
+      };
+    })()`,
+    );
+    await until(
+      page,
+      'document.querySelectorAll("[data-hotbar-slot]")[0].dataset.instanceId === "ruler-vfx"',
+    );
+    await until(page, 'document.querySelector("#notice").hidden');
+    await evaluate(page, 'rulerStrike(0)');
+    await until(page, 'testScene.view.rulerEffect.slash.visible');
+    assert.equal(
+      await evaluate(page, 'testScene.view.rulerEffect.sparks.some(s=>s.visible)'),
+      false,
+    );
+    const atlas = await evaluate(
+      page,
+      `(() => {
+      const effect=testScene.view.rulerEffect;const image=effect.slash.material.map.image;
+      const c=document.createElement('canvas');c.width=image.width;c.height=image.height;
+      const ctx=c.getContext('2d');ctx.drawImage(image,0,0);
+      const pixels=ctx.getImageData(0,0,c.width,c.height).data;
+      let transparent=0;for(let i=3;i<pixels.length;i+=4)if(pixels[i]===0)transparent++;
+      return {size:[image.width,image.height],transparent:transparent/(c.width*c.height),depthWrite:effect.slash.material.depthWrite,src:image.src};
+    })()`,
+    );
+    assert.deepEqual(atlas.size, [1024, 512]);
+    assert(atlas.transparent > 0.85);
+    assert.equal(atlas.depthWrite, false);
+    assert(atlas.src.includes('ruler-slash.png'));
+    if (!mobile)
+      assert(
+        await evaluate(
+          page,
+          'document.documentElement.scrollWidth === document.documentElement.clientWidth && document.documentElement.scrollHeight === document.documentElement.clientHeight',
+        ),
+      );
+    await screenshot(page, `ruler-${mobile ? 'mobile' : 'desktop'}-miss`);
+    await evaluate(
+      page,
+      `(() => {
+      rulerTarget.position={x:testScene.position.x+40,y:testScene.position.y};
+      rulerTarget.health=70;rulerTarget.state='patrol';testScene.combat.enemies=[rulerTarget];
+      rulerStrike(0);
+    })()`,
+    );
+    await until(page, 'testScene.view.rulerEffect.sparks.some(s=>s.visible)');
+    assert.equal(await evaluate(page, 'rulerTarget.health'), 50);
+    assert.equal(await evaluate(page, 'testScene.frame().rulerEffect.hits.length'), 1);
+    const locked = await evaluate(page, 'structuredClone(testScene.frame().rulerEffect)');
+    await evaluate(page, 'testScene.tick(0,{...rulerInput,aim:Math.PI,attack:true})');
+    assert.deepEqual(
+      await evaluate(page, 'structuredClone(testScene.frame().rulerEffect)'),
+      locked,
+    );
+    await screenshot(page, `ruler-${mobile ? 'mobile' : 'desktop'}-hit`);
+    if (!mobile)
+      for (const [width, height] of [
+        [1440, 900],
+        [1024, 576],
+      ]) {
+        await command(
+          'Emulation.setDeviceMetricsOverride',
+          { width, height, deviceScaleFactor: 1, mobile: false },
+          page.id,
+        );
+        await delay(250);
+        assert(
+          await evaluate(
+            page,
+            'document.documentElement.scrollWidth === document.documentElement.clientWidth && document.documentElement.scrollHeight === document.documentElement.clientHeight',
+          ),
+        );
+        await screenshot(page, `ruler-desktop-${width}x${height}`);
+      }
+    for (const aim of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      await evaluate(page, `(() => {testScene.combat.enemies=[];rulerStrike(${aim});})()`);
+      await until(
+        page,
+        `(() => {
+        const s=testScene.view.rulerEffect.slash;const o=testScene.position;
+        const camera=testScene.view.overview?testScene.view.camera:testScene.view.followCamera;
+        const up=camera.matrixWorld.elements;
+        return s.visible && Math.abs(s.position.x-o.x/32-up[4]*1.8)<.001 &&
+          Math.abs(s.position.y-.03-up[5]*1.8)<.001 &&
+          Math.abs(s.position.z-o.y/32-up[6]*1.8)<.001;
+      })()`,
+      );
+      const p = await evaluate(page, 'testScene.view.rulerEffect.slash.position.toArray()');
+      const origin = await evaluate(page, 'testScene.position');
+      const up = await evaluate(
+        page,
+        `(() => {
+        const c=testScene.view.overview?testScene.view.camera:testScene.view.followCamera;
+        return c.matrixWorld.elements.slice(4,7);
+      })()`,
+      );
+      assert(Math.abs(p[0] - origin.x / 32 - up[0] * 1.8) < 0.001);
+      assert(Math.abs(p[1] - 0.03 - up[1] * 1.8) < 0.001);
+      assert(Math.abs(p[2] - origin.y / 32 - up[2] * 1.8) < 0.001);
+      assert.equal(
+        await evaluate(page, 'testScene.view.rulerEffect.slash.material.depthTest'),
+        false,
+      );
+    }
+    await evaluate(page, 'rulerClock+=200');
+    await until(
+      page,
+      '!testScene.view.rulerEffect.slash.visible && !testScene.view.rulerEffect.sparks.some(s=>s.visible)',
+    );
+    // Real player input must also produce the effect, on keyboard and touch respectively.
+    await evaluate(page, 'testScene.combat.attackCooldown=0;testScene.hitStopMs=0');
+    if (mobile) await touchDrag(page, '[data-touch-action="SPACE"]', 0, 0);
+    else await press(page, ' ', 'Space', 32);
+    await until(page, 'testScene.view.rulerEffect.slash.visible');
+    await evaluate(page, 'rulerClock+=60');
+    await screenshot(page, `ruler-${mobile ? 'mobile' : 'desktop'}-input`);
+    await click(page, '#open-raid-settings');
+    await until(page, '!testScene.view.rulerEffect.slash.visible');
+    await evaluate(page, 'rulerClock+=200');
+    await click(page, '#resume-raid');
+    await until(page, '!testScene.view.rulerEffect.slash.visible');
+    await screenshot(page, `ruler-${mobile ? 'mobile' : 'desktop'}-finished`);
+    pass(
+      `${mobile ? 'Mobile' : 'Desktop'} ruler: transparent eight-frame sheets, real damage/miss, locked aim, four directions, expiry, pause, and player attack input`,
+    );
+    await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
+  }
+}
+
 async function verifyQuickNoteFlow() {
   for (const mobile of [false, true]) {
     const page = await newPage(mobile ? 'notemob' : 'notepc', { mobile });
@@ -2004,7 +2182,9 @@ try {
     }
   });
 
-  if (quickNoteOnly) {
+  if (rulerOnly) {
+    await verifyRulerEffectFlow();
+  } else if (quickNoteOnly) {
     await verifyQuickNoteFlow();
   } else if (detectorOnly) {
     await verifyDetectorFlow();

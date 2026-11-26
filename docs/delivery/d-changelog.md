@@ -146,3 +146,24 @@
 - 自动验证：新增 5 条回归测试，全量 83 个文件 / 590 条测试、ESLint、TypeScript、数据库 3 条测试及生产构建通过。原图与运行时素材字节一致。
 - 完整门禁：已运行 `npm run check`，仍被 8 个既有文件的 Prettier 格式问题阻断（`mail-panel.ts`、`warehouse-panel.ts`、`style.css` 及 5 个历史探测脚本）；未修改这些无关文件，其余检查已单独执行。
 - 浏览器验证：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --quick-note-only` 通过，覆盖桌面 1280×720、1440×900、1024×576 与手机触屏模拟；验证成功使用、使用动画、待用提示、拒绝重复使用、移动与镜头跟随、加速搜索、完成清理、下一次正常搜索及中断清理，桌面页面无滚动。证据在 `artifacts/game-flow-1795656903570/`；未在真实手机上验收。
+
+## 十三、2026-11-26 折叠铁尺局内特效（CHG-42）
+
+- 需求：将用户提供的双重斩击与火星图集接入正式局内，形成「两段短残影 + 小火星」。
+- 素材：两张 1536×1024 RGBA 原图按字节备份；通过 `scripts/prepare_ruler_effects.py` 统一切成 1024×512、4×2 共 8 帧，固定裁切坐标和等比缩放，清理近乎不可见光晕、移除残影下方第三道亮痕，透明像素 RGB 归零。深浅底放大检查无黑底、无矩形边缘；运行版合计约 100KB。
+- 正式场景：新增 `src/config/weapon-effects.ts` 与 `src/campus-3d/ruler-effect-view.ts`，在 `FormalWorld` 实际获准攻击后记录出手位置、方向和本次实际扣血的可见目标，通过内部 `WorldFrame` 向 `CampusView` 提供表现。残影 160ms，火星 140ms；挥空、隔墙、冷却拒绝不产生假命中，支持多目标和致死命中。保留深度遮挡，复用精灵，随当前镜头投影出手方向；暂停、结算、换局及销毁隐藏或清理。
+- 范围：仅正式 Three.js 局内当前玩家的铁尺特效；保留其他武器表现、已有音效和命中反馈，不修改伤害、范围、冷却、共享端口、存档或网络协议。
+- 验证：新增 7 条专项测试；全量 `npx vitest run --maxWorkers=2` 为 85 文件 / 607 条通过，数据库 3 条通过，ESLint 与 TypeScript、生产构建通过。第一次高并行测试的充电站测试超时，降低并发后全量通过，未修改该测试或其阈值。
+- 浏览器：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --ruler-only` 桌面与触屏模拟通过，验证真实攻击伤害、挥空、锁定方向、四方向、过期、暂停与真实键盘/触屏输入。桌面 1280×720、1440×900、1024×576 截图与零滚动检查；手机 390×844 使用现有横屏布局，未在真机验收。证据见 `artifacts/game-flow-1795658666064/`。
+- 门禁限制：已运行 `npm run check`，被本轮未改动的 8 处既有格式问题阻断：`src/modules/ui/mail-panel.ts`、`src/modules/ui/warehouse-panel.ts`、`src/style.css`、`scripts/probe-grid.mjs`、`scripts/probe-lobby-subpages.mjs`、`scripts/probe-warehouse-capacity.mjs`、`scripts/probe-warehouse-top.mjs`、`scripts/shot-warehouse.mjs`。未为通过门禁改动无关文件；本轮改动文件单独格式检查通过。
+- 状态：用户于 2026-11-26 明确要求连同 CHG-43 一起提交到本地 Git，不推送远端。
+
+## 十四、2026-11-26 折叠铁尺残影移到人物头顶（CHG-43）
+
+- 需求：人物前方的残影不够清楚，将铁尺双残影移到人物头顶上方。
+- 改动：双残影从当前人物脚底沿镜头向上方向偏移 1.8 个世界单位，随人物移动和镜头转动保持在头顶；保留本次出手方向。残影关闭深度测试并后绘制，避免被人物遮挡。小火星仍固定在敌人的实际受击点，保留原深度遮挡。
+- 范围：仅调整表现位置与绘制层次；伤害、攻击范围、冷却、动画时长、共享端口、存档和网络协议均未修改。
+- 文件：`src/config/weapon-effects.ts`、`src/campus-3d/ruler-effect-view.ts`、`src/campus-3d/view.ts`、`tests/unit/ruler-effect.test.ts`、`tests/browser/game-flow-smoke.mjs`；素材说明同步至 `public/assets/effects/README.md`。
+- 自动验证：8 条铁尺专项测试、ESLint、TypeScript 和生产构建通过。已运行 `npm run check`，仍被 8 个既有文件的 Prettier 格式问题阻断（`mail-panel.ts`、`warehouse-panel.ts`、`style.css` 及 5 个历史探测脚本）。
+- 浏览器验证：铁尺专项桌面与触屏模拟通过；覆盖桌面 1280×720、1440×900、1024×576 和手机 390×844 横屏布局模拟，检查头顶位置、四个方向、人物及镜头跟随、真实命中与挥空、冷却拒绝、动画结束、暂停及真实攻击输入。桌面无页面滚动，浏览器未捕获异常。最终截图与结果：`artifacts/game-flow-1795659246604/`；未在真实手机上验收。
+- 提交前复核：从暂存内容导出独立副本，84 个测试文件 / 598 条测试、数据库 3 条测试、ESLint、TypeScript 和生产构建全部通过；不包含工作区中的猫咪等其他未提交改动。用户已明确要求本地提交，不推送远端。

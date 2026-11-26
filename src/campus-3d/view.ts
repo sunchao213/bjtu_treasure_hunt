@@ -18,6 +18,8 @@ import {
   QUICK_NOTE_EFFECT,
   UTILITY_ITEM_EFFECTS,
 } from '../config/item-effects';
+import { RulerEffectView } from './ruler-effect-view';
+import { RULER_EFFECT } from '../config/weapon-effects';
 import { QuickNoteEffectView } from './quick-note-effect-view';
 import { DetectorEffectView } from './detector-effect-view';
 import { UtilityItemEffectsView } from './utility-item-effects-view';
@@ -115,6 +117,7 @@ export class CampusView implements WorldView {
   private coffeeHealing?: BandageHealingView;
   private detectorEffect?: DetectorEffectView;
   private quickNoteEffect?: QuickNoteEffectView;
+  private rulerEffect?: RulerEffectView;
   private utilityEffects?: UtilityItemEffectsView;
   private readonly treePlayerProbe = new THREE.Vector3();
   private readonly treeLandmarkProbes: THREE.Vector3[];
@@ -406,6 +409,11 @@ export class CampusView implements WorldView {
       load(QUICK_NOTE_EFFECT.readyAsset),
     ]);
     this.quickNoteEffect = new QuickNoteEffectView(this.scene, quickNoteUse, quickNoteReady);
+    const [rulerSlash, rulerSparks] = await Promise.all([
+      load(RULER_EFFECT.slashAsset),
+      load(RULER_EFFECT.sparksAsset),
+    ]);
+    this.rulerEffect = new RulerEffectView(this.scene, rulerSlash, rulerSparks);
     await this.enemyView?.init();
     await Promise.all(
       (Object.keys(CHEST_TIERS) as ChestTier[]).map(async (tier) => {
@@ -599,6 +607,7 @@ export class CampusView implements WorldView {
     this.coffeeHealing?.update(frame.coffeeHealingElapsedMs, frame.position);
     this.detectorEffect?.update(frame.detectorEffect, frame.position, camera);
     this.quickNoteEffect?.update(frame.quickNoteEffect, frame.position, camera);
+    this.rulerEffect?.update(frame.rulerEffect, camera, frame.position);
     this.utilityEffects?.update(
       frame.utilityEffects ?? [],
       frame.position,

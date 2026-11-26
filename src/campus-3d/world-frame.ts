@@ -1,3 +1,4 @@
+import type { RulerEffectFrame } from '../config/weapon-effects';
 import type { ChestTier } from '../config/chest-config';
 import type { ChargingStation } from '../modules/world/charging-stations';
 import type { Point, ItemInstance } from '../shared/types/game';
@@ -16,6 +17,7 @@ export interface GroundItem {
   position: Point;
 }
 export interface WorldFrame {
+  rulerEffect?: RulerEffectFrame;
   chargingStations?: readonly ChargingStation[];
   utilityEffects?: readonly UtilityItemEffectFrame[];
   detectorEffect?: DetectorEffectFrame;
