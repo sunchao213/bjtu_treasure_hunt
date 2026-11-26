@@ -240,6 +240,13 @@ dialog {
   min-height: auto;
   flex-shrink: 0;
 }
+.room-page .v19-risk-consent {
+  position: static;
+  width: auto;
+  height: auto;
+  margin-top: 16px;
+  color: #fff4dc;
+}
 .room-page .side-card {
   min-width: 0;
 }
@@ -1157,7 +1164,7 @@ html:not([data-touch='true']) #app:not([data-phase='preparing']) #notice {
 #app[data-phase='preparing'] .play-layout {
   display: none;
 }
-#app[data-phase='preparing'] main {
+#app[data-phase='preparing'] #game-page main {
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
@@ -1175,7 +1182,7 @@ html:not([data-touch='true']) #app:not([data-phase='preparing']) #notice {
    被上面的 overflow:hidden 裁掉且整页无滚动路径 → 「开始探索」点不到。
    这里只给桌面端放开主区纵向滚动兜底（触屏端由 mobile-layout.css 的 #app 滚动负责），
    内容放得下时不产生滚动条，常规尺寸的观感不变。 */
-html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
+html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] #game-page main {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2138,7 +2145,7 @@ html:not([data-touch='true']) .prep-warning {
 }
 /* Touch devices share one landscape layout, including CSS-rotated phones. */
 @media (pointer: coarse) {
-  #app[data-phase='preparing'] main {
+  #app[data-phase='preparing'] #game-page main {
     display: block;
     height: auto;
     padding: 0 12px 12px;
@@ -2252,7 +2259,7 @@ h1 span {
 }
 .play-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 20px;
 }
@@ -3826,7 +3833,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
 #app[data-phase='preparing'] .masthead {
   display: none;
 }
-#app[data-phase='preparing'] main {
+#app[data-phase='preparing'] #game-page main {
   display: block;
   width: 0;
   height: 0;
@@ -3835,7 +3842,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   padding: 0;
   overflow: visible;
 }
-#app[data-phase='preparing'] main > :not(#prep-view) {
+#app[data-phase='preparing'] #game-page main > :not(#prep-view) {
   display: none !important;
 }
 #app[data-phase='preparing'] .v19-prep-page {

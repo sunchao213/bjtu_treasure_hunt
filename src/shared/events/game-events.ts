@@ -4,7 +4,23 @@ export interface GameEvents {
   InventoryChanged: { readonly raidId: string };
   ItemPicked: { readonly raidId: string; readonly item: ItemInstance };
   SteleInvestigated: { readonly raidId: string };
-  ItemConsumed: { readonly raidId: string; readonly instanceId: string };
+  StoryDiscovered: {
+    readonly raidId: string;
+    readonly locationId: string;
+    readonly chapterId: string;
+    readonly title: string;
+    readonly text: string;
+  };
+  ItemConsumed: {
+    readonly raidId: string;
+    readonly instanceId: string;
+    readonly itemId: string;
+  };
+  ShieldAbsorbed: {
+    readonly raidId: string;
+    readonly amount: number;
+    readonly remaining: number;
+  };
   DamageTaken: { readonly raidId: string; readonly amount: number; readonly health: number };
   EnemyDefeated: { readonly raidId: string; readonly enemyId: string };
   LocationInteracted: { readonly raidId: string; readonly locationId: string };

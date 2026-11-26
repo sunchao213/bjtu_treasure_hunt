@@ -1,9 +1,12 @@
+import { COMBAT_RULES } from '../../config/combat-config';
+
 export interface AudioSettings {
   volume: number;
   brightness: number;
 }
 
 const KEY = 'bjtu-audio-settings-v1';
+const AMBIENT_TRACKS = new Set(['music', 'footsteps']);
 const SOURCES = {
   footsteps: 'footsteps.wav',
   alarm: 'alarm.wav',
@@ -15,6 +18,7 @@ const SOURCES = {
   music: 'brainiac-maniac.m4a',
 };
 interface Track {
+  name: string;
   url: string;
   loop: boolean;
   requested: boolean;
@@ -33,13 +37,18 @@ export class SoundManager {
   private readonly activation = new AbortController();
   private readonly context?: AudioContext;
   private readonly master?: GainNode;
+  private tinnitusActive = false;
+  private tinnitusAmbientGain?: GainNode;
+  private tinnitusFilter?: BiquadFilterNode;
+  private tinnitusOscillator?: OscillatorNode;
+  private tinnitusOscGain?: GainNode;
   private unlocked = false;
   private disposed = false;
   private settings: AudioSettings = { volume: 0.8, brightness: 1 };
 
-  constructor() {
+  constructor(private readonly settingsKey = KEY) {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = localStorage.getItem(this.settingsKey);
       if (raw) this.settings = { ...this.settings, ...JSON.parse(raw) };
     } catch {
       /* defaults */
@@ -57,6 +66,7 @@ export class SoundManager {
     }
     for (const [name, file] of Object.entries(SOURCES)) {
       const track: Track = {
+        name,
         url: `${import.meta.env.BASE_URL}audio/${file}`,
         loop: name === 'footsteps' || name === 'alarm' || name === 'music',
         requested: name === 'music',
@@ -88,7 +98,7 @@ export class SoundManager {
     this.settings = { ...this.settings, ...next };
     this.applyVolume();
     try {
-      localStorage.setItem(KEY, JSON.stringify(this.settings));
+      localStorage.setItem(this.settingsKey, JSON.stringify(this.settings));
     } catch {
       /* ignore */
     }
@@ -167,7 +177,47 @@ export class SoundManager {
     oscillator.stop(start + 0.36);
   }
 
+  /** Short electric static warning cue during amplifier windup; stays audible during tinnitus. */
+  playAmplifierCharge(): void {
+    const context = this.context;
+    if (!context || !this.master || context.state !== 'running' || this.disposed) return;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const start = context.currentTime;
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.setValueAtTime(520, start);
+    oscillator.frequency.exponentialRampToValueAtTime(1240, start + 0.14);
+    oscillator.frequency.exponentialRampToValueAtTime(860, start + 0.26);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.075, start + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.27);
+    oscillator.connect(gain).connect(this.master);
+    oscillator.onended = () => {
+      oscillator.disconnect();
+      gain.disconnect();
+    };
+    oscillator.start(start);
+    oscillator.stop(start + 0.28);
+  }
+
+  /** Muffle ambient tracks to 50% and play a quiet ringing tone while keeping alerts clear. */
+  setTinnitus(active: boolean): void {
+    if (this.disposed) return;
+    const next = active && this.unlocked;
+    if (next === this.tinnitusActive) return;
+    this.tinnitusActive = next;
+    this.syncTinnitusRouting();
+    this.applyVolume();
+  }
+
+  isTinnitusActive(): boolean {
+    return this.tinnitusActive;
+  }
+
   stopAll(): void {
+    this.tinnitusActive = false;
+    this.stopTinnitusTone();
+    this.syncTinnitusRouting();
     for (const track of this.tracks.values()) {
       track.requested = false;
       this.stopTrack(track);
@@ -179,6 +229,10 @@ export class SoundManager {
     this.disposed = true;
     this.activation.abort();
     this.stopAll();
+    this.tinnitusFilter?.disconnect();
+    this.tinnitusFilter = undefined;
+    this.tinnitusAmbientGain?.disconnect();
+    this.tinnitusAmbientGain = undefined;
     if (this.context) {
       this.context.onstatechange = null;
       void this.context.close().catch(() => undefined);
@@ -205,6 +259,104 @@ export class SoundManager {
     for (const track of this.tracks.values()) {
       if (track.requested) this.startTrack(track);
     }
+    this.syncTinnitusRouting();
+  }
+
+  private ensureTinnitusBus(): AudioNode | undefined {
+    if (!this.context || !this.master) return undefined;
+    if (!this.tinnitusAmbientGain) {
+      this.tinnitusAmbientGain = this.context.createGain();
+      this.tinnitusAmbientGain.gain.value = COMBAT_RULES.enemy.amplifier.tinnitusAmbientGain;
+      this.tinnitusAmbientGain.connect(this.master);
+      if (typeof this.context.createBiquadFilter === 'function') {
+        const filter = this.context.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 780;
+        filter.Q.value = 0.7;
+        filter.connect(this.tinnitusAmbientGain);
+        this.tinnitusFilter = filter;
+      }
+    }
+    return this.tinnitusFilter ?? this.tinnitusAmbientGain;
+  }
+
+  private destinationFor(trackName: string): AudioNode | undefined {
+    if (!this.master) return undefined;
+    if (this.tinnitusActive && AMBIENT_TRACKS.has(trackName)) {
+      return this.ensureTinnitusBus() ?? this.master;
+    }
+    return this.master;
+  }
+
+  private startTinnitusTone(): void {
+    const context = this.context;
+    if (
+      !context ||
+      !this.master ||
+      context.state !== 'running' ||
+      this.disposed ||
+      this.tinnitusOscillator
+    ) {
+      return;
+    }
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const start = context.currentTime;
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(3850, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.038, start + 0.08);
+    oscillator.connect(gain).connect(this.master);
+    oscillator.onended = () => {
+      if (this.tinnitusOscillator === oscillator) {
+        this.tinnitusOscillator = undefined;
+        this.tinnitusOscGain = undefined;
+      }
+      oscillator.disconnect();
+      gain.disconnect();
+    };
+    this.tinnitusOscillator = oscillator;
+    this.tinnitusOscGain = gain;
+    oscillator.start(start);
+  }
+
+  private stopTinnitusTone(): void {
+    const oscillator = this.tinnitusOscillator;
+    const gain = this.tinnitusOscGain;
+    this.tinnitusOscillator = undefined;
+    this.tinnitusOscGain = undefined;
+    if (oscillator) {
+      try {
+        oscillator.stop();
+      } catch {
+        /* already stopped */
+      }
+      oscillator.disconnect();
+    }
+    gain?.disconnect();
+  }
+
+  private syncTinnitusRouting(): void {
+    if (!this.context || !this.master) return;
+    if (this.tinnitusActive && !this.disposed) {
+      const target = this.ensureTinnitusBus() ?? this.master;
+      if (this.tinnitusAmbientGain) {
+        this.tinnitusAmbientGain.gain.value = COMBAT_RULES.enemy.amplifier.tinnitusAmbientGain;
+      }
+      for (const track of this.tracks.values()) {
+        if (!track.source || !AMBIENT_TRACKS.has(track.name)) continue;
+        track.source.disconnect();
+        track.source.connect(target);
+      }
+      this.startTinnitusTone();
+    } else {
+      this.stopTinnitusTone();
+      for (const track of this.tracks.values()) {
+        if (!track.source || !AMBIENT_TRACKS.has(track.name)) continue;
+        track.source.disconnect();
+        track.source.connect(this.master);
+      }
+    }
   }
 
   private startTrack(track: Track): void {
@@ -230,7 +382,7 @@ export class SoundManager {
       const source = this.context.createBufferSource();
       source.buffer = track.buffer;
       source.loop = track.loop;
-      source.connect(this.master);
+      source.connect(this.destinationFor(track.name) ?? this.master);
       source.onended = () => {
         if (track.source === source) track.source = undefined;
         source.disconnect();
@@ -254,7 +406,13 @@ export class SoundManager {
     const volume = Math.max(0, Math.min(1, this.settings.volume));
     if (this.master) this.master.gain.value = volume;
     for (const track of this.tracks.values()) {
-      if (track.fallback) track.fallback.volume = volume;
+      if (track.fallback) {
+        const scale =
+          this.tinnitusActive && AMBIENT_TRACKS.has(track.name)
+            ? COMBAT_RULES.enemy.amplifier.tinnitusAmbientGain
+            : 1;
+        track.fallback.volume = volume * scale;
+      }
     }
   }
 }

@@ -7,7 +7,7 @@ export const WAREHOUSE_CAPACITY = 100;
 export const BAG_CAPACITY = 6;
 
 export const RAID_RULES: RaidRules = {
-  threshold: 100,
+  threshold: 200,
   durationMs: 600_000,
   extractionDurationMs: 5_000,
   searchDurationMs: 2_000,

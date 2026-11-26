@@ -228,7 +228,7 @@ try {
   socket.on('data', (chunk) => {
     received = Buffer.concat([received, chunk]);
   });
-  send({ type: 'hello', protocol: 1, sessionId: 'fake', displayName: 'Impersonated Name' });
+  send({ type: 'hello', protocol: 2, sessionId: 'fake', displayName: 'Impersonated Name' });
   send({ type: 'create-room' });
   for (let attempt = 0; attempt < 100 && !received.includes(Buffer.from('room-state')); attempt++)
     await delay(50);

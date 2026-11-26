@@ -1,3 +1,4 @@
+import { occupiedSlots } from '../inventory/inventory-sections';
 import {
   isCarryInAllowed,
   isExplorationItem,
@@ -34,10 +35,7 @@ export interface FormalSaveData {
   mailbox: MailItem[];
 }
 
-type PreviousSaveData = Omit<
-  FormalSaveData,
-  'schemaVersion' | 'activeRaid' | 'mailbox'
-> & {
+type PreviousSaveData = Omit<FormalSaveData, 'schemaVersion' | 'activeRaid' | 'mailbox'> & {
   schemaVersion: 1 | 2 | 3;
   activeRaid: { raidId: string } | null;
 };
@@ -124,7 +122,8 @@ function validMail(value: unknown): value is MailItem {
     typeof value.body === 'string' &&
     typeof value.createdAt === 'number' &&
     Number.isSafeInteger(value.createdAt) &&
-    (value.sourceRaidId === undefined || (typeof value.sourceRaidId === 'string' && value.sourceRaidId.length > 0)) &&
+    (value.sourceRaidId === undefined ||
+      (typeof value.sourceRaidId === 'string' && value.sourceRaidId.length > 0)) &&
     Array.isArray(value.attachments) &&
     value.attachments.length > 0 &&
     value.attachments.every(validItem)
@@ -133,7 +132,10 @@ function validMail(value: unknown): value is MailItem {
 
 function validData(value: unknown, version: 4): value is FormalSaveData;
 function validData(value: unknown, version: 1 | 2 | 3): value is PreviousSaveData;
-function validData(value: unknown, version: 1 | 2 | 3 | 4): value is FormalSaveData | PreviousSaveData {
+function validData(
+  value: unknown,
+  version: 1 | 2 | 3 | 4,
+): value is FormalSaveData | PreviousSaveData {
   if (
     !record(value) ||
     value.schemaVersion !== version ||
@@ -393,7 +395,11 @@ export class PersistentSave implements SavePort {
     return true;
   }
 
-  async beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]> {
+  async beginRaid(
+    raidId: string,
+    loadoutIds: readonly string[],
+    reservedSlots = 0,
+  ): Promise<readonly ItemInstance[]> {
     if (
       !raidId ||
       this.data.activeRaid ||
@@ -417,6 +423,12 @@ export class PersistentSave implements SavePort {
         origin: source ? { kind: 'carry-in' as const, source } : { kind: 'carry-in' as const },
       };
     });
+    if (
+      !Number.isSafeInteger(reservedSlots) ||
+      reservedSlots < 0 ||
+      occupiedSlots(loadout, ITEM_DEFINITIONS) + reservedSlots > RAID_RULES.bagCapacity
+    )
+      throw new Error('Loadout exceeds capacity');
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
     next.activeRaid = { raidId, loadout: structuredClone(loadout) };
@@ -471,7 +483,7 @@ export class PersistentSave implements SavePort {
     if (this.data.unlockedChapterIds.includes(chapterId)) return;
     const chapter = activeQuestChapter(this.data.unlockedChapterIds);
     if (
-      chapter.id !== chapterId ||
+      chapter?.id !== chapterId ||
       !this.data.lastResult ||
       !chapterUnlockGranted(this.data.lastResult, chapterId)
     ) {
@@ -495,7 +507,8 @@ export class PersistentSave implements SavePort {
     const price = definition?.price;
     if (!definition || price === undefined) return { ok: false, error: 'UNKNOWN_ITEM' };
     // 先判仓库再判钱：仓库满了就算有钱也不该扣款
-    if (this.data.warehouse.length >= WAREHOUSE_CAPACITY) return { ok: false, error: 'WAREHOUSE_FULL' };
+    if (this.data.warehouse.length >= WAREHOUSE_CAPACITY)
+      return { ok: false, error: 'WAREHOUSE_FULL' };
     if (this.data.currency < price) return { ok: false, error: 'INSUFFICIENT_FUNDS' };
     const item: ItemInstance = {
       instanceId: `purchase:${itemId}:${crypto.randomUUID()}`,
@@ -527,7 +540,9 @@ export class PersistentSave implements SavePort {
     for (const item of this.data.warehouse) {
       if (!seen.has(item.instanceId)) ordered.push(item);
     }
-    if (ordered.every((item, index) => item.instanceId === this.data.warehouse[index]?.instanceId)) {
+    if (
+      ordered.every((item, index) => item.instanceId === this.data.warehouse[index]?.instanceId)
+    ) {
       return;
     }
     const next = this.view();
@@ -546,7 +561,8 @@ export class PersistentSave implements SavePort {
     const pending = next.mailbox.reduce((sum, mail) => sum + mail.attachments.length, 0);
     if (room === 0 || pending === 0) return { moved: 0, remaining: pending };
 
-    const targets = mailId === null ? next.mailbox : next.mailbox.filter((mail) => mail.mailId === mailId);
+    const targets =
+      mailId === null ? next.mailbox : next.mailbox.filter((mail) => mail.mailId === mailId);
     if (targets.length === 0) return { moved: 0, remaining: pending };
 
     let moved = 0;

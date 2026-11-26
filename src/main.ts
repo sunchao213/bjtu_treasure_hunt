@@ -1,3 +1,4 @@
+import { RAID_RULES } from './config/game-config';
 import './style.css';
 import './auth.css';
 import { AuthClient, startAuthenticated, type AuthSession } from './modules/auth/auth-client';
@@ -38,7 +39,7 @@ function frame(content: string): void {
         <p>搜集校园物资，寻找思源密码。带着收获，平安撤离。</p>
         <dl class="auth-guide">
           <div><dt>行前准备</dt><dd>选择装备，确认本局携带物。</dd></div>
-          <div><dt>校园探索</dt><dd>寻找线索，搜集至少 100 价值的物资。</dd></div>
+          <div><dt>校园探索</dt><dd>寻找线索，搜集至少 ${RAID_RULES.threshold} 价值的物资。</dd></div>
           <div><dt>平安归来</dt><dd>前往南门撤离，保存仓库与图鉴进度。</dd></div>
         </dl>
         <p class="muted">登录后开启单人探索与联机房间。</p>

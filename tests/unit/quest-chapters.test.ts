@@ -1,8 +1,10 @@
+import { RAID_RULES } from '../../src/config/game-config';
 import { describe, expect, it } from 'vitest';
 import {
   activeQuestChapter,
   chapterEvidence,
   chapterUnlockGranted,
+  isQuestComplete,
   prerequisiteHint,
   questChapterForEvidence,
   questProgress,
@@ -54,13 +56,28 @@ describe('三章进度推进', () => {
   });
 
   it('第一关通关后当前章节切到第二章，第二关通关后切到第三章', () => {
-    expect(activeQuestChapter([]).id).toBe('siyuan-code');
-    expect(activeQuestChapter(['siyuan-code']).id).toBe('siyuan-key');
-    expect(activeQuestChapter(['siyuan-code', 'siyuan-key']).id).toBe('soothe-monster');
-    // 全通后停在第三章，不会产生不存在的第四章。
-    expect(activeQuestChapter(['siyuan-code', 'siyuan-key', 'soothe-monster']).id).toBe(
-      'soothe-monster',
-    );
+    expect(activeQuestChapter([])?.id).toBe('siyuan-code');
+    expect(activeQuestChapter(['siyuan-code'])?.id).toBe('siyuan-key');
+    expect(activeQuestChapter(['siyuan-code', 'siyuan-key'])?.id).toBe('soothe-monster');
+    // 全通后没有进行中的剧情任务。
+    expect(activeQuestChapter(['siyuan-code', 'siyuan-key', 'soothe-monster'])).toBeNull();
+  });
+
+  it('全部完成后不再刷新任务证据、显示证据目标或标记本局任务完成', () => {
+    const chapter = activeQuestChapter(['siyuan-code', 'siyuan-key', 'soothe-monster']);
+    const chapterId = chapter?.id ?? null;
+    expect(questSpawnPlan(chapterId)).toEqual([]);
+    expect(prepGoalRows(chapterId)).toEqual([
+      { name: `携带价值 ≥ ${RAID_RULES.threshold}`, place: '南门 · 撤离点' },
+    ]);
+    expect(
+      isQuestComplete([loot('soothe-charm'), loot('complete-record')], RAID_ID, chapterId),
+    ).toBe(false);
+    expect(
+      lobbyMissionRows(['siyuan-code', 'siyuan-key', 'soothe-monster']).every(
+        (row) => row.status === 'done',
+      ),
+    ).toBe(true);
   });
 
   it('第二章证据与前置：没有本局校园地图时，思源楼金钥匙被拦截', () => {
@@ -123,7 +140,7 @@ describe('三章进度推进', () => {
     expect(prepGoalRows('siyuan-key')).toEqual([
       { name: '被涂改的校园地图', place: '中央教学楼公告栏' },
       { name: '思源楼金钥匙', place: '思源楼东侧道路' },
-      { name: '携带价值 ≥ 100', place: '南门 · 撤离点' },
+      { name: `携带价值 ≥ ${RAID_RULES.threshold}`, place: '南门 · 撤离点' },
     ]);
     expect(prepGoalRows('soothe-monster')[0]).toEqual({ name: '安抚护符', place: '芳华园' });
   });
@@ -134,13 +151,13 @@ describe('三章进度推进', () => {
         itemId: 'marked-campus-map',
         zoneId: 'central-lawn',
         index: -1,
-        fixedPoint: { id: 'campus-map-point', x: 800, y: 940, zoneId: 'central-lawn' },
+        fixedPoint: { id: 'campus-map-point', x: 1900, y: 1840, zoneId: 'central-lawn' },
       },
       {
         itemId: 'siyuan-key',
         zoneId: 'siyuan-side-door',
         index: -1,
-        fixedPoint: { id: 'siyuan-key-point', x: 467, y: 370, zoneId: 'siyuan-side-door' },
+        fixedPoint: { id: 'siyuan-key-point', x: 1446, y: 1055, zoneId: 'siyuan-side-door' },
       },
     ]);
     const spawns = generateLootSpawns(() => 0.5, questSpawnPlan('siyuan-key'));
@@ -149,10 +166,13 @@ describe('三章进度推进', () => {
     );
     expect(spawns.find((spawn) => spawn.itemId === 'siyuan-key')?.zoneId).toBe('siyuan-side-door');
     expect(spawns.find((spawn) => spawn.itemId === 'marked-campus-map')).toMatchObject({
-      x: 800,
-      y: 940,
+      x: 1900,
+      y: 1840,
     });
-    expect(spawns.find((spawn) => spawn.itemId === 'siyuan-key')).toMatchObject({ x: 467, y: 370 });
+    expect(spawns.find((spawn) => spawn.itemId === 'siyuan-key')).toMatchObject({
+      x: 1446,
+      y: 1055,
+    });
     expect(CHAPTERS['siyuan-key']?.steps).toHaveLength(3);
     expect(CHAPTERS['soothe-monster']?.steps).toHaveLength(3);
   });
@@ -193,6 +213,9 @@ describe('存档层按章节递进解锁', () => {
 
     const reloaded = new PersistentSave(storage);
     expect(reloaded.view().unlockedChapterIds).toHaveLength(3);
+    expect(activeQuestChapter(reloaded.view().unlockedChapterIds)).toBeNull();
+    await reloaded.beginRaid('free-exploration', []);
+    expect(activeQuestChapter(reloaded.view().unlockedChapterIds)).toBeNull();
     expect(reloaded.view().unlockedChapterIds).not.toContain('chapter-4');
     expect(storage.getItem(FORMAL_SAVE_KEY)).not.toBeNull();
   });

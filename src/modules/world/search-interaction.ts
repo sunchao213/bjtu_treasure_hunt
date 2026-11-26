@@ -28,16 +28,20 @@ export class SearchInteraction {
     return true;
   }
 
-  begin(id: string, applyNextDuration = true): boolean {
+  begin(id: string, durationOrApplyNext: number | boolean = true): boolean {
     if (this.opened.has(id)) {
       return false;
     }
     if (this.target !== id) {
+      const applyNextDuration = durationOrApplyNext !== false;
+      const baseDurationMs =
+        typeof durationOrApplyNext === 'number' ? durationOrApplyNext : this.durationMs;
       this.target = id;
       this.startedAtMs = this.clock();
-      this.activeDurationMs = applyNextDuration
-        ? (this.nextDurationMs ?? this.durationMs)
-        : this.durationMs;
+      this.activeDurationMs =
+        applyNextDuration && this.nextDurationMs !== null
+          ? Math.min(baseDurationMs, this.nextDurationMs)
+          : baseDurationMs;
       if (applyNextDuration) this.nextDurationMs = null;
     }
     return true;

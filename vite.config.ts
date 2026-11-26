@@ -34,7 +34,12 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: { output: { manualChunks: { phaser: ['phaser'] } } },
+    rollupOptions: {
+      input: { main: 'index.html', campus3d: 'campus-3d.html' },
+      output: {
+        manualChunks: { 'formal-world': ['./src/scenes/formal-world-scene.ts'], three: ['three'] },
+      },
+    },
     chunkSizeWarningLimit: 1600,
   },
 });

@@ -1,5 +1,6 @@
 import { activeMap } from '../../config/play-map';
 import type { Point } from '../../shared/types/game';
+import type { StoryTrigger } from './story-triggers';
 
 export const EXPLORED_CELL_SIZE = 16;
 
@@ -21,6 +22,7 @@ export interface CampusOverviewOptions {
   /** World-space radius shown around the player in the compact view. */
   viewRadius?: number;
   teammates?: readonly { readonly position: Point; readonly name: string }[];
+  storyMarkers?: readonly StoryTrigger[];
 }
 
 export function createExploredMap(): ExploredMap {
@@ -130,6 +132,60 @@ export function drawCampusOverview(
     ctx.arc(x(gate.x), y(gate.y), gate.role === 'extraction' ? 5 : 3, 0, Math.PI * 2);
     ctx.fillStyle = gate.role === 'extraction' ? '#8cdeb2' : '#d3c08d';
     ctx.fill();
+    if (!followPlayer) {
+      ctx.font = '11px sans-serif';
+      ctx.fillText(gate.name, x(gate.x) + 7, y(gate.y) - 5);
+    }
+  }
+
+  const layout = activeMap();
+  const landmarks = [
+    ...(layout.questChest ? [{ ...layout.questChest, name: '手记宝箱' }] : []),
+    ...(layout.chapterTwoPoints
+      ? [
+          { ...layout.chapterTwoPoints.campusMap, name: '教学区公告栏' },
+          { ...layout.chapterTwoPoints.siyuanKey, name: '思源楼东侧' },
+        ]
+      : []),
+    ...layout.lootZones
+      .filter((zone) => ['east-garden', 'central-lawn'].includes(zone.id))
+      .map((zone) => ({
+        x: zone.x + zone.width / 2,
+        y: zone.y + zone.height / 2,
+        name: zone.id === 'east-garden' ? '芳华园搜寻区' : '中心广场搜寻区',
+      })),
+  ];
+  for (const landmark of options.storyMarkers ? [] : landmarks) {
+    if (!isExplored(explored, landmark.x, landmark.y)) continue;
+    ctx.fillStyle = '#ddbd7a';
+    ctx.fillRect(x(landmark.x) - 2, y(landmark.y) - 2, 5, 5);
+    if (!followPlayer) {
+      ctx.font = '11px sans-serif';
+      ctx.fillText(landmark.name, x(landmark.x) + 7, y(landmark.y) + 10);
+    }
+  }
+
+  // Known story clues remain visible over unexplored areas so a new chapter has a destination.
+  for (const marker of options.storyMarkers ?? []) {
+    if (marker.status === 'inactive') continue;
+    if (marker.status !== 'active' && !isExplored(explored, marker.x, marker.y)) continue;
+    ctx.fillStyle =
+      marker.status === 'active' ? '#f5ce77' : marker.status === 'done' ? '#83bc9f' : '#899baf';
+    ctx.beginPath();
+    ctx.moveTo(x(marker.x), y(marker.y) - 5);
+    ctx.lineTo(x(marker.x) + 5, y(marker.y));
+    ctx.lineTo(x(marker.x), y(marker.y) + 5);
+    ctx.lineTo(x(marker.x) - 5, y(marker.y));
+    ctx.closePath();
+    ctx.fill();
+    if (!followPlayer) {
+      ctx.font = '11px sans-serif';
+      ctx.fillText(
+        `${marker.status === 'active' ? '当前线索 · ' : ''}${marker.title}`,
+        x(marker.x) + 8,
+        y(marker.y) - 7,
+      );
+    }
   }
 
   for (const teammate of options.teammates ?? []) {
@@ -137,6 +193,10 @@ export function drawCampusOverview(
     ctx.arc(x(teammate.position.x), y(teammate.position.y), 4, 0, Math.PI * 2);
     ctx.fillStyle = '#78c4ee';
     ctx.fill();
+    if (!followPlayer) {
+      ctx.font = '11px sans-serif';
+      ctx.fillText(teammate.name, x(teammate.position.x) + 7, y(teammate.position.y) - 5);
+    }
   }
 
   ctx.beginPath();

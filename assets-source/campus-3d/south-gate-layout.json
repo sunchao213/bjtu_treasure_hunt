@@ -1,0 +1,14 @@
+{
+  "unitsPerMetre": 32,
+  "gate": {
+    "x": 512,
+    "y": 704,
+    "width": 224,
+    "springHeight": 3.15,
+    "pillarWidth": 24,
+    "depth": 28
+  },
+  "building": { "x": 128, "y": 96, "width": 256, "height": 160 },
+  "guardhouse": { "x": 654, "y": 682, "width": 68, "height": 44 },
+  "paving": { "x": 388, "y": 636, "width": 346, "height": 108 }
+}

@@ -1,9 +1,11 @@
+import { COMBAT_RULES } from '../../config/combat-config';
 import { EventBus } from '../../shared/events/game-events';
 import type {
   ActionResult,
   FailureReason,
   InventoryPort,
   ItemDefinition,
+  PlayerStatusEffects,
   RaidPhase,
   RaidResult,
   RaidRules,
@@ -13,6 +15,12 @@ import type {
 } from '../../shared/types/game';
 import { calculateExtractionValue } from '../inventory/extraction-value';
 import { isQuestComplete, QUEST_CHAPTER_ID } from '../quests/quest-service';
+
+interface SlowEffectEntry {
+  multiplier: number;
+  untilMs: number;
+  immunityMs: number;
+}
 
 /** A owns all phase changes. This controller contains no Phaser or DOM dependencies. */
 export class RaidController implements RaidControllerPort {
@@ -25,6 +33,10 @@ export class RaidController implements RaidControllerPort {
   private health = 0;
   private speedMultiplier = 1;
   private speedMultiplierUntil = 0;
+  private readonly slowEffects = new Map<string, SlowEffectEntry>();
+  private readonly slowImmunities = new Map<string, number>();
+  private tinnitusUntil = 0;
+  private sonicPulseUntil = 0;
   private shield = 0;
   private shieldUntil = 0;
   private invulnerableUntil = 0;
@@ -45,7 +57,7 @@ export class RaidController implements RaidControllerPort {
     definitions: Readonly<Record<string, ItemDefinition>>,
     private readonly clock: () => number = Date.now,
     private readonly newId: () => string = () => crypto.randomUUID(),
-    private readonly questChapterId: () => string = () => QUEST_CHAPTER_ID,
+    private readonly questChapterId: () => string | null = () => QUEST_CHAPTER_ID,
   ) {
     this.rules = structuredClone(rules);
     this.definitions = structuredClone(definitions);
@@ -72,7 +84,7 @@ export class RaidController implements RaidControllerPort {
     this.saveError = false;
     const raidId = this.newId();
     try {
-      const loadout = await this.save.beginRaid(raidId, loadoutIds);
+      const loadout = await this.save.beginRaid(raidId, loadoutIds, starterWeaponId ? 1 : 0);
       const starterWeapon = starterWeaponId
         ? [
             {
@@ -95,6 +107,7 @@ export class RaidController implements RaidControllerPort {
       this.health = this.rules.maxHealth;
       this.speedMultiplier = 1;
       this.speedMultiplierUntil = 0;
+      this.clearStatusEffects();
       this.shield = 0;
       this.shieldUntil = 0;
       this.invulnerableUntil = 0;
@@ -132,6 +145,7 @@ export class RaidController implements RaidControllerPort {
       isBusy: this.isBusy,
       saveError: this.saveError,
       steleInvestigated: this.steleInvestigated,
+      statusEffects: this.getStatusEffects(),
       result: structuredClone(this.result),
     };
   }
@@ -160,7 +174,19 @@ export class RaidController implements RaidControllerPort {
     if (this.pausedAtMs === null) {
       return;
     }
-    this.startedAtMs += Math.max(0, this.clock() - this.pausedAtMs);
+    const pausedDuration = Math.max(0, this.clock() - this.pausedAtMs);
+    this.startedAtMs += pausedDuration;
+    if (this.speedMultiplierUntil > 0) this.speedMultiplierUntil += pausedDuration;
+    if (this.shieldUntil > 0) this.shieldUntil += pausedDuration;
+    if (this.invulnerableUntil > 0) this.invulnerableUntil += pausedDuration;
+    if (this.tinnitusUntil > 0) this.tinnitusUntil += pausedDuration;
+    if (this.sonicPulseUntil > 0) this.sonicPulseUntil += pausedDuration;
+    for (const entry of this.slowEffects.values()) {
+      entry.untilMs += pausedDuration;
+    }
+    for (const [source, until] of this.slowImmunities) {
+      this.slowImmunities.set(source, until + pausedDuration);
+    }
     this.pausedAtMs = null;
   }
 
@@ -199,6 +225,13 @@ export class RaidController implements RaidControllerPort {
     if (activeShield > 0) {
       const absorbed = Math.min(activeShield, amount);
       this.shield -= absorbed;
+      if (this.raidId) {
+        this.bus.emit('ShieldAbsorbed', {
+          raidId: this.raidId,
+          amount: absorbed,
+          remaining: this.shield,
+        });
+      }
       amount -= absorbed;
       if (amount <= 0) return;
     }
@@ -221,12 +254,147 @@ export class RaidController implements RaidControllerPort {
     return true;
   }
 
-  getMoveSpeedMultiplier(): number {
-    if (this.speedMultiplierUntil > 0 && this.clock() >= this.speedMultiplierUntil) {
+  private effectiveNow(): number {
+    return this.pausedAtMs ?? this.clock();
+  }
+
+  private clearStatusEffects(): void {
+    this.slowEffects.clear();
+    this.slowImmunities.clear();
+    this.tinnitusUntil = 0;
+    this.sonicPulseUntil = 0;
+  }
+
+  private pruneStatusEffects(now: number): void {
+    for (const [source, entry] of this.slowEffects) {
+      if (now >= entry.untilMs) {
+        if (entry.immunityMs > 0) {
+          const immuneUntil = entry.untilMs + entry.immunityMs;
+          const prev = this.slowImmunities.get(source) ?? 0;
+          if (immuneUntil > prev) {
+            this.slowImmunities.set(source, immuneUntil);
+          }
+        }
+        this.slowEffects.delete(source);
+      }
+    }
+    for (const [source, immuneUntil] of this.slowImmunities) {
+      if (now >= immuneUntil) {
+        this.slowImmunities.delete(source);
+      }
+    }
+    if (this.tinnitusUntil > 0 && now >= this.tinnitusUntil) {
+      this.tinnitusUntil = 0;
+    }
+    if (this.sonicPulseUntil > 0 && now >= this.sonicPulseUntil) {
+      this.sonicPulseUntil = 0;
+    }
+  }
+
+  private activeBoostMultiplier(now: number): number {
+    if (this.speedMultiplierUntil > 0 && now >= this.speedMultiplierUntil) {
       this.speedMultiplier = 1;
       this.speedMultiplierUntil = 0;
     }
     return this.speedMultiplier;
+  }
+
+  private activeSlowMultiplier(now: number): number {
+    this.pruneStatusEffects(now);
+    let strongest = 1;
+    for (const entry of this.slowEffects.values()) {
+      if (entry.multiplier < strongest) {
+        strongest = entry.multiplier;
+      }
+    }
+    return strongest;
+  }
+
+  private getStatusEffects(): PlayerStatusEffects {
+    const now = this.effectiveNow();
+    this.pruneStatusEffects(now);
+    let slowRemainingMs = 0;
+    let slowMultiplier = 1;
+    for (const entry of this.slowEffects.values()) {
+      slowRemainingMs = Math.max(slowRemainingMs, entry.untilMs - now);
+      if (entry.multiplier < slowMultiplier) {
+        slowMultiplier = entry.multiplier;
+      }
+    }
+    let slowImmuneRemainingMs = 0;
+    for (const immuneUntil of this.slowImmunities.values()) {
+      slowImmuneRemainingMs = Math.max(slowImmuneRemainingMs, immuneUntil - now);
+    }
+    return {
+      slowRemainingMs,
+      slowMultiplier,
+      slowImmuneRemainingMs,
+      tinnitusRemainingMs: Math.max(0, this.tinnitusUntil - now),
+      sonicPulseRemainingMs: Math.max(0, this.sonicPulseUntil - now),
+    };
+  }
+
+  getMoveSpeedMultiplier(): number {
+    const now = this.effectiveNow();
+    return this.activeBoostMultiplier(now) * this.activeSlowMultiplier(now);
+  }
+
+  isInvulnerable(): boolean {
+    return this.effectiveNow() < this.invulnerableUntil;
+  }
+
+  applySlow(
+    multiplier: number,
+    durationMs: number,
+    options?: { readonly source?: string; readonly immunityMs?: number },
+  ): boolean {
+    if (
+      !this.playable() ||
+      !Number.isFinite(multiplier) ||
+      multiplier <= 0 ||
+      multiplier >= 1 ||
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0
+    ) {
+      return false;
+    }
+    const now = this.clock();
+    this.pruneStatusEffects(now);
+    const source = options?.source ?? 'default';
+    if ((this.slowImmunities.get(source) ?? 0) > now) {
+      return false;
+    }
+    const immunityMs = Math.max(0, options?.immunityMs ?? 0);
+    // Repeat hits from the same source refresh duration instead of adding remaining time.
+    this.slowEffects.set(source, {
+      multiplier,
+      untilMs: now + durationMs,
+      immunityMs,
+    });
+    return true;
+  }
+
+  applyTinnitus(durationMs: number): boolean {
+    if (!this.playable() || !Number.isFinite(durationMs) || durationMs <= 0) {
+      return false;
+    }
+    // Repeat hits refresh tinnitus duration without stacking time.
+    this.tinnitusUntil = this.clock() + durationMs;
+    return true;
+  }
+
+  applySoundWaveEffect(): { readonly slowed: boolean; readonly tinnitus: boolean } {
+    if (!this.playable() || this.isInvulnerable()) {
+      return { slowed: false, tinnitus: false };
+    }
+    const rules = COMBAT_RULES.enemy.amplifier;
+    const slowed = this.applySlow(rules.slowMultiplier, rules.slowDurationMs, {
+      source: 'sound-wave',
+      immunityMs: rules.slowImmunityMs,
+    });
+    const tinnitus = this.applyTinnitus(rules.tinnitusDurationMs);
+    this.sonicPulseUntil = this.clock() + rules.pulseFeedbackMs;
+    return { slowed, tinnitus };
   }
 
   activateInvulnerability(durationMs: number): boolean {
@@ -252,7 +420,7 @@ export class RaidController implements RaidControllerPort {
     ) {
       return false;
     }
-    if (this.getMoveSpeedMultiplier() >= multiplier) return false;
+    if (this.activeBoostMultiplier(this.clock()) >= multiplier) return false;
     this.speedMultiplier = multiplier;
     this.speedMultiplierUntil = this.clock() + durationMs;
     return true;
@@ -359,6 +527,7 @@ export class RaidController implements RaidControllerPort {
     this.health = this.rules.maxHealth;
     this.speedMultiplier = 1;
     this.speedMultiplierUntil = 0;
+    this.clearStatusEffects();
     this.invulnerableUntil = 0;
     this.shield = 0;
     this.shieldUntil = 0;
@@ -409,6 +578,7 @@ export class RaidController implements RaidControllerPort {
     };
     this.phase = 'settling';
     this.extractionStartedAtMs = null;
+    this.clearStatusEffects();
     void this.retrySettlement();
   }
 }

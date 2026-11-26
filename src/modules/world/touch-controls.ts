@@ -138,6 +138,10 @@ export class TouchControls {
     );
   }
 
+  justPressed(action: string): boolean {
+    return this.enabled && this.pressed.has(action as TouchAction);
+  }
+
   /** A quick tap must survive until the next game frame, even after pointerup. */
   finishFrame(): void {
     this.pressed.clear();

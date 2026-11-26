@@ -1,0 +1,14 @@
+{
+  "name": "Minghu Stele",
+  "objects": 5,
+  "triangles": 10560,
+  "materials": 2,
+  "front": "+Z",
+  "height": 3.34,
+  "pivot": "ground-centred",
+  "source": "reference.png; user supplied 2026-11-25",
+  "reconstruction": "Front silhouette/inscription photo referenced; unseen sides estimated",
+  "bytes": 1541608,
+  "optimization": "glTF Transform 4.5.1 dedup, weld, prune; geometry and inscription preserved",
+  "validation": "glTF validator: no errors, no warnings"
+}

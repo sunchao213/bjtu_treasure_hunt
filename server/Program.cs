@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
 
@@ -161,7 +162,7 @@ IResult WithSocial(HttpContext context, Func<LoginSession, IResult> action)
 
 var rooms = new RoomDirectory();
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-const int protocolVersion = 1;
+const int protocolVersion = 2;
 const int maxMessageBytes = 4096;
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", protocol = protocolVersion }));
@@ -368,11 +369,15 @@ if (Directory.Exists(frontendPath))
 {
     var files = new PhysicalFileProvider(frontendPath);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
+    var contentTypes = new FileExtensionContentTypeProvider();
+    contentTypes.Mappings[".glb"] = "model/gltf-binary";
+    contentTypes.Mappings[".gltf"] = "model/gltf+json";
     // public/ 资产同名换图时 URL 不变，浏览器 heuristic 缓存会顶掉新图（2026-11-26 右上角交子徽章）。
     // no-cache 只要求每次 revalidate：内容没变走 304，带宽几乎为零，但永远拿得到最新字节。
     app.UseStaticFiles(new StaticFileOptions
     {
         FileProvider = files,
+        ContentTypeProvider = contentTypes,
         OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache",
     });
 }
