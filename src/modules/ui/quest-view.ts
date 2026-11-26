@@ -1,4 +1,4 @@
-import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS } from '../../config/game-config';
+import { ITEM_CATALOG_IDS, ITEM_DEFINITIONS, RAID_RULES } from '../../config/game-config';
 import {
   CHAPTERS,
   CODEX_ENTRIES,
@@ -9,7 +9,6 @@ import {
   activeQuestChapter,
   chapterEvidence,
   chapterUnlockGranted,
-  hasCurrentRaidNotebook,
   questChapterById,
   visibleQuestChapters,
 } from '../quests/quest-service';
@@ -43,7 +42,17 @@ function stepStateText(state: StepState, chapter: QuestChapterSpec): string {
 }
 
 /** 章节任务卡：标题、两条线索与状态文案都跟随当前进行中的章节。 */
-export function renderQuestPanel(progress: QuestProgressView): void {
+export function renderQuestPanel(progress: QuestProgressView | null): void {
+  const panel = document.getElementById('quest-panel');
+  if (panel) panel.hidden = progress === null;
+  if (progress === null) {
+    const count = document.getElementById('quest-count');
+    if (count) count.textContent = '已完成';
+    document.getElementById('quest-steps')?.replaceChildren();
+    const status = document.getElementById('quest-status');
+    if (status) status.textContent = '全部剧情已完成，可自由探索。';
+    return;
+  }
   const count = document.getElementById('quest-count');
   if (count) {
     count.textContent = `${progress.collected} / ${progress.total}`;
@@ -83,7 +92,7 @@ export function lobbyMissionRows(unlockedChapterIds: readonly string[]): LobbyMi
   const active = activeQuestChapter(unlockedChapterIds);
   return visibleQuestChapters(unlockedChapterIds).map((chapter) => {
     const unlocked = unlockedChapterIds.includes(chapter.id);
-    const statusText = unlocked ? '已完成' : chapter.id === active.id ? '进行中' : '未开始';
+    const statusText = unlocked ? '已完成' : chapter.id === active?.id ? '进行中' : '未开始';
     return {
       chapterId: chapter.id,
       order: chapter.order,
@@ -123,19 +132,21 @@ export function renderLobbyMissions(
 }
 
 /** 行前目标清单的纯数据视图：本章两件证据 + 统一的撤离价值门槛。 */
-export function prepGoalRows(chapterId: string): { name: string; place: string }[] {
+export function prepGoalRows(chapterId: string | null): { name: string; place: string }[] {
+  if (chapterId === null)
+    return [{ name: `携带价值 ≥ ${RAID_RULES.threshold}`, place: '南门 · 撤离点' }];
   const chapter = questChapterById(chapterId);
   return [
     ...chapter.evidence.map((evidence) => ({
       name: evidence.label.replace(/[「」]/g, ''),
       place: evidence.placeName,
     })),
-    { name: '携带价值 ≥ 100', place: '南门 · 撤离点' },
+    { name: `携带价值 ≥ ${RAID_RULES.threshold}`, place: '南门 · 撤离点' },
   ];
 }
 
 /** 大厅本局目标清单：跟随当前章节的两件证据，第三项为统一的撤离价值门槛。 */
-export function renderPrepGoals(container: HTMLElement, chapterId: string): void {
+export function renderPrepGoals(container: HTMLElement, chapterId: string | null): void {
   container.replaceChildren(
     ...prepGoalRows(chapterId).map((row) => {
       const li = document.createElement('li');
@@ -215,10 +226,10 @@ export function renderCodexPanel(
 export function renderChapterUnlock(
   target: HTMLElement,
   granted: boolean,
-  chapterId = FIRST_CHAPTER.chapterId,
+  chapterId: string | null = FIRST_CHAPTER.chapterId,
 ): void {
-  target.hidden = !granted;
-  if (granted) {
+  target.hidden = !granted || chapterId === null;
+  if (granted && chapterId !== null) {
     target.textContent = chapterContentById(chapterId).settlementSummary;
   }
 }
@@ -229,15 +240,18 @@ export function renderChapterUnlock(
  */
 export function chapterLockHint(
   result: RaidResult | null,
-  chapterId = FIRST_CHAPTER.chapterId,
+  chapterId: string | null = FIRST_CHAPTER.chapterId,
 ): string | null {
-  if (result === null || result.outcome !== 'success') return null;
+  if (chapterId === null || result === null || result.outcome !== 'success') return null;
   if (chapterUnlockGranted(result, chapterId)) return null;
   const chapter = questChapterById(chapterId);
   if (chapterId === 'siyuan-code') {
-    return hasCurrentRaidNotebook(result.items, result.raidId)
-      ? '本章未解锁：尚未调查明湖石碑。'
-      : '本章未解锁：需带回本局在思源楼前取得的「残缺手记」。';
+    const evidence = chapterEvidence(result.items, result.raidId, chapterId);
+    const missing = chapter.evidence
+      .filter((entry) => !evidence.carriedIds.includes(entry.itemId))
+      .map((entry) => entry.label);
+    if (missing.length === 0) return '本章未解锁：任务完成状态未记录，请核对本局任务进度。';
+    return `本章未解锁：需同时带回${missing.join('和')}。`;
   }
   const evidence = chapterEvidence(result.items, result.raidId, chapterId);
   const missing = chapter.evidence
@@ -253,7 +267,7 @@ export function chapterLockHint(
 export function renderChapterLock(
   target: HTMLElement,
   result: RaidResult | null,
-  chapterId = FIRST_CHAPTER.chapterId,
+  chapterId: string | null = FIRST_CHAPTER.chapterId,
 ): void {
   const hint = chapterLockHint(result, chapterId);
   target.hidden = hint === null;

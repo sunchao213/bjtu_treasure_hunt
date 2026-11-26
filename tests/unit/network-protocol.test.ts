@@ -108,7 +108,7 @@ describe('online protocol boundary', () => {
   });
 
   it('rejects malformed or unsupported messages', () => {
-    expect(isClientMessage({ type: 'hello', protocol: 2, sessionId: 'x', displayName: 'x' })).toBe(
+    expect(isClientMessage({ type: 'hello', protocol: 1, sessionId: 'x', displayName: 'x' })).toBe(
       false,
     );
     expect(
@@ -145,5 +145,21 @@ describe('online protocol boundary', () => {
     expect(isClientMessage({ type: 'set-ready', ready: true })).toBe(true);
     expect(isClientMessage({ type: 'set-ready', ready: 'true' })).toBe(false);
     expect(isClientMessage({ type: 'start-game' })).toBe(true);
+  });
+
+  it('validates room chat text and server-authored sender details', () => {
+    expect(isClientMessage({ type: 'room-chat', text: '晚上好' })).toBe(true);
+    expect(isClientMessage({ type: 'room-chat', text: '  ' })).toBe(false);
+    expect(isClientMessage({ type: 'room-chat', text: 'x'.repeat(161) })).toBe(false);
+    const message = {
+      type: 'room-chat',
+      roomId: '123456',
+      playerId: 'player-1',
+      displayName: '小明',
+      text: '晚上好',
+    };
+    expect(isServerMessage(message)).toBe(true);
+    expect(decodeServerMessage(JSON.stringify(message))).toEqual(message);
+    expect(isServerMessage({ ...message, roomId: 'room-a' })).toBe(false);
   });
 });

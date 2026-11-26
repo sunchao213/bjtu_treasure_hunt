@@ -5,7 +5,14 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'artifacts/**', 'godot/**'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'coverage/**',
+      'artifacts/**',
+      'godot/**',
+      '.venv-imagegen/**',
+    ],
   },
   js.configs.recommended,
   tseslint.configs.recommended,

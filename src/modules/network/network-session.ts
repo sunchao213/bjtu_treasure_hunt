@@ -2,6 +2,7 @@ import {
   decodeServerMessage,
   encodeClientMessage,
   NETWORK_PROTOCOL_VERSION,
+  ROOM_CHAT_LIMIT,
   isRoomCode,
   type ClientMessage,
   type PlayerSnapshot,
@@ -224,6 +225,16 @@ export class NetworkSession {
     return this.inRoom && this.send({ type: 'set-ready', ready });
   }
 
+  sendChat(text: string): boolean {
+    const message = text.trim();
+    return (
+      this.inRoom &&
+      message.length > 0 &&
+      message.length <= ROOM_CHAT_LIMIT &&
+      this.send({ type: 'room-chat', text: message })
+    );
+  }
+
   startGame(): boolean {
     return this.inRoom && this.send({ type: 'start-game' });
   }
@@ -240,11 +251,16 @@ export class NetworkSession {
     return this.inRoom && this.send({ type: 'finish-game', roundId });
   }
 
+  reportDeath(items: readonly string[]): boolean {
+    const roundId = this.roomState?.roundId;
+    return !!roundId && this.inRoom && this.send({ type: 'player-death', roundId, items });
+  }
+
   sendLootSearch(
     roundId: string,
     requestId: string,
     chestId: string,
-    stage: 'hold' | 'claim' | 'cancel',
+    stage: 'hold' | 'claim' | 'cancel' | 'take',
   ): boolean {
     return (
       this.inRoom &&

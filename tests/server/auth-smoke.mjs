@@ -228,17 +228,13 @@ try {
   socket.on('data', (chunk) => {
     received = Buffer.concat([received, chunk]);
   });
-  send({ type: 'hello', protocol: 1, sessionId: 'fake', displayName: 'Impersonated Name' });
+  send({ type: 'hello', protocol: 2, sessionId: 'fake', displayName: 'Impersonated Name' });
   send({ type: 'create-room' });
-  for (
-    let attempt = 0;
-    attempt < 100 && !received.includes(Buffer.from('ONLINE_LOCKED'));
-    attempt++
-  )
+  for (let attempt = 0; attempt < 100 && !received.includes(Buffer.from('room-state')); attempt++)
     await delay(50);
   assert(
-    received.includes(Buffer.from('ONLINE_LOCKED')),
-    'authenticated players still need all three chapters before joining rooms',
+    received.includes(Buffer.from('room-state')),
+    'authenticated players can create a room before completing the story',
   );
   assert(
     !received.includes(Buffer.from('Impersonated Name')),
@@ -259,6 +255,7 @@ try {
   const cloudData = {
     schemaVersion: 4,
     warehouse: [],
+    mailbox: [],
     codexIds: ['school-badge'],
     currency: 0,
     ownedSkinIds: ['school-uniform', 'red-trailblazer'],
@@ -280,7 +277,7 @@ try {
   };
   const write = { leaseToken: initial.leaseToken, revision: 0, data: cloudData };
   assert.equal(
-    (await cloudPost('', { ...write, data: { ...cloudData, schemaVersion: '3' } }, cookie)).status,
+    (await cloudPost('', { ...write, data: { ...cloudData, schemaVersion: '4' } }, cookie)).status,
     400,
     'malformed schema types fail cleanly',
   );

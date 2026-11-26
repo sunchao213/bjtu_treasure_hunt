@@ -51,9 +51,9 @@ describe('剧情对话 · storySegments 台词序列', () => {
 });
 
 describe('剧情对话 · stepForEvidence 拾取触发映射', () => {
-  it('残缺手记触发线索一，石碑调查触发线索二', () => {
+  it('残缺手记与石碑调查获得的异常羽毛分别触发线索一、二', () => {
     expect(stepForEvidence(EVIDENCE_NOTEBOOK)).toBe(FIRST_CHAPTER.steps[0]);
-    expect(stepForEvidence('anomalous-feather')).toBeUndefined();
+    expect(stepForEvidence('anomalous-feather')).toBe(FIRST_CHAPTER.steps[1]);
   });
 
   it('非任务证据与未知 ID 不触发对话', () => {

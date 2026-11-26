@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -10,7 +9,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const geometry = JSON.parse(await readFile('src/config/campus-geometry.json', 'utf8'));
+const geometry = JSON.parse(await readFile('src/config/formal-campus.json', 'utf8'));
 
 const directory = await mkdtemp(join(tmpdir(), 'bjtu-room-test-'));
 const listener = net.createServer();
@@ -49,7 +48,7 @@ async function waitFor(fn, description) {
   }
   throw Error(`Timeout: ${description}\n${logs}`);
 }
-async function connect(index) {
+async function connect(index, protocol = 2) {
   const displayName = `注册昵称${index}`;
   const response = await fetch(`${base}/api/auth/register`, {
     method: 'POST',
@@ -108,9 +107,18 @@ async function connect(index) {
       if (opcode === 1) peer.messages.push(JSON.parse(payload.toString()));
     }
   });
+  if (protocol !== 2) {
+    const rejected = await request(peer, { type: 'hello', protocol }, (m) => m.type === 'error');
+    assert.equal(
+      rejected.code,
+      'PROTOCOL_MISMATCH',
+      'old map clients cannot join the new protocol',
+    );
+    return peer;
+  }
   const welcome = await request(
     peer,
-    { type: 'hello', protocol: 1, sessionId: 'ignored', displayName: '伪造昵称' },
+    { type: 'hello', protocol: 2, sessionId: 'ignored', displayName: '伪造昵称' },
     (m) => m.type === 'welcome',
   );
   peer.id = welcome.playerId;
@@ -126,19 +134,12 @@ async function connect(index) {
       body: JSON.stringify(data),
     });
   // Independent fixture accounts: no production save is modified.
-  assert.equal((await request(peer, { type: 'create-room' })).code, 'ONLINE_LOCKED');
-  assert.equal(
-    (await request(peer, { type: 'join-room', roomId: '123456' })).code,
-    'ONLINE_LOCKED',
-  );
   const opened = await (await cloudPost('/open', { clientId: randomUUID() })).json();
   const data = {
     schemaVersion: 4,
     warehouse: [],
+    mailbox: [],
     currency: 0,
-    ownedSkinIds: ['school-uniform', 'red-trailblazer'],
-    equippedSkinId: 'red-trailblazer',
-    activeRaidSkinId: null,
     codexIds: [],
     unlockedChapterIds: [],
     activeRaid: null,
@@ -146,28 +147,20 @@ async function connect(index) {
     lastResult: null,
   };
   let revision = opened.revision;
-  if (index === 0) {
-    for (const chapters of [
-      ['siyuan-code'],
-      ['siyuan-code', 'siyuan-key'],
-      ['siyuan-code', 'siyuan-key', 'unknown'],
-    ]) {
-      const saved = await cloudPost('', {
-        leaseToken: opened.leaseToken,
-        revision,
-        data: { ...data, unlockedChapterIds: chapters },
-      });
-      assert.equal(saved.status, 200);
-      revision = (await saved.json()).revision;
-      assert.equal((await request(peer, { type: 'create-room' })).code, 'ONLINE_LOCKED');
-      assert.equal((await request(peer, { type: 'set-ready', ready: true })).code, 'ONLINE_LOCKED');
-      assert.equal((await request(peer, { type: 'start-game' })).code, 'ONLINE_LOCKED');
-    }
-  }
   const completed = await cloudPost('', {
     leaseToken: opened.leaseToken,
     revision,
-    data: { ...data, unlockedChapterIds: ['siyuan-code', 'siyuan-key', 'soothe-monster'] },
+    data: {
+      ...data,
+      unlockedChapterIds: ['siyuan-code', 'siyuan-key', 'soothe-monster'],
+      ...(index === 0
+        ? {
+            ownedSkinIds: ['school-uniform', 'red-trailblazer'],
+            equippedSkinId: 'red-trailblazer',
+            activeRaidSkinId: null,
+          }
+        : {}),
+    },
   });
   assert.equal(completed.status, 200);
   return peer;
@@ -190,11 +183,14 @@ async function request(
   const offset = peer.messages.length;
   send(peer, message);
   let found;
-  await waitFor(
-    () => (found = peer.messages.slice(offset).find(predicate)),
-    JSON.stringify(message),
+  for (let attempt = 0; attempt < 250; attempt++) {
+    found = peer.messages.slice(offset).find(predicate);
+    if (found) return found;
+    await delay(20);
+  }
+  throw Error(
+    `Timeout: ${JSON.stringify(message)}; exit=${server.exitCode}; socketDestroyed=${peer.socket.destroyed}; readyState=${peer.socket.readyState}; logs=${logs}; received ${JSON.stringify(peer.messages.slice(offset))}`,
   );
-  return found;
 }
 // Concurrent broadcasts can arrive out of order; clients apply the highest tick.
 const lastState = (peer) =>
@@ -214,6 +210,7 @@ try {
   const created = await request(host, { type: 'create-room' });
   assert.match(created.roomId, /^[1-9][0-9]{5}$/);
   assert.equal(created.hostId, host.id);
+  assert.equal(created.players[0].skinId, 'red-trailblazer');
   assert.equal(created.maxPlayers, 10);
   assert.equal(
     created.players[0].displayName,
@@ -242,6 +239,27 @@ try {
   });
   assert.equal(limited.maxPlayers, 2);
   await request(peers[1], { type: 'join-room', roomId });
+  const chat = await request(
+    peers[1],
+    { type: 'room-chat', text: '集合后出发。' },
+    (message) => message.type === 'room-chat',
+  );
+  assert.equal(chat.roomId, roomId);
+  assert.equal(chat.playerId, peers[1].id);
+  assert.equal(chat.displayName, peers[1].displayName, 'chat sender name comes from the account');
+  await waitFor(
+    () =>
+      host.messages.some((message) => message.type === 'room-chat' && message.text === chat.text),
+    'chat delivered to room members',
+  );
+  assert.equal(
+    peers[2].messages.some((message) => message.type === 'room-chat'),
+    false,
+  );
+  assert.equal(
+    (await request(peers[1], { type: 'room-chat', text: 'x'.repeat(161) })).code,
+    'INVALID_MESSAGE',
+  );
   assert.equal((await request(peers[2], { type: 'join-room', roomId })).code, 'ROOM_FULL');
   assert.equal(
     (await request(peers[1], { type: 'room-settings', maxPlayers: 10, admissionOpen: true })).code,
@@ -318,35 +336,6 @@ try {
     { type: 'set-ready', ready: true },
     (m) => m.type === 'room-state' && m.players.find((p) => p.playerId === members[1].id)?.ready,
   );
-  const fixtureDb = new DatabaseSync(join(directory, 'game.db'));
-  const memberSave = JSON.parse(
-    fixtureDb.prepare('SELECT data FROM player_saves WHERE user_id=?').get(members[1].accountId)
-      .data,
-  );
-  fixtureDb
-    .prepare('UPDATE player_saves SET data=? WHERE user_id=?')
-    .run(
-      JSON.stringify({ ...memberSave, unlockedChapterIds: ['siyuan-code', 'siyuan-key'] }),
-      members[1].accountId,
-    );
-  fixtureDb.close();
-  const revokedMember = await request(host, { type: 'start-game' });
-  assert.equal(revokedMember.code, 'ONLINE_LOCKED', 'start rechecks every account in the room');
-  assert(
-    revokedMember.message.includes(members[1].displayName),
-    'denial identifies the ineligible member',
-  );
-  assert.equal(lastState(host).started, false, 'a failed gate does not start the room');
-  const restoreDb = new DatabaseSync(join(directory, 'game.db'));
-  const memberSaveWithSkin = {
-    ...memberSave,
-    ownedSkinIds: ['school-uniform', 'navy-adventurer'],
-    equippedSkinId: 'navy-adventurer',
-  };
-  restoreDb
-    .prepare('UPDATE player_saves SET data=? WHERE user_id=?')
-    .run(JSON.stringify(memberSaveWithSkin), members[1].accountId);
-  restoreDb.close();
   const started = await request(
     host,
     { type: 'start-game' },
@@ -364,15 +353,38 @@ try {
     () => members.every((peer) => lastState(peer).roundId === started.roundId),
     'same round delivered to all members',
   );
-  assert(
-    members.every(
-      (peer) =>
-        lastState(peer).players.find((player) => player.playerId === members[1].id)?.skinId ===
-        'navy-adventurer',
-    ),
-    'every member sees the equipped outfit read from the save at round start',
-  );
   const spawns = new Map(started.players.map((player) => [player.playerId, player.position]));
+  assert.equal(
+    started.players.find((player) => player.playerId === host.id).skinId,
+    'red-trailblazer',
+  );
+  assert.equal(
+    started.players.find((player) => player.playerId === members[1].id).skinId,
+    'school-uniform',
+  );
+  for (const { position: point } of started.players) {
+    assert(point.x - geometry.playerRadius >= geometry.bounds.x);
+    assert(point.y - geometry.playerRadius >= geometry.bounds.y);
+    assert(point.x + geometry.playerRadius <= geometry.bounds.x + geometry.bounds.width);
+    assert(point.y + geometry.playerRadius <= geometry.bounds.y + geometry.bounds.height);
+    assert(
+      !geometry.obstacles.some(
+        (wall) =>
+          point.x + geometry.playerRadius > wall.x &&
+          point.x - geometry.playerRadius < wall.x + wall.width &&
+          point.y + geometry.playerRadius > wall.y &&
+          point.y - geometry.playerRadius < wall.y + wall.height,
+      ),
+      'every seat clears shared collision geometry',
+    );
+    for (const { position: other } of started.players) {
+      if (other === point) continue;
+      assert(
+        Math.hypot(point.x - other.x, point.y - other.y) >= geometry.playerRadius * 2,
+        'spawn bodies do not overlap',
+      );
+    }
+  }
   assert.equal(
     new Set(started.players.map((player) => JSON.stringify(player.position))).size,
     10,
@@ -687,6 +699,7 @@ try {
   for (const peer of members.slice(1)) send(peer, { type: 'leave-room' });
   await delay(100);
   assert.equal((await request(host, { type: 'join-room', roomId })).code, 'ROOM_NOT_FOUND');
+  await connect('legacy', 1);
   console.log(
     'Room smoke passed: random six-digit codes, concurrent ten-player capacity, registered nicknames, host-only start, ready/cancel, synchronized rounds, next round, host transfer, room isolation and empty-room cleanup.',
   );

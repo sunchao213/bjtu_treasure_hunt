@@ -31,6 +31,34 @@ const result = (raidId: string, itemId = 'school-badge'): RaidResult => {
 };
 
 describe('formal persistence and migration', () => {
+  it('rejects weighted loadouts and reserved starter slots before changing the save', async () => {
+    const storage = new MemoryStorage();
+    const save = new PersistentSave(storage);
+    await save.beginRaid('seed-slots', []);
+    await save.finalizeRaid({
+      raidId: 'seed-slots',
+      outcome: 'success',
+      reason: null,
+      value: 0,
+      items: Array.from({ length: 4 }, (_, i) => ({
+        instanceId: `purchase:bike-${i}`,
+        itemId: 'yellow-bike',
+        origin: { kind: 'raid-loot', obtainedInRaidId: 'seed-slots' },
+      })),
+    });
+    const before = save.exportRaw();
+    const ids = save.view().warehouse.map((item) => item.instanceId);
+    await expect(save.beginRaid('too-many-slots', ids)).rejects.toThrow('capacity');
+    await expect(save.beginRaid('starter-overflow', ids.slice(0, 3), 1)).rejects.toThrow(
+      'capacity',
+    );
+    expect(save.exportRaw()).toBe(before);
+    expect(storage.getItem(FORMAL_SAVE_KEY)).toBe(before);
+    const carried = await save.beginRaid('valid-slots', ids.slice(0, 3));
+    expect(carried).toHaveLength(3);
+    expect(carried.every((item) => item.origin.kind === 'carry-in')).toBe(true);
+  });
+
   it('saves chapter unlocks atomically with evidence and keeps them after reload and failure', async () => {
     const storage = new MemoryStorage();
     const save = new PersistentSave(storage);
@@ -68,7 +96,7 @@ describe('formal persistence and migration', () => {
     expect(reloaded.view().warehouse).toHaveLength(2);
   });
 
-  it('unlocks only after successful extraction with a completed task and the current-raid notebook', async () => {
+  it('unlocks only after successful extraction with a completed task and both current-raid clues', async () => {
     const cases = [
       { outcome: 'success' as const, complete: true, originRaidId: 'story', unlock: true },
       { outcome: 'success' as const, complete: false, originRaidId: 'story', unlock: false },
@@ -79,11 +107,11 @@ describe('formal persistence and migration', () => {
       const save = new PersistentSave(new MemoryStorage());
       await save.beginRaid('story', []);
       const evidence: ItemInstance[] = [
-        {
-          instanceId: `story:torn-notebook:${index}`,
-          itemId: 'torn-notebook',
-          origin: { kind: 'raid-loot', obtainedInRaidId: testCase.originRaidId },
-        },
+        ...['torn-notebook', 'anomalous-feather'].map((itemId) => ({
+          instanceId: `story:${itemId}:${index}`,
+          itemId,
+          origin: { kind: 'raid-loot' as const, obtainedInRaidId: testCase.originRaidId },
+        })),
       ];
       await save.finalizeRaid({
         ...result('story'),
@@ -166,6 +194,60 @@ describe('formal persistence and migration', () => {
       expect(imported.importRaw(raw)).toEqual({ sourceSchemaVersion: 2, targetSchemaVersion: 4 });
       expect(imported.view()).toEqual(save.view());
     }
+  });
+
+  it('merges main schema 4 mailbox saves and map schema 4 wardrobe saves', () => {
+    const mainStorage = new MemoryStorage();
+    const mainTarget = new PersistentSave(mainStorage);
+    const mainSchemaFour = mainTarget.view();
+    delete (mainSchemaFour as Partial<typeof mainSchemaFour>).ownedSkinIds;
+    delete (mainSchemaFour as Partial<typeof mainSchemaFour>).equippedSkinId;
+    delete (mainSchemaFour as Partial<typeof mainSchemaFour>).activeRaidSkinId;
+    mainSchemaFour.mailbox = [
+      {
+        mailId: 'mail-main-4',
+        title: '物资补发',
+        body: '来自 main schema 4',
+        createdAt: 1,
+        attachments: [
+          {
+            instanceId: 'mail-item',
+            itemId: 'school-badge',
+            origin: { kind: 'raid-loot', obtainedInRaidId: 'mail-raid' },
+          },
+        ],
+      },
+    ];
+    expect(mainTarget.importRaw(JSON.stringify(mainSchemaFour))).toEqual({
+      sourceSchemaVersion: 4,
+      targetSchemaVersion: 4,
+    });
+    expect(mainTarget.view()).toMatchObject({
+      mailbox: [{ mailId: 'mail-main-4' }],
+      ownedSkinIds: ['school-uniform'],
+      equippedSkinId: 'school-uniform',
+      activeRaidSkinId: null,
+    });
+
+    const mapStorage = new MemoryStorage();
+    const mapTarget = new PersistentSave(mapStorage);
+    const mapSchemaFour = mapTarget.view();
+    mapSchemaFour.ownedSkinIds.push('red-trailblazer');
+    mapSchemaFour.equippedSkinId = 'red-trailblazer';
+    delete (mapSchemaFour as Partial<typeof mapSchemaFour>).mailbox;
+    mapSchemaFour.activeRaid = { raidId: 'active-map-raid', loadout: [] };
+    mapSchemaFour.activeRaidSkinId = 'red-trailblazer';
+    expect(mapTarget.importRaw(JSON.stringify(mapSchemaFour))).toEqual({
+      sourceSchemaVersion: 4,
+      targetSchemaVersion: 4,
+    });
+    expect(mapTarget.view()).toMatchObject({
+      mailbox: [],
+      ownedSkinIds: ['school-uniform', 'red-trailblazer'],
+      equippedSkinId: 'red-trailblazer',
+      activeRaid: { raidId: 'active-map-raid', loadout: [] },
+      activeRaidSkinId: 'red-trailblazer',
+    });
   });
 
   it('rejects fabricated carry-ins, changed identities, changed origins and duplicate returns', async () => {
@@ -310,7 +392,7 @@ describe('formal persistence and migration', () => {
       inventory,
       save,
       events,
-      RAID_RULES,
+      { ...RAID_RULES, threshold: 100 },
       ITEM_DEFINITIONS,
       () => now,
       () => 'formal-raid',
@@ -353,7 +435,7 @@ describe('formal persistence and migration', () => {
       inventory,
       save,
       events,
-      RAID_RULES,
+      { ...RAID_RULES, threshold: 100 },
       ITEM_DEFINITIONS,
       () => now,
       () => `formal-${++raidNumber}`,
@@ -390,5 +472,49 @@ describe('formal persistence and migration', () => {
     expect(controller.getView().phase).toBe('failed');
     expect(save.view().warehouse).toHaveLength(4);
     controller.dispose();
+  });
+
+  it('reorders the warehouse per instance: same item kind may split across slots', () => {
+    const storage = new MemoryStorage();
+    const item = (instanceId: string, itemId: string): ItemInstance => ({
+      instanceId,
+      itemId,
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'reorder' },
+    });
+    storage.setItem(
+      FORMAL_SAVE_KEY,
+      JSON.stringify({
+        schemaVersion: 3,
+        warehouse: [
+          item('a1', 'bandage'),
+          item('b1', 'school-badge'),
+          item('a2', 'bandage'),
+          item('c1', 'siyuan-key'),
+        ],
+        currency: 0,
+        codexIds: [],
+        unlockedChapterIds: [],
+        activeRaid: null,
+        settledRaidIds: [],
+        lastResult: null,
+      }),
+    );
+    const save = new PersistentSave(storage);
+    // 一格一件：同 itemId 的两个实例可以被拆开；漏掉的实例按原顺序补到末尾
+    save.reorderWarehouse(['c1', 'a2']);
+    expect(save.view().warehouse.map((entry) => entry.instanceId)).toEqual([
+      'c1',
+      'a2',
+      'a1',
+      'b1',
+    ]);
+    // 完全不认识的 id：顺序不变，一件物品都不能丢
+    save.reorderWarehouse(['nope']);
+    expect(save.view().warehouse.map((entry) => entry.instanceId)).toEqual([
+      'c1',
+      'a2',
+      'a1',
+      'b1',
+    ]);
   });
 });

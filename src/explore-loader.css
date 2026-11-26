@@ -1,0 +1,92 @@
+/**
+ * 「开始探索」过场遮罩：全屏盖住准备页 → 局内地图的切换。
+ *
+ * 视频在遮罩下面播放，淡出时地图已经渲染就位，视觉上就是「加载完直接进校园」。
+ * 层级 1200：高于序章画板（1000）与横屏提示（100），低于原生弹层。
+ */
+
+.explore-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #07090b;
+  opacity: 1;
+  transition: opacity 380ms ease-out;
+}
+
+.explore-loader[hidden] {
+  display: none;
+}
+
+.explore-loader.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.explore-loader-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 视频编码不被支持时（例如没装 HEVC 扩展的 Chrome），退回纯 CSS 进度环。 */
+.explore-loader.is-fallback .explore-loader-video {
+  display: none;
+}
+
+.explore-loader-fallback {
+  display: none;
+  place-items: center;
+  gap: 18px;
+}
+
+.explore-loader.is-fallback .explore-loader-fallback {
+  display: grid;
+}
+
+.explore-loader-ring {
+  width: 46px;
+  height: 46px;
+  border: 2px solid rgba(230, 172, 72, 0.22);
+  border-top-color: #e6ac48;
+  border-radius: 50%;
+  animation: explore-loader-spin 900ms linear infinite;
+}
+
+.explore-loader-text {
+  margin: 0;
+  color: #b7c0b6;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+}
+
+.explore-loader-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes explore-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explore-loader {
+    transition-duration: 1ms;
+  }
+  .explore-loader-ring {
+    animation-duration: 2400ms;
+  }
+}

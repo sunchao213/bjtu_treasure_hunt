@@ -3,6 +3,9 @@ using System.Text.Json;
 // Validate the persisted snapshot boundary. Combat/loot remain client simulations in this iteration.
 static class SaveValidation
 {
+    /// <summary>仓库硬上限，与前端 WAREHOUSE_CAPACITY 保持一致。</summary>
+    private const int WarehouseCapacity = 100;
+
     public static bool IsValid(JsonElement data)
     {
         if (data.ValueKind != JsonValueKind.Object || !data.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var version) || version is not (3 or 4)
@@ -10,15 +13,11 @@ static class SaveValidation
             || !Strings(data, "codexIds", out _) || !Strings(data, "unlockedChapterIds", out _)
             || !Strings(data, "settledRaidIds", out var settled)
             || !data.TryGetProperty("activeRaid", out var active) || !data.TryGetProperty("lastResult", out var last)) return false;
-        if (version == 4 && (!Strings(data, "ownedSkinIds", out var ownedSkinIds)
-            || !ownedSkinIds.Contains("school-uniform")
-            || ownedSkinIds.Any(id => !IsSkinId(id))
-            || !Text(data, "equippedSkinId", out var equippedSkinId) || !ownedSkinIds.Contains(equippedSkinId)
-            || !data.TryGetProperty("activeRaidSkinId", out var activeSkin)
-            || (active.ValueKind == JsonValueKind.Null
-                ? activeSkin.ValueKind != JsonValueKind.Null
-                : activeSkin.ValueKind != JsonValueKind.String
-                    || !ownedSkinIds.Contains(activeSkin.GetString()!)))) return false;
+        // 硬上限只约束 v4 起的快照：更早的档可能已经超量，前端迁移时会把超出部分折进信箱
+        if (version == 4 && data.TryGetProperty("mailbox", out _)
+            && (warehouse.GetArrayLength() > WarehouseCapacity || !MailboxValid(data, warehouseIds))) return false;
+        if (version == 4 && !data.TryGetProperty("mailbox", out _) && !data.TryGetProperty("ownedSkinIds", out _)) return false;
+        if (version == 4 && !WardrobeValid(data, active)) return false;
         if (active.ValueKind != JsonValueKind.Null)
         {
             if (!Text(active, "raidId", out var raidId) || settled.Contains(raidId)
@@ -39,9 +38,55 @@ static class SaveValidation
         });
     }
 
+    /// <summary>信箱：每封都要有唯一 mailId、非空附件，附件 instanceId 不能与仓库或彼此重复。</summary>
+    private static bool MailboxValid(JsonElement data, HashSet<string> warehouseIds)
+    {
+        if (!Array(data, "mailbox", out var mailbox)) return false;
+        var mailIds = new HashSet<string>(StringComparer.Ordinal);
+        var taken = new HashSet<string>(warehouseIds, StringComparer.Ordinal);
+        foreach (var mail in mailbox.EnumerateArray())
+        {
+            if (!Text(mail, "mailId", out var mailId) || !mailIds.Add(mailId)
+                || !Text(mail, "title", out _)
+                || !Body(mail, out _)
+                || !mail.TryGetProperty("createdAt", out var createdAt) || createdAt.ValueKind != JsonValueKind.Number || !createdAt.TryGetInt64(out _)
+                || !Array(mail, "attachments", out var attachments) || attachments.GetArrayLength() == 0
+                || !Items(attachments, out var attachmentIds)) return false;
+            if (!attachmentIds.All(taken.Add)) return false;
+        }
+        return true;
+    }
+
+    private static bool Body(JsonElement parent, out string value)
+    {
+        value = "";
+        if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty("body", out var element) || element.ValueKind != JsonValueKind.String) return false;
+        value = element.GetString()!;
+        return value.Length <= 2_000 && !value.Any(char.IsControl);
+    }
+
     public static bool IsSkinId(string? skin) =>
         skin is "school-uniform" or "red-trailblazer" or "lavender-mage" or "navy-adventurer"
             or "silver-researcher" or "lab-scientist" or "orange-rescuer";
+
+    private static bool WardrobeValid(JsonElement data, JsonElement active)
+    {
+        var hasWardrobe = data.TryGetProperty("ownedSkinIds", out _)
+            || data.TryGetProperty("equippedSkinId", out _)
+            || data.TryGetProperty("activeRaidSkinId", out _);
+        if (!hasWardrobe) return true;
+        if (!Strings(data, "ownedSkinIds", out var ownedSkinIds)
+            || !ownedSkinIds.Contains("school-uniform")
+            || ownedSkinIds.Any(id => !IsSkinId(id))
+            || !Text(data, "equippedSkinId", out var equippedSkinId)
+            || !ownedSkinIds.Contains(equippedSkinId)
+            || !data.TryGetProperty("activeRaidSkinId", out var activeSkin)) return false;
+        return active.ValueKind == JsonValueKind.Null
+            ? activeSkin.ValueKind == JsonValueKind.Null
+            : activeSkin.ValueKind == JsonValueKind.String
+                && IsSkinId(activeSkin.GetString())
+                && ownedSkinIds.Contains(activeSkin.GetString()!);
+    }
 
     private static bool Text(JsonElement parent, string key, out string value)
     {

@@ -48,6 +48,25 @@ class FakeSocket implements NetworkSocket {
 }
 
 describe('network session transport', () => {
+  it('sends only bounded chat messages after joining a room', () => {
+    const socket = new FakeSocket();
+    const session = new NetworkSession({
+      url: 'wss://example.test',
+      sessionId: 's',
+      displayName: '玩家',
+      socketFactory: () => socket,
+    });
+    session.connect();
+    socket.open();
+    expect(session.sendChat('你好')).toBe(false);
+    session.createRoom();
+    socket.message(roomState());
+    expect(session.sendChat('   ')).toBe(false);
+    expect(session.sendChat('x'.repeat(161))).toBe(false);
+    expect(session.sendChat('  晚上好  ')).toBe(true);
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'room-chat', text: '晚上好' });
+  });
+
   it('measures matching pong replies and reconnects a stalled socket without accepting stale callbacks', () => {
     vi.useFakeTimers();
     try {
@@ -80,7 +99,7 @@ describe('network session transport', () => {
       second.open();
       first.onclose?.();
       first.message(
-        JSON.stringify({ type: 'welcome', protocol: 1, playerId: 'stale', serverTime: now }),
+        JSON.stringify({ type: 'welcome', protocol: 2, playerId: 'stale', serverTime: now }),
       );
       expect(session.getStatus()).toBe('connected');
       expect(session.getPlayerId()).toBeNull();
@@ -155,7 +174,7 @@ describe('network session transport', () => {
     session.connect();
     socket.open();
     socket.message(
-      JSON.stringify({ type: 'welcome', protocol: 1, playerId: 'p1', serverTime: 10 }),
+      JSON.stringify({ type: 'welcome', protocol: 2, playerId: 'p1', serverTime: 10 }),
     );
     session.createRoom();
     socket.message(roomState(1, true));
@@ -224,7 +243,7 @@ describe('network session transport', () => {
     session.connect();
     socket.open();
     socket.message(
-      JSON.stringify({ type: 'welcome', protocol: 1, playerId: 'p1', serverTime: 10 }),
+      JSON.stringify({ type: 'welcome', protocol: 2, playerId: 'p1', serverTime: 10 }),
     );
     socket.message(JSON.stringify({ type: 'unknown' }));
     expect(session.getPlayerId()).toBe('p1');

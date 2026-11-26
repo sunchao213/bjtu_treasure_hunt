@@ -1,4 +1,5 @@
 import {
+  createRequestId,
   REALTIME_PROTOCOL_VERSION,
   type ClientMessage,
   type ConnectionState,
@@ -16,11 +17,17 @@ export interface RealtimeTransport {
 }
 
 type Listener<T> = (value: T) => void;
+export type RoomChatMessage = Extract<ServerMessage, { type: 'room.chat' }>;
+export interface RoomChatTransport extends RealtimeTransport {
+  sendChat(roomId: string, text: string): boolean;
+  onChat(listener: Listener<RoomChatMessage>): () => void;
+}
 
-abstract class BaseTransport implements RealtimeTransport {
+abstract class BaseTransport implements RoomChatTransport {
   private currentState: ConnectionState = 'idle';
   private readonly messageListeners = new Set<Listener<ServerMessage>>();
   private readonly stateListeners = new Set<Listener<ConnectionState>>();
+  private readonly chatListeners = new Set<Listener<RoomChatMessage>>();
 
   get state(): ConnectionState {
     return this.currentState;
@@ -29,6 +36,20 @@ abstract class BaseTransport implements RealtimeTransport {
   abstract connect(): Promise<void>;
   abstract send(message: ClientMessage): void;
   abstract close(): void;
+
+  sendChat(roomId: string, text: string): boolean {
+    const clean = text.trim();
+    if (this.state !== 'open' || !clean || clean.length > ROOM_CHAT_LIMIT) return false;
+    this.send({
+      version: REALTIME_PROTOCOL_VERSION,
+      type: 'room.chat',
+      requestId: createRequestId('chat'),
+      roomId,
+      messageId: crypto.randomUUID(),
+      text: clean,
+    });
+    return true;
+  }
 
   onMessage(listener: Listener<ServerMessage>): () => void {
     this.messageListeners.add(listener);
@@ -40,6 +61,15 @@ abstract class BaseTransport implements RealtimeTransport {
     return () => this.stateListeners.delete(listener);
   }
 
+  onChat(listener: Listener<RoomChatMessage>): () => void {
+    this.chatListeners.add(listener);
+    return () => this.chatListeners.delete(listener);
+  }
+
+  protected emitChat(message: RoomChatMessage): void {
+    for (const listener of this.chatListeners) listener(message);
+  }
+
   protected setState(state: ConnectionState): void {
     if (this.currentState === state) return;
     this.currentState = state;
@@ -47,6 +77,10 @@ abstract class BaseTransport implements RealtimeTransport {
   }
 
   protected emit(message: ServerMessage): void {
+    if (message.type === 'room.chat') {
+      this.emitChat(message);
+      return;
+    }
     for (const listener of this.messageListeners) listener(message);
   }
 }
@@ -141,10 +175,12 @@ interface DemoMember {
 interface DemoWireMessage {
   readonly kind: 'bjtu-room-demo';
   readonly senderId: string;
-  readonly action: 'create' | 'join' | 'ready' | 'start' | 'leave' | 'snapshot';
+  readonly action: 'create' | 'join' | 'ready' | 'start' | 'leave' | 'snapshot' | 'chat';
   readonly roomId: string;
   readonly member?: DemoMember;
   readonly ready?: boolean;
+  readonly text?: string;
+  readonly messageId?: string;
   readonly snapshot?: {
     hostId: string;
     status: 'lobby' | 'starting';
@@ -154,8 +190,10 @@ interface DemoWireMessage {
 
 const DEMO_CHANNEL = 'bjtu-treasure-hunt:rooms:v1';
 
+export const ROOM_CHAT_LIMIT = 160;
+
 /** Development-only room adapter. It exercises the same protocol without a server. */
-export class BroadcastRoomTransport extends BaseTransport {
+export class BroadcastRoomTransport extends BaseTransport implements RoomChatTransport {
   private readonly clientId = `demo-${crypto.randomUUID()}`;
   private readonly channel = new BroadcastChannel(DEMO_CHANNEL);
   private readonly rooms = new Map<
@@ -177,6 +215,7 @@ export class BroadcastRoomTransport extends BaseTransport {
     }
     if (message.action === 'snapshot' && message.snapshot) {
       this.rooms.set(message.roomId, structuredClone(message.snapshot));
+      if (!message.snapshot.members.some((member) => member.playerId === this.clientId)) return;
       this.emit({
         version: REALTIME_PROTOCOL_VERSION,
         type: 'room.snapshot',
@@ -185,6 +224,27 @@ export class BroadcastRoomTransport extends BaseTransport {
       return;
     }
     if (!room) return;
+    if (message.action === 'chat') {
+      if (!room.members.some((member) => member.playerId === this.clientId && member.connected)) {
+        return;
+      }
+      const sender = room.members.find(
+        (member) => member.playerId === message.senderId && member.connected,
+      );
+      const text = typeof message.text === 'string' ? message.text.trim() : '';
+      if (sender && text && text.length <= ROOM_CHAT_LIMIT) {
+        this.emit({
+          version: REALTIME_PROTOCOL_VERSION,
+          type: 'room.chat',
+          roomId: message.roomId,
+          messageId: message.messageId ?? crypto.randomUUID(),
+          playerId: sender.playerId,
+          displayName: sender.displayName,
+          text,
+        });
+      }
+      return;
+    }
     if (
       message.action === 'join' &&
       message.member &&
@@ -204,6 +264,7 @@ export class BroadcastRoomTransport extends BaseTransport {
     if (message.action === 'start' && message.senderId === room.hostId) {
       room.status = 'starting';
       this.broadcastSnapshot(message.roomId);
+      if (!room.members.some((member) => member.playerId === this.clientId)) return;
       this.emit({
         version: REALTIME_PROTOCOL_VERSION,
         type: 'room.started',
@@ -238,6 +299,30 @@ export class BroadcastRoomTransport extends BaseTransport {
   send(message: ClientMessage): void {
     if (this.state !== 'open') throw new Error('联机通道尚未连接。');
     const roomId = message.roomId ?? '';
+    if (message.type === 'room.chat') {
+      const member = this.rooms
+        .get(roomId)
+        ?.members.find((item) => item.playerId === this.clientId && item.connected);
+      if (!member || !message.text.trim() || message.text.length > ROOM_CHAT_LIMIT) return;
+      this.channel.postMessage({
+        kind: 'bjtu-room-demo',
+        senderId: this.clientId,
+        action: 'chat',
+        roomId,
+        messageId: message.messageId,
+        text: message.text.trim(),
+      });
+      this.emit({
+        version: REALTIME_PROTOCOL_VERSION,
+        type: 'room.chat',
+        roomId,
+        messageId: message.messageId,
+        playerId: this.clientId,
+        displayName: member.displayName,
+        text: message.text.trim(),
+      });
+      return;
+    }
     if (message.type === 'room.create') {
       const snapshot = {
         hostId: this.clientId,
@@ -372,14 +457,16 @@ export class BroadcastRoomTransport extends BaseTransport {
   }
 
   private broadcastSnapshot(roomId: string, requestId?: string): void {
-    this.emit({
-      version: REALTIME_PROTOCOL_VERSION,
-      type: 'room.snapshot',
-      requestId,
-      snapshot: this.snapshot(roomId),
-    });
     const room = this.rooms.get(roomId);
     if (!room) return;
+    if (room.members.some((member) => member.playerId === this.clientId)) {
+      this.emit({
+        version: REALTIME_PROTOCOL_VERSION,
+        type: 'room.snapshot',
+        requestId,
+        snapshot: this.snapshot(roomId),
+      });
+    }
     this.channel.postMessage({
       kind: 'bjtu-room-demo',
       senderId: this.clientId,

@@ -1,4 +1,10 @@
-import type { ActionResult, ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
+import type {
+  ActionResult,
+  ItemInstance,
+  MailClaimResult,
+  RaidResult,
+  SavePort,
+} from '../../shared/types/game';
 import type { SkinId } from './persistent-save';
 import {
   FORMAL_SAVE_KEY,
@@ -88,14 +94,21 @@ export class CloudSave implements SavePort {
   reset(): Promise<void> {
     return this.update((next) => next.reset());
   }
-  beginRaid(raidId: string, ids: readonly string[]): Promise<readonly ItemInstance[]> {
-    return this.update((next) => next.beginRaid(raidId, ids));
+  beginRaid(
+    raidId: string,
+    ids: readonly string[],
+    reservedSlots = 0,
+  ): Promise<readonly ItemInstance[]> {
+    return this.update((next) => next.beginRaid(raidId, ids, reservedSlots));
   }
   finalizeRaid(result: RaidResult): Promise<void> {
     return this.update((next) => next.finalizeRaid(result));
   }
   unlockChapter(chapterId: string): Promise<void> {
     return this.update((next) => next.unlockChapter(chapterId));
+  }
+  reorderWarehouse(itemIds: readonly string[]): Promise<void> {
+    return this.update((next) => next.reorderWarehouse(itemIds), true);
   }
   purchaseItem(itemId: string): Promise<ActionResult<ItemInstance>> {
     return this.update((next) => {
@@ -111,6 +124,9 @@ export class CloudSave implements SavePort {
   }
   equipSkin(skinId: SkinId): Promise<boolean> {
     return this.update((next) => next.equipSkin(skinId), true);
+  }
+  claimMail(mailId: string | null): Promise<MailClaimResult> {
+    return this.update((next) => next.claimMail(mailId), true);
   }
 
   private update<T>(

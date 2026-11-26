@@ -1,47 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WorldScene } from '../../src/scenes/world-scene';
+import { FormalWorld as WorldScene } from '../../src/modules/world/formal-world';
 import { NightCombat } from '../../src/modules/world/night-systems';
 import { ReferenceInventory } from '../../src/modules/inventory/reference-inventory';
 import { RaidController } from '../../src/modules/raid/raid-controller';
 import { PersistentSave } from '../../src/modules/save/persistent-save';
 import { EventBus } from '../../src/shared/events/game-events';
 import { ITEM_DEFINITIONS, RAID_RULES } from '../../src/config/game-config';
-import { WORLD } from '../../src/config/world-config';
+import WORLD from '../../src/config/formal-campus.json';
 import type { ItemInstance, Point } from '../../src/shared/types/game';
-
-vi.mock('phaser', () => {
-  class DisplayObject {
-    depth = 0;
-    text = '';
-    list: DisplayObject[] = [];
-    setOrigin() {
-      return this;
-    }
-    setStrokeStyle() {
-      return this;
-    }
-    setDepth(depth: number) {
-      this.depth = depth;
-      return this;
-    }
-    destroy = vi.fn();
-  }
-  return {
-    default: {
-      Scene: class {
-        time = { now: 0 };
-        input = { activePointer: null };
-        add = {
-          circle: () => new DisplayObject(),
-          text: (_x: number, _y: number, text: string) =>
-            Object.assign(new DisplayObject(), { text }),
-          container: (_x: number, _y: number, list: DisplayObject[]) =>
-            Object.assign(new DisplayObject(), { list }),
-        };
-      },
-    },
-  };
-});
 
 class InputElement {
   constructor(readonly type: string) {}
@@ -84,22 +50,17 @@ async function setup(touchLayout = false) {
   const keys = Object.fromEntries(['Q', 'E', 'D', 'SPACE'].map((key) => [key, { isDown: false }]));
   const frame = vi.fn();
   type Services = ConstructorParameters<typeof WorldScene>[0];
-  const scene = new WorldScene({
-    controller,
-    inventory,
-    events,
-    onFrame: frame,
-    notify: vi.fn(),
-    touch: {
-      movement: { x: 0, y: 0 },
-      aim: null,
-      aimDirection: null,
-      held: (key: string) => held.has(key),
-      finishFrame: vi.fn(),
-      reset: () => held.clear(),
-    } as unknown as Services['touch'],
-    sound: { play: vi.fn(), setLoop: vi.fn() } as unknown as Services['sound'],
-  });
+  const scene = new WorldScene(
+    {
+      controller,
+      inventory,
+      events,
+      onFrame: frame,
+      notify: vi.fn(),
+      sound: { play: vi.fn(), setLoop: vi.fn() } as unknown as Services['sound'],
+    },
+    () => now,
+  );
   Object.assign(scene, { combat, keys, lastRaidId: 'hug-raid' });
   const ground = Reflect.get(scene, 'ground') as Map<
     string,
@@ -113,8 +74,16 @@ async function setup(touchLayout = false) {
     for (let elapsed = 0; elapsed < ms; elapsed += 100) {
       const delta = Math.min(100, ms - elapsed);
       now += delta;
-      scene.time.now = now;
-      scene.update(now, delta);
+      scene.tick(delta, {
+        move: { x: keys.D!.isDown ? 1 : 0, y: 0 },
+        aim: 0,
+        interact: keys.E!.isDown || held.has('E'),
+        attack: keys.SPACE!.isDown || held.has('SPACE'),
+        hug: keys.Q!.isDown || held.has('Q'),
+        flashlight: false,
+        refill: false,
+        flare: false,
+      });
     }
   };
   step();
@@ -135,21 +104,24 @@ async function setup(touchLayout = false) {
 }
 
 describe('hug input, feedback and calming in the world scene', () => {
-  it.each(['range', 'checkbox'])('accepts desktop Q with a focused %s control', async (type) => {
-    const s = await setup();
-    s.document.activeElement = new InputElement(type);
-    s.keys.Q!.isDown = true;
-    s.step(700);
-    expect(s.hug.hugProgress).toBe(700);
-    expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('长按 Q'), 700 / 1500, {
-      key: 'Q',
-      label: '安抚',
-    });
-    s.step(800);
-    expect(s.hug.state).toBe('calmed');
-    expect(s.combat.enemies).toEqual([s.hug]);
-    expect(s.ground.size).toBe(0);
-  });
+  it.each(['range', 'checkbox'])(
+    'accepts a shell-approved hug command independently of %s UI controls',
+    async (type) => {
+      const s = await setup();
+      s.document.activeElement = new InputElement(type);
+      s.keys.Q!.isDown = true;
+      s.step(700);
+      expect(s.hug.hugProgress).toBe(700);
+      expect(s.frame).toHaveBeenLastCalledWith(expect.stringContaining('长按 Q'), 700 / 1500, {
+        key: 'Q',
+        label: '安抚',
+      });
+      s.step(800);
+      expect(s.hug.state).toBe('calmed');
+      expect(s.combat.enemies).toEqual([s.hug]);
+      expect(s.ground.size).toBe(0);
+    },
+  );
 
   it('shows the nearest request progress even when an earlier enemy and an old banner exist', async () => {
     const s = await setup();

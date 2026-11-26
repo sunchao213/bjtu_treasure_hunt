@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { COMBAT_RULES } from '../../src/config/combat-config';
 import { RAID_RULES, ITEM_DEFINITIONS } from '../../src/config/game-config';
 import { EventBus } from '../../src/shared/events/game-events';
 import { ReferenceInventory } from '../../src/modules/inventory/reference-inventory';
@@ -19,6 +20,7 @@ async function setup(
   values: typeof RAID_RULES.values = RAID_RULES.values,
   loadout: readonly ItemInstance[] = [],
   questChapterId = QUEST_CHAPTER_ID,
+  threshold = 100,
 ) {
   let now = 0;
   let rejectSave = false;
@@ -39,7 +41,7 @@ async function setup(
     inventory,
     save,
     events,
-    { ...RAID_RULES, durationMs, values },
+    { ...RAID_RULES, durationMs, values, threshold },
     ITEM_DEFINITIONS,
     () => now,
     () => 'raid-1',
@@ -67,6 +69,53 @@ async function setup(
 }
 
 describe('A extraction lifecycle', () => {
+  // Existing lifecycle fixtures use a 100-value rule; production boundaries are tested separately.
+  it('requires 200 in production, rejects 199 and cancels when carried value drops below 200', async () => {
+    const s = await setup(
+      600_000,
+      undefined,
+      { ...RAID_RULES.values, common: 49 },
+      [],
+      QUEST_CHAPTER_ID,
+      RAID_RULES.threshold,
+    );
+    expect(s.controller.getView().threshold).toBe(200);
+    s.inventory.addLoot(loot('legendary', 'strange-veined-ginkgo-leaf'));
+    s.inventory.addLoot(loot('common', 'scratch-paper'));
+    s.controller.setExtractionPresence(true);
+    expect(s.controller.getView().value).toBe(199);
+    expect(s.controller.startExtraction()).toEqual({ ok: false, error: 'VALUE_TOO_LOW' });
+    s.inventory.remove('common');
+    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    expect(s.controller.getView().value).toBe(200);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(4_000);
+    const removed = s.inventory.remove('epic');
+    expect(s.controller.getView().phase).toBe('active');
+    expect(s.controller.getView().value).toBe(150);
+    if (removed.ok) s.inventory.addLoot(removed.value);
+    expect(s.controller.startExtraction().ok).toBe(true);
+    s.advance(4_999);
+    expect(s.results).toHaveLength(0);
+    s.advance(1);
+    await flush();
+    expect(s.results[0]).toMatchObject({ outcome: 'success', value: 200 });
+  });
+  it('expires speed boosts and shields, and a renewed smaller shield does not inherit an expired value', async () => {
+    const s = await setup();
+    expect(s.controller.activateSpeedBoost(1.3, 5_000)).toBe(true);
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1.3);
+    expect(s.controller.activateShield(30, 5_000)).toBe(true);
+    s.controller.applyDamage(20);
+    expect(s.controller.getView().health).toBe(100);
+
+    s.advance(5_000);
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    expect(s.controller.activateShield(15, 5_000)).toBe(true);
+    s.controller.applyDamage(20);
+    expect(s.controller.getView().health).toBe(95);
+  });
+
   it("only investigates once when carrying this raid's notebook and resets for the next raid", async () => {
     const s = await setup();
     expect(s.controller.getView().steleInvestigated).toBe(false);
@@ -124,6 +173,11 @@ describe('A extraction lifecycle', () => {
       origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
     });
     expect(s.controller.investigateStele()).toBe(true);
+    s.inventory.addLoot({
+      instanceId: 'current-feather',
+      itemId: 'anomalous-feather',
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
+    });
     s.controller.setExtractionPresence(true);
     expect(s.controller.startExtraction().ok).toBe(true);
     s.advance(5_000);
@@ -136,7 +190,7 @@ describe('A extraction lifecycle', () => {
     s.fill();
     s.inventory.addLoot({
       instanceId: 'current-map',
-      itemId: 'campus-map',
+      itemId: 'marked-campus-map',
       origin: { kind: 'raid-loot', obtainedInRaidId: 'raid-1' },
     });
     s.inventory.addLoot({
@@ -199,7 +253,7 @@ describe('A extraction lifecycle', () => {
 
   it('rejects 95, rejects outside zone, and allows exactly 100', async () => {
     const s = await setup();
-    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    s.inventory.addLoot(loot('epic', 'hunter-binoculars'));
     s.inventory.addLoot(loot('rare'));
     s.inventory.addLoot(loot('common', 'scratch-paper'));
     s.controller.setExtractionPresence(true);
@@ -221,7 +275,7 @@ describe('A extraction lifecycle', () => {
 
   it('rejects extraction at exactly 99 value', async () => {
     const s = await setup(600_000, undefined, { ...RAID_RULES.values, common: 9, uncommon: 30 });
-    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    s.inventory.addLoot(loot('epic', 'hunter-binoculars'));
     s.inventory.addLoot(loot('rare', 'window-seat'));
     s.inventory.addLoot(loot('common', 'scratch-paper'));
     s.controller.setExtractionPresence(true);
@@ -231,7 +285,7 @@ describe('A extraction lifecycle', () => {
 
   it('cancels immediately when 110 drops to 85; restored eligibility needs a fresh 5 seconds', async () => {
     const s = await setup();
-    s.inventory.addLoot(loot('epic', 'gpa-charm'));
+    s.inventory.addLoot(loot('epic', 'hunter-binoculars'));
     s.inventory.addLoot(loot('rare-1'));
     s.inventory.addLoot(loot('rare-2'));
     s.controller.setExtractionPresence(true);
@@ -416,5 +470,77 @@ describe('A extraction lifecycle', () => {
     );
     expect((await controller.start()).ok).toBe(false);
     expect(controller.getView().phase).toBe('preparing');
+  });
+
+  it('applies non-stacking amplifier slow with refresh, post-slow immunity, tinnitus and pulse', async () => {
+    const s = await setup();
+    const amp = COMBAT_RULES.enemy.amplifier;
+
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBeCloseTo(amp.slowMultiplier, 5);
+    expect(s.controller.getView().statusEffects).toMatchObject({
+      slowRemainingMs: amp.slowDurationMs,
+      slowMultiplier: amp.slowMultiplier,
+      tinnitusRemainingMs: amp.tinnitusDurationMs,
+      sonicPulseRemainingMs: amp.pulseFeedbackMs,
+    });
+
+    // 重复命中刷新剩余时间而不相加，也不叠加减速强度
+    s.advance(1_000);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBeCloseTo(amp.slowMultiplier, 5);
+    expect(s.controller.getView().statusEffects?.slowRemainingMs).toBe(amp.slowDurationMs);
+    expect(s.controller.getView().statusEffects?.tinnitusRemainingMs).toBe(amp.tinnitusDurationMs);
+    expect(s.controller.getView().statusEffects?.sonicPulseRemainingMs).toBe(amp.pulseFeedbackMs);
+
+    // 与其他更强减速同时存在时，仅取最强一档
+    s.controller.applySlow(0.5, 1_500, { source: 'other-hazard' });
+    expect(s.controller.getMoveSpeedMultiplier()).toBeCloseTo(0.5, 5);
+
+    // 脉冲在 400ms 后消失
+    s.advance(amp.pulseFeedbackMs);
+    expect(s.controller.getView().statusEffects?.sonicPulseRemainingMs).toBe(0);
+
+    // 声波减速满 2.5s 结束后自动获得 1.5s 声波减速免疫
+    s.advance(amp.slowDurationMs - amp.pulseFeedbackMs);
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    expect(s.controller.getView().statusEffects?.slowRemainingMs).toBe(0);
+    expect(s.controller.getView().statusEffects?.slowImmuneRemainingMs).toBe(amp.slowImmunityMs);
+
+    // 免疫期内再中声波：不附加减速，但耳鸣与画面脉冲仍正常刷新
+    s.advance(500);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    expect(s.controller.getView().statusEffects?.slowRemainingMs).toBe(0);
+    expect(s.controller.getView().statusEffects?.tinnitusRemainingMs).toBe(amp.tinnitusDurationMs);
+    expect(s.controller.getView().statusEffects?.sonicPulseRemainingMs).toBe(amp.pulseFeedbackMs);
+
+    // 1.5s 免疫期满后再中声波，重新生效减速
+    s.advance(amp.slowImmunityMs - 500);
+    expect(s.controller.getView().statusEffects?.slowImmuneRemainingMs).toBe(0);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBeCloseTo(amp.slowMultiplier, 5);
+  });
+
+  it('ignores amplifier status effects during invulnerability and shifts timers across pause', async () => {
+    const s = await setup();
+    s.controller.activateInvulnerability(2_000);
+    s.controller.applySoundWaveEffect();
+    expect(s.controller.getMoveSpeedMultiplier()).toBe(1);
+    expect(s.controller.getView().statusEffects?.tinnitusRemainingMs).toBe(0);
+
+    s.advance(2_000);
+    s.controller.applySoundWaveEffect();
+    s.advance(500);
+    s.controller.pause();
+    s.advance(5_000);
+    s.controller.resume();
+    expect(s.controller.getView().statusEffects?.slowRemainingMs).toBe(
+      COMBAT_RULES.enemy.amplifier.slowDurationMs - 500,
+    );
+    expect(s.controller.getView().statusEffects?.tinnitusRemainingMs).toBe(
+      COMBAT_RULES.enemy.amplifier.tinnitusDurationMs - 500,
+    );
   });
 });

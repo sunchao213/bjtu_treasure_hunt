@@ -1,0 +1,316 @@
+.v19-subpage.shop-panel {
+  display: flex;
+  justify-content: center;
+  padding: 16px 55px;
+  overflow: hidden;
+  background: #110c0a url('/assets/ui/shop/stone.png') 0 0 / 132px 246px repeat;
+  box-shadow: inset 0 0 42px 12px #090504;
+  color: #f5e2b6;
+  image-rendering: pixelated;
+}
+.v19-subpage.shop-panel[hidden] {
+  display: none;
+}
+.shop-frame {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 18px 10px;
+  border: 2px solid #8f6739;
+  background:
+    repeating-linear-gradient(0deg, #0002 0 1px, transparent 1px 4px),
+    linear-gradient(#251a14, #1b120e 57%, #251a14);
+  box-shadow:
+    0 0 0 3px #100907,
+    0 0 0 4px #5d3e24,
+    0 8px 18px #070403,
+    inset 0 0 0 3px #100907,
+    inset 0 0 0 4px #563b25;
+}
+.shop-heading {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+.shop-back {
+  justify-self: start;
+  width: 49px;
+  height: 50px;
+  padding: 0;
+  border: 0;
+  background: url('/assets/ui/shop/back.png') center / contain no-repeat;
+}
+.shop-heading h2 {
+  margin: 0;
+  padding: 6px 22px;
+  border: 2px solid #a67941;
+  background: linear-gradient(#2f2119, #17100d);
+  box-shadow:
+    0 0 0 3px #110907,
+    inset 0 0 0 2px #120a08;
+  color: #ffe6ae;
+  font:
+    27px/1.2 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
+  text-shadow: 2px 2px #120a08;
+}
+.shop-wallet {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  width: 170px;
+  height: 49px;
+  padding: 0 14px 4px 48px;
+  background: url('/assets/ui/warehouse/v5/currency-badge-with-jiaozi.png') center / contain
+    no-repeat;
+  color: #ffe8ad;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.shop-panel .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.shop-intro {
+  margin: 0;
+  color: #e4cdab;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  padding: 4px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #a87c46 #1b120d;
+  scrollbar-width: thin;
+}
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid #664b30;
+  background: #1b130f;
+  box-shadow:
+    inset 0 0 0 2px #100906,
+    0 2px 0 #0e0806;
+}
+.shop-card .shop-item-art {
+  width: 94px;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 133 / 158;
+  align-self: center;
+  cursor: default;
+}
+.shop-card .wh-slot-name {
+  margin: 0;
+  font-size: 13px;
+}
+.shop-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  color: #dbb779;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.shop-slots,
+.shop-stock {
+  color: #c4a888;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.shop-effect {
+  flex: 1;
+  margin: 0;
+  color: #e7d5bb;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.shop-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #59402a;
+}
+.shop-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #ffe1a1;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.shop-price img {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  object-fit: contain;
+}
+.shop-action {
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 0;
+  background: url('/assets/ui/shop/action.png') center / 100% 100% no-repeat;
+  color: #ffe8ad;
+  font:
+    13px/1.2 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
+  text-shadow: 1px 1px #230b06;
+}
+.shop-card-footer .shop-action {
+  flex: 1;
+  max-width: 112px;
+}
+.shop-action:disabled {
+  filter: saturate(0.35);
+  color: #dfccad;
+  cursor: default;
+}
+.shop-back:hover,
+.shop-action:hover:enabled {
+  filter: brightness(1.2);
+}
+.shop-back:focus-visible,
+.shop-action:focus-visible {
+  outline: 2px solid #ffe3a3;
+  outline-offset: 2px;
+}
+.shop-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 4px 0;
+  border-top: 1px solid #694a2c;
+}
+.shop-footer .shop-action {
+  flex-shrink: 0;
+  min-width: 145px;
+  min-height: 37px;
+}
+.shop-status {
+  margin: 0;
+  color: #edd2a0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.shop-status[data-state='error'] {
+  color: #ffad96;
+}
+.shop-status[data-state='success'] {
+  color: #b7e1b3;
+}
+html[data-touch='true'] .v19-subpage.shop-panel {
+  width: var(--game-width);
+  height: var(--game-height);
+  padding: 9px 12px;
+}
+html[data-touch='true'] .shop-frame {
+  gap: 5px;
+  padding: 8px 10px;
+}
+html[data-touch='true'] .shop-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+html[data-touch='true'] .shop-heading h2 {
+  padding: 5px 12px;
+  font-size: 20px;
+}
+html[data-touch='true'] .shop-wallet {
+  width: 112px;
+  height: 32px;
+  padding: 0 9px 3px 34px;
+  font-size: 15px;
+}
+html[data-touch='true'] .shop-back {
+  width: 36px;
+  height: 37px;
+}
+html[data-touch='true'] .shop-action {
+  min-height: 40px;
+}
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 12px;
+}
+
+.skin-card {
+  display: grid;
+  gap: 5px;
+  place-items: center;
+  padding: 8px;
+  border: 2px solid #8d603a;
+  background: radial-gradient(ellipse at 50% 30%, #60442c, #261a15 75%);
+  text-align: center;
+}
+
+.skin-art {
+  position: relative;
+  width: 80px;
+  height: 100px;
+  overflow: hidden;
+}
+
+.skin-art img {
+  width: 80px;
+  max-width: none;
+  image-rendering: pixelated;
+}
+
+.skin-art-uniform img {
+  width: 1600px;
+  transform: translateX(-400px);
+}
+
+.spectator-controls:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background-color: #211411;
+  color: #fff0d0;
+  pointer-events: auto;
+}
+
+.relic-slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.relic-slots > * {
+  min-height: 42px;
+}
+
+.relic-empty-slot {
+  display: grid;
+  place-items: center;
+  border: 1px solid #8d603a;
+  color: #dec4a0;
+}

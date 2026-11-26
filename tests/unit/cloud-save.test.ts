@@ -23,6 +23,7 @@ const empty = (): FormalSaveData => ({
   activeRaid: null,
   settledRaidIds: [],
   lastResult: null,
+  mailbox: [],
 });
 const storage = (raw: string | null = null) => {
   let value = raw;
@@ -56,6 +57,25 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('cloud progress transactions', () => {
+  it('validates reserved starter weapon slots before committing a loadout', async () => {
+    const warehouse: FormalSaveData['warehouse'] = Array.from({ length: 3 }, (_, i) => ({
+      instanceId: `purchase:bike-${i}`,
+      itemId: 'yellow-bike',
+      origin: { kind: 'carry-in', source: 'purchase' },
+    }));
+    const api = endpoint({ ...empty(), warehouse });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    await expect(
+      save.beginRaid(
+        'overflow',
+        warehouse.map((item) => item.instanceId),
+        1,
+      ),
+    ).rejects.toThrow('capacity');
+    expect(api.write).not.toHaveBeenCalled();
+    expect(save.view().activeRaid).toBeNull();
+    save.close();
+  });
   it('commits a purchase to the cloud before changing the wallet or warehouse, and rolls back a failed save', async () => {
     const api = endpoint({ ...empty(), currency: 60 });
     const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });

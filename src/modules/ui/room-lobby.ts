@@ -28,6 +28,16 @@ export function bindRoomLobby(options: LobbyOptions) {
   let message = '正在连接联机服务…';
   let pendingAction: 'create' | 'join' | 'ready' | 'start' | 'settings' | 'transfer' | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+  let chatRoomId: string | null = null;
+  const chatInput = document.getElementById('lobby-chat-input') as HTMLInputElement;
+  const chatLatest = document.getElementById('lobby-chat-latest') as HTMLParagraphElement;
+  const chatForm = document.getElementById('lobby-chat') as HTMLFormElement;
+  let chatEditing = false;
+
+  const syncChat = () => {
+    chatInput.placeholder = chatEditing || chatLatest.textContent ? '' : '和朋友聊天...';
+    chatLatest.classList.toggle('is-obscured', chatEditing || Boolean(chatInput.value));
+  };
 
   const clearPending = () => {
     clearTimeout(pendingTimer);
@@ -36,6 +46,11 @@ export function bindRoomLobby(options: LobbyOptions) {
   };
 
   const render = () => {
+    const activeRoomId = state?.roomId ?? null;
+    if (activeRoomId !== chatRoomId) {
+      chatRoomId = activeRoomId;
+      chatLatest.textContent = '';
+    }
     const connected = network.getStatus() === 'connected';
     const self = state?.players.find((player) => player.playerId === network.getPlayerId());
     const host = !!state && state.hostId === network.getPlayerId();
@@ -84,14 +99,15 @@ export function bindRoomLobby(options: LobbyOptions) {
         (player) => player.connected && (player.playerId === state?.hostId || player.ready),
       );
     const canPrepare = options.canPrepare();
-    get('room-entry').hidden = !!state;
-    get('room-lobby').hidden = !state;
+    const hasActiveRoom = Boolean(activeRoomId);
+    get('room-entry').hidden = hasActiveRoom;
+    get('room-lobby').hidden = !hasActiveRoom;
     get('network-status').textContent = options.unlock().unlocked ? message : options.unlock().hint;
     button('network-connect').hidden = connected;
     button('network-connect').disabled =
       network.getStatus() === 'connecting' || network.getStatus() === 'reconnecting';
-    button('network-create').disabled = !connected || pending || !options.canEnter();
-    button('network-join').disabled = !connected || pending || !options.canEnter();
+    button('network-create').disabled = pending || !options.canEnter();
+    button('network-join').disabled = pending || !options.canEnter();
     roomInput.disabled = pending;
     button('network-leave').disabled = !connected || pending;
     button('network-ready').hidden = host;
@@ -124,6 +140,7 @@ export function bindRoomLobby(options: LobbyOptions) {
       : host
         ? '仅房主可修改；规则变更后，队友需要重新准备。'
         : '房间规则由房主设置，修改后请重新确认装备并准备。';
+    syncChat();
     get('room-state-title').textContent = state?.roomId ?? '';
     get('room-prepare-title').textContent = state?.started ? '本局进行中' : '选择装备，等待出发';
     get('room-ready-hint').textContent = state?.started
@@ -254,6 +271,33 @@ export function bindRoomLobby(options: LobbyOptions) {
     if (!options.canPrepare()) return;
     request('start', () => network.startGame(), '正在通知队友进入校园…');
   };
+  chatInput.onfocus = () => {
+    chatEditing = true;
+    syncChat();
+  };
+  chatInput.onblur = () => {
+    chatEditing = false;
+    syncChat();
+  };
+  chatInput.oninput = syncChat;
+  chatForm.onsubmit = (event) => {
+    event.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text) return;
+    if (!state) {
+      chatLatest.textContent = '加入房间后即可聊天。';
+    } else if (network.sendChat(text)) {
+      chatInput.value = '';
+      chatLatest.textContent = `${network.getLocalPlayer()?.displayName ?? '你'}：${text}`;
+      syncChat();
+      return;
+    } else {
+      chatLatest.textContent = '消息未发送，请检查联机连接。';
+    }
+    chatEditing = false;
+    chatInput.blur();
+    syncChat();
+  };
   const leave = () => {
     if (!state) return;
     if (
@@ -318,7 +362,11 @@ export function bindRoomLobby(options: LobbyOptions) {
         });
       }
     } else if (incoming.type === 'pong') render();
-    else if (incoming.type === 'player-left') options.onPlayerLeft(incoming.playerId);
+    else if (incoming.type === 'room-chat') {
+      if (incoming.roomId !== state?.roomId) return;
+      chatLatest.textContent = `${incoming.displayName}：${incoming.text}`;
+      syncChat();
+    } else if (incoming.type === 'player-left') options.onPlayerLeft(incoming.playerId);
     else if (incoming.type === 'error') {
       clearPending();
       message = incoming.message;
@@ -329,6 +377,9 @@ export function bindRoomLobby(options: LobbyOptions) {
   const pingTimer = setInterval(() => {
     if (network.getStatus() === 'connected') network.ping();
   }, 3000);
+  // Render the create/join entry immediately when the room page is opened.
+  // The page can be shown before the WebSocket finishes connecting.
+  render();
   return {
     render,
     leave,
@@ -336,6 +387,33 @@ export function bindRoomLobby(options: LobbyOptions) {
       if (!options.unlock().unlocked) return;
       if (network.getStatus() === 'offline') network.connect();
     },
+    createRoom: () => {
+      if (!options.canEnter()) return;
+      request('create', () => network.createRoom(), '正在创建房间…');
+    },
+    joinRoom: (roomId: string) => {
+      if (!options.canEnter()) return;
+      const value = roomId.trim();
+      if (!/^\d{6}$/.test(value)) {
+        message = '请输入 6 位数字房间号。';
+        options.onChange();
+        return;
+      }
+      request('join', () => network.join(value), '正在加入房间…');
+    },
+    setReady: () => {
+      const ready =
+        state?.players.find((player) => player.playerId === network.getPlayerId())?.ready ?? false;
+      if (!ready && !options.canPrepare()) return;
+      request('ready', () => network.setReady(!ready), ready ? '正在取消准备…' : '正在准备…');
+    },
+    startRoom: () => {
+      if (!options.canPrepare()) return;
+      request('start', () => network.startGame(), '正在通知队友进入校园…');
+    },
+    connectionStatus: () => network.getStatus(),
+    roomState: () => state,
+    roomMessage: () => message,
     isJoined: () => !!state,
     isLocked: () =>
       !!state?.started ||

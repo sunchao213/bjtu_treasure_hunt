@@ -1,6 +1,7 @@
 import {
   EVIDENCE_CAMPUS_MAP,
   EVIDENCE_COMPLETE_RECORD,
+  EVIDENCE_FEATHER,
   EVIDENCE_NOTEBOOK,
   EVIDENCE_SIYUAN_KEY,
   EVIDENCE_SOOTHE_CHARM,
@@ -49,7 +50,7 @@ export const FIRST_CHAPTER: ChapterContent = {
   chapterId: QUEST_CHAPTER_ID,
   title: '第一章 · 思源楼前的残缺手记',
   subtitle: '思源记录册 · 第一章档案（学生记录摘录）',
-  unlockHint: '携带本局残缺手记、调查明湖石碑并成功撤离后，可回看本章剧情。',
+  unlockHint: '携带本局残缺手记与异常羽毛成功撤离后，可回看本章剧情。',
   prologue:
     '那天你只是因为忘记带校园卡，回宿舍比平时晚了一点。思源楼前的路灯忽明忽暗，风把一张草稿纸吹到你的脚边。' +
     '纸上写着一串看不懂的公式，最下面却多了一句话：「别走地图上没有的路。」' +
@@ -59,7 +60,7 @@ export const FIRST_CHAPTER: ChapterContent = {
     '石碑上的字迹逐渐洇开：「你能看见它们。那就别让它们被忘记。」' +
     '随后，册页浮出新的记录：「明湖记录已回收。新的记忆缺口正在生成。」' +
     '校园地图上，除了思源楼，图书馆、教学楼群和南门附近也先后亮起微弱的红点。',
-  settlementSummary: '第一章已解锁。思源记录册新增：思源楼前的残缺手记与明湖石碑调查记录。',
+  settlementSummary: '第一章已解锁。思源记录册新增：残缺手记与明湖边的异常羽毛。',
   steps: [
     {
       stepId: 'step-1-siyuan-chest',
@@ -81,19 +82,19 @@ export const FIRST_CHAPTER: ChapterContent = {
       requiresEvidence: [EVIDENCE_NOTEBOOK],
       stepBody:
         '明湖的风比操场冷。石碑背面有一处浅得几乎看不见的刻痕，正是手记里那种「替我把话说完」的记号。' +
-        '你照着手记上的笔画描了一遍，碑身轻轻震了一下，石面上浮出一行褪色的字。' +
-        '水面上浮起一圈不属于路灯的蓝光，随即熄灭。你意识到：这段记录不能留在这里，必须带着手记离开。',
+        '你照着手记上的笔画描了一遍，碑身轻轻震了一下，一枚泛着微光的异常羽毛落进掌心。' +
+        '水面上浮起一圈不属于路灯的蓝光，随即熄灭。你意识到：羽毛不能留在这里，必须和手记一起带出去。',
     },
     {
       stepId: 'step-3-south-extraction',
       stepNumber: 3,
       title: '线索三 · 带着证据走出异常区域',
       locationId: 'south-extraction-point',
-      requiresEvidence: [EVIDENCE_NOTEBOOK, 'minghu-stele'],
+      requiresEvidence: [EVIDENCE_NOTEBOOK, EVIDENCE_FEATHER],
       stepBody:
         '你朝南门跑去。身后的路灯一盏接一盏熄灭，校园像被人从地图上慢慢擦掉。' +
-        '穿过南门时，手机恢复了信号，明湖、图书馆和路灯都回到原来的位置。只有口袋里的手记证明刚才并非幻觉。' +
-        '扉页的「思源」二字渐渐散开，变成新的文字。',
+        '穿过南门时，手机恢复了信号，明湖、图书馆和路灯都回到原来的位置。口袋里的手记与羽毛证明刚才并非幻觉。' +
+        '羽毛失去蓝光，手记扉页的「思源」二字却渐渐散开，变成新的文字。',
     },
   ],
 };
@@ -193,12 +194,12 @@ export const THIRD_CHAPTER: ChapterContent = {
       stepId: 'step-3-complete-record',
       stepNumber: 3,
       title: '线索三 · 完整记录',
-      locationId: 'south-extraction-point',
+      locationId: 'complete-record-point',
       requiresEvidence: [EVIDENCE_SOOTHE_CHARM, EVIDENCE_COMPLETE_RECORD],
       stepBody:
         '护符与前两章的证据在记录册里对应上了。你终于明白：思源机制原本用于保存记忆，' +
         '却因为长期无人理解与整理，把未被记录的情绪当成噪声清除。' +
-        '你带着护符和完整记录穿过南门，册页第一次没有出现新的红点，而是安静地翻回第一页。',
+        '完整的一页在记录台上慢慢显形。你把它收入背包，准备带着护符一起从南门离开。',
     },
   ],
 };
@@ -243,29 +244,50 @@ export const STORY_LOCATION_ANCHORS: Readonly<Record<string, StoryLocationAnchor
     anchorId: 'siyuan-key-point',
   },
   'garden-sos': { placeName: '芳华园', kind: 'loot-zone', anchorId: 'east-garden' },
+  'complete-record-point': {
+    placeName: '中心广场记录台',
+    kind: 'point',
+    anchorId: 'complete-record-point',
+  },
 };
 
 /** 图鉴条目描述：所有可入仓物品都有对应说明。 */
 export const CODEX_ENTRIES: Readonly<Record<string, string>> = {
   'scratch-paper': '写满公式又划掉的草稿纸，边角还留着自习室的桌号。',
   'half-eraser': '用到只剩半块的橡皮，擦得最干净的一角写着「别放弃」。',
-  'campus-map': '手绘的校园地图，几处角落被反复描粗——像是有人不想被忘记。',
+  [EVIDENCE_CAMPUS_MAP]: '手绘的校园地图，几处角落被反复描粗——像是有人不想被忘记。',
   'portable-medkit': '随身恢复包，第一节课后就一直躺在书包侧袋里。',
   'torn-notebook': '思源楼前宝箱里发现的半本手记，扉页只剩「思源」二字。',
   'window-seat': '靠窗座凭证：图书馆二楼西侧那排座位，冬天下午最暖的位置。',
   'morning-coffee': '早八不困咖啡，热气挡不住困意，但能让人撑过前三节。',
   'school-badge': '校训徽章，别在包带上，走夜路时反着光。',
-  'anomalous-feather': '一枚凉而轻的羽毛，不属于任何一只已知鸟类。',
+  'anomalous-feather': '一枚凉而轻的异常羽毛，在明湖石碑调查后出现，是第一章主线证据。',
   'gpa-charm': 'GPA 4.0 护符——据说只在通宵自习后才会出现。',
-  'library-reward-ticket': '图书馆奖励券，背面印着借阅榜单，翻过去才看得见。',
+  'library-reward-ticket': '图书馆占座券，背面印着借阅榜单，翻过去才看得见。',
   'siyuan-key': '思源楼金钥匙，握在手里比看起来沉，像是压着一整栋楼的记忆。',
+  'strange-veined-ginkgo-leaf':
+    '叶脉奇怪的银杏叶，细密的纹路在叶心交汇，像一幅尚未读懂的校园暗图。',
+  'hunter-binoculars': '猎手望远镜，镜筒上留着细碎划痕，镜片里映着校园夜路尽头的灯光。',
+  'roller-skates': '轮滑鞋，鞋轮边缘沾着操场的尘土，鞋带上还系着褪色的社团徽记。',
+  'quick-note-card': '速记卡片：写下关键位置后，下一次搜索可以更快完成。',
+  'simple-detector': '简易探测器：屏幕上的指针会指向最近一个尚未调查的物资箱。',
+  'star-compass': '星光罗盘：金色指针指向主线调查点，紫色指针指向南侧撤离点。',
+  'silent-cloak': '静音斗篷：披上后脚步声被夜色吞没，敌人更难发现你的动向。',
+  'reflective-filter': '反光滤片：滤片捕捉微弱光线，让手电照得更远。',
   'soothe-charm': '安抚护符，贴着掌心仍有余温，刻着「我不是在追你，我只是怕被忘记」。',
   'complete-record': '思源记录册的完整一页，记着一段被主动删除的情绪，与前面三章的证据一一对应。',
+  'electric-bike-helmet': '电瓶车头盔：使用后获得 15 点护盾，持续 5 秒。',
+  'david-head-statue': '大卫头雕像：史诗收藏物，价值 80。',
+  'silver-watch': '银色手表：传说收藏物，价值 100。',
   'training-bat': '训练棍：入场装备，挥不动人也挥不坏东西。',
   'stun-baton': '电击器：短暂击晕怪物，电量只够使用十五次。',
+  'folding-ruler': '折叠铁尺：轻巧的近身武器，挥动迅速，适合处理靠近的敌人。',
+  'long-broom': '长柄扫帚：校园夜路上的长柄武器，攻击距离较远。',
+  'window-breaker': '破窗锤：沉重的破拆工具，挥动较慢但能造成更高伤害。',
+  'night-watch-spear': '夜巡长枪：传说中的长柄武器，攻击距离和伤害都很突出。',
   bandage: '创可贴：使用后恢复 10 点生命值。',
-  'yellow-bike': '小黄车：使用后移动速度提升 20%。',
-  'thick-down-jacket': '超厚羽绒服：使用后获得 5 秒无敌状态。',
+  'yellow-bike': '小黄车：使用后移动速度提升 30%，持续 5 秒。',
+  'thick-down-jacket': '超厚羽绒服：使用后获得 30 点护盾，持续 5 秒。',
   'reinforced-bat': '强化训练棍，缠了胶带，手感更稳。',
 };
 
@@ -276,6 +298,8 @@ export function findStep(chapter: ChapterContent, stepId: string): ChapterStep |
 /** 各章证据拾取时的氛围文案（配合对应步骤标题一起显示）。 */
 const EVIDENCE_BEAT_TEXT: Readonly<Record<string, string>> = {
   [EVIDENCE_NOTEBOOK]: '打开思源楼前的宝箱，里面是半本被水浸过的手记，扉页写着「思源」。',
+  [EVIDENCE_FEATHER]:
+    '石碑上的记号亮起后，一枚泛着蓝光的异常羽毛落进掌心；它必须和手记一起带出校园。',
   [EVIDENCE_CAMPUS_MAP]: '地图角落描粗的路线在夜里发亮，一直指向思源楼侧门。',
   [EVIDENCE_SIYUAN_KEY]: '门缝里掉出一把沉重的金钥匙，金属牌上写着「记录节点 02 已失效」。',
   [EVIDENCE_SOOTHE_CHARM]: '不稳定信号平静下来，留下了一枚仍有余温的护符。',
@@ -285,14 +309,15 @@ const EVIDENCE_BEAT_TEXT: Readonly<Record<string, string>> = {
 /** 证据所属章节与在章节中的步骤下标。 */
 const EVIDENCE_STEP_LOCATION: Readonly<Record<string, { chapterId: string; index: number }>> = {
   [EVIDENCE_NOTEBOOK]: { chapterId: QUEST_CHAPTER_ID, index: 0 },
+  [EVIDENCE_FEATHER]: { chapterId: QUEST_CHAPTER_ID, index: 1 },
   [EVIDENCE_CAMPUS_MAP]: { chapterId: SECOND_CHAPTER_ID, index: 0 },
   [EVIDENCE_SIYUAN_KEY]: { chapterId: SECOND_CHAPTER_ID, index: 1 },
-  [EVIDENCE_SOOTHE_CHARM]: { chapterId: THIRD_CHAPTER_ID, index: 0 },
-  [EVIDENCE_COMPLETE_RECORD]: { chapterId: THIRD_CHAPTER_ID, index: 1 },
+  [EVIDENCE_SOOTHE_CHARM]: { chapterId: THIRD_CHAPTER_ID, index: 1 },
+  [EVIDENCE_COMPLETE_RECORD]: { chapterId: THIRD_CHAPTER_ID, index: 2 },
 };
 
 export function steleStoryBeat(): string {
-  return `【${FIRST_CHAPTER.steps[1]?.title ?? ''}】你在明湖石碑上找到了手记所说的记号，调查记录已写入本局任务。`;
+  return `【${FIRST_CHAPTER.steps[1]?.title ?? ''}】石碑上的记号亮起，一枚异常羽毛落进掌心。`;
 }
 
 /**

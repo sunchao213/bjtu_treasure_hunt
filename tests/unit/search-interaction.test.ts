@@ -9,6 +9,31 @@ const item: ItemInstance = {
 };
 
 describe('SearchInteraction', () => {
+  it('uses each chest duration, restarts after interruption and resets when switching targets', () => {
+    let now = 0;
+    const search = new SearchInteraction(2_000, () => now);
+    search.begin('medium', 4_000);
+    now = 2_000;
+    expect(search.progress()).toBe(0.5);
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(false);
+    search.begin('medium', 4_000);
+    expect(search.progress()).toBe(0.5);
+    search.begin('high', 6_000);
+    expect(search.progress()).toBe(0);
+    now += 3_000;
+    expect(search.progress()).toBe(0.5);
+    search.cancel();
+    search.begin('high', 6_000);
+    now += 5_999;
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(false);
+    now += 1;
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(true);
+    search.reset();
+    search.begin('normal');
+    now += 2_000;
+    expect(search.progress()).toBe(1);
+  });
+
   it('requires the full duration and marks a point only after insertion succeeds', () => {
     let now = 0;
     const search = new SearchInteraction(2_000, () => now);
@@ -67,5 +92,35 @@ describe('SearchInteraction', () => {
       ok: false,
       error: 'INVALID_STATE',
     });
+  });
+
+  it('applies a one-shot shortened duration to the next search', () => {
+    let now = 0;
+    const search = new SearchInteraction(2_000, () => now);
+    expect(search.setNextDuration(1_000)).toBe(true);
+    search.begin('library-west');
+    now = 999;
+    expect(search.finish(item, () => ({ ok: true, value: undefined }))).toEqual({
+      ok: false,
+      error: 'INVALID_STATE',
+    });
+    now = 1_000;
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(true);
+    expect(search.setNextDuration(1_000)).toBe(true);
+  });
+
+  it('does not spend the search duration on a non-search interaction', () => {
+    let now = 0;
+    const search = new SearchInteraction(2_000, () => now);
+    expect(search.setNextDuration(1_000)).toBe(true);
+    search.begin('charge-lamp', false);
+    now = 1_000;
+    expect(search.finish(item, () => ({ ok: true, value: undefined }))).toEqual({
+      ok: false,
+      error: 'INVALID_STATE',
+    });
+    search.begin('library-west');
+    now = 2_000;
+    expect(search.finish(item, () => ({ ok: true, value: undefined })).ok).toBe(true);
   });
 });

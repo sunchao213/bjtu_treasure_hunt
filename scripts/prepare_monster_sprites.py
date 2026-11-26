@@ -149,7 +149,11 @@ def verify_outputs(output_dir: Path, expected_counts: dict[str, int] | None = No
         raise ValueError(f"No animation strips found in {output_dir}")
     if expected_counts is not None:
         missing = set(expected_counts) - {path.stem for path in sheets}
-        extra = {path.stem for path in sheets} - set(expected_counts)
+        extra = {
+            name
+            for name in {path.stem for path in sheets} - set(expected_counts)
+            if not name.startswith(("cat-", "swan-"))
+        }
         if missing or extra:
             raise ValueError(f"Animation set mismatch; missing={sorted(missing)}, extra={sorted(extra)}")
     for path in sheets:

@@ -1,3 +1,4 @@
+import { occupiedSlots } from '../inventory/inventory-sections';
 import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
 import {
   assertKnownItemId,
@@ -7,6 +8,7 @@ import {
   RAID_RULES,
 } from '../../config/game-config';
 import { retainSettlementItems } from './settlement-retention';
+import { migrateRetiredItems } from './retired-items';
 import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
 
 export interface StoragePort {
@@ -153,6 +155,7 @@ function validSettlementResult(result: RaidResult): boolean {
 
 function decode(raw: string): SaveData {
   const value: unknown = JSON.parse(raw);
+  migrateRetiredItems(value);
   if (
     !record(value) ||
     value.schemaVersion !== 1 ||
@@ -204,7 +207,11 @@ export class ReferenceSave implements SavePort {
     return true;
   }
 
-  async beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]> {
+  async beginRaid(
+    raidId: string,
+    loadoutIds: readonly string[],
+    reservedSlots = 0,
+  ): Promise<readonly ItemInstance[]> {
     if (
       this.data.activeRaid ||
       this.data.settledRaidIds.includes(raidId) ||
@@ -228,6 +235,12 @@ export class ReferenceSave implements SavePort {
         origin: source ? { kind: 'carry-in' as const, source } : { kind: 'carry-in' as const },
       };
     });
+    if (
+      !Number.isSafeInteger(reservedSlots) ||
+      reservedSlots < 0 ||
+      occupiedSlots(loadout, ITEM_DEFINITIONS) + reservedSlots > RAID_RULES.bagCapacity
+    )
+      throw new Error('Loadout exceeds capacity');
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
     next.activeRaid = { raidId };
@@ -274,7 +287,7 @@ export class ReferenceSave implements SavePort {
     if (this.data.unlockedChapterIds.includes(chapterId)) return;
     const chapter = activeQuestChapter(this.data.unlockedChapterIds);
     if (
-      chapter.id !== chapterId ||
+      chapter?.id !== chapterId ||
       !this.data.lastResult ||
       !chapterUnlockGranted(this.data.lastResult, chapterId)
     ) {

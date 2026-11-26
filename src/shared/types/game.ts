@@ -1,10 +1,12 @@
-export type Rarity = 'common' | 'uncommon' | 'epic' | 'legendary';
+export type Rarity = 'pending' | 'common' | 'uncommon' | 'epic' | 'legendary';
 
 export interface ItemDefinition {
   readonly itemId: string;
   readonly name: string;
   readonly rarity: Rarity;
   readonly kind: 'collectible' | 'healing' | 'quest' | 'weapon' | 'utility';
+  /** Extraction value override; null marks a value that is still pending. */
+  readonly value?: number | null;
   /** Number of raid bag slots occupied by one instance. */
   readonly bagSlots?: number;
   /** Purchase price in the persistent warehouse currency. */
@@ -21,6 +23,24 @@ export interface ItemInstance {
   readonly instanceId: string;
   readonly itemId: string;
   readonly origin: ItemOrigin;
+}
+
+/** 信箱里的一封信：只承载「仓库装不下的补发物资」，领完即删除。 */
+export interface MailItem {
+  readonly mailId: string;
+  readonly title: string;
+  readonly body: string;
+  readonly createdAt: number;
+  /** 因哪一局撤离爆仓而补发；旧迁移件为空 */
+  readonly sourceRaidId?: string;
+  readonly attachments: readonly ItemInstance[];
+}
+
+export interface MailClaimResult {
+  /** 本次真正放进仓库的件数 */
+  readonly moved: number;
+  /** 仍留在信箱、等仓库腾出格子的件数 */
+  readonly remaining: number;
 }
 
 export interface RaidRules {
@@ -48,6 +68,7 @@ export type ErrorCode =
   | 'INVALID_ITEM'
   | 'UNKNOWN_ITEM'
   | 'INSUFFICIENT_FUNDS'
+  | 'WAREHOUSE_FULL'
   | 'SAVE_FAILED';
 export type ActionResult<T = undefined> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: ErrorCode };
@@ -59,6 +80,14 @@ export interface RaidResult {
   readonly items: readonly ItemInstance[];
   readonly value: number;
   readonly questComplete?: boolean;
+}
+
+export interface PlayerStatusEffects {
+  readonly slowRemainingMs: number;
+  readonly slowMultiplier: number;
+  readonly slowImmuneRemainingMs: number;
+  readonly tinnitusRemainingMs: number;
+  readonly sonicPulseRemainingMs: number;
 }
 
 export interface RaidView {
@@ -73,6 +102,7 @@ export interface RaidView {
   readonly isBusy: boolean;
   readonly saveError: boolean;
   readonly steleInvestigated: boolean;
+  readonly statusEffects?: PlayerStatusEffects;
   readonly result: RaidResult | null;
 }
 
@@ -89,7 +119,17 @@ export interface RaidControllerPort {
   heal(amount: number): boolean;
   getMoveSpeedMultiplier(): number;
   setSpeedMultiplier(multiplier: number): boolean;
+  activateSpeedBoost(multiplier: number, durationMs: number): boolean;
+  activateShield(amount: number, durationMs: number): boolean;
   activateInvulnerability(durationMs: number): boolean;
+  isInvulnerable?(): boolean;
+  applySlow?(
+    multiplier: number,
+    durationMs: number,
+    options?: { readonly source?: string; readonly immunityMs?: number },
+  ): boolean;
+  applyTinnitus?(durationMs: number): boolean;
+  applySoundWaveEffect?(): { readonly slowed: boolean; readonly tinnitus: boolean };
   applyDamage(amount: number): void;
   cancelExtraction(): void;
   setExtractionPresence(isInside: boolean): void;
@@ -122,10 +162,18 @@ export interface InventoryPort {
 
 /** Persist begin before play, and acknowledge settlement before reporting success. */
 export interface SavePort {
-  beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]>;
+  beginRaid(
+    raidId: string,
+    loadoutIds: readonly string[],
+    reservedSlots?: number,
+  ): Promise<readonly ItemInstance[]>;
   finalizeRaid(result: RaidResult): Promise<void>;
   unlockChapter(chapterId: string): Promise<void>;
   purchaseItem?(itemId: string): ActionResult<ItemInstance> | Promise<ActionResult<ItemInstance>>;
+  /** 仓库界面拖拽互换/一键整理后落盘：按给定 instanceId 顺序重排 warehouse 数组（一格一件） */
+  reorderWarehouse?(instanceIds: readonly string[]): void | Promise<void>;
+  /** 领取信箱附件：仓库满时只放得下多少放多少，其余留在信里；传 null 为全部领取 */
+  claimMail?(mailId: string | null): MailClaimResult | Promise<MailClaimResult>;
 }
 
 export interface Point {

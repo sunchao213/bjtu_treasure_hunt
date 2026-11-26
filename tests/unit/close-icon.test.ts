@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { codexMarkup } from '../../src/modules/ui/codex';
 import { gameRulesMarkup } from '../../src/modules/ui/game-rules';
 import { mountShell } from '../../src/modules/ui/reference-shell';
 
 /**
- * 三处关闭按钮已从字符 `×` 换成 `iconSvg('close')`（CHG-26）。
+ * 两处关闭按钮已从字符 `×` 换成 `iconSvg('close')`（CHG-26）。
  *
  * 这组断言堵两条常见回退路：
  *   1. 有人觉得「一个叉号而已」，又写回字符 `×`——基线、粗细、光学大小全跟着字体走；
@@ -26,7 +25,6 @@ const campusMap = (() => {
 
 const markupCases = [
   { name: '游戏规则弹窗', html: gameRulesMarkup(), label: '关闭游戏规则' },
-  { name: '物品图鉴弹窗', html: codexMarkup(), label: '关闭图鉴' },
   { name: '校园图弹窗', html: campusMap, label: '关闭校园图' },
 ] as const;
 
@@ -64,18 +62,17 @@ describe('关闭按钮 · 图标接入', () => {
   });
 
   it('关闭按钮的尺寸交给样式表，模板里不写内联宽高或字号', () => {
-    const buttons = [gameRulesMarkup(), codexMarkup(), campusMap].flatMap((html) => [
+    const buttons = [gameRulesMarkup(), campusMap].flatMap((html) => [
       ...html.matchAll(/<button id="close-[^"]*"[^>]*>/g),
     ]);
 
-    expect(buttons.map((m) => m[0])).toHaveLength(3);
+    expect(buttons.map((m) => m[0])).toHaveLength(2);
     for (const tag of buttons.map((m) => m[0])) {
       // 原来两个 rules-close 靠 font-size:24px + line-height:1 硬凑居中，这类写法不许回来
       expect(tag).not.toMatch(/style="[^"]*(?:width|height|font-size|line-height)/);
     }
-    // 规则弹窗与图鉴共用 rules-close；校园图用自己的 dialog 配色，不套这个类
+    // 各弹窗的尺寸由各自样式管理。
     expect(buttons[0]?.[0]).toContain('class="rules-close"');
-    expect(buttons[1]?.[0]).toContain('class="rules-close"');
-    expect(buttons[2]?.[0]).toContain('id="close-campus-map"');
+    expect(buttons[1]?.[0]).toContain('id="close-campus-map"');
   });
 });

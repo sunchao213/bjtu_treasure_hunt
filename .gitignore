@@ -1,4 +1,5 @@
 node_modules/
+.npm-cache/
 dist/
 coverage/
 *.log
@@ -18,3 +19,13 @@ server/backups/
 *.db-shm
 # E2E 工具产物（playwright-cli 快照与临时截图，不要提交）
 .playwright-cli/
+# 本地预览用无头浏览器 profile（体积大且含锁文件）
+.preview-chrome*/
+.chrome-hl/
+# 素材手工备份
+*.bak
+*.bak-*
+# Python 工具缓存
+__pycache__/
+*.pyc
+*.pyo

@@ -4,26 +4,62 @@ import type { ActionResult, ItemInstance } from '../../shared/types/game';
 export class SearchInteraction {
   private target: string | null = null;
   private startedAtMs = 0;
+  private activeDurationMs: number;
+  private nextDurationMs: number | null = null;
+  private activeUsesNextDuration = false;
   private readonly opened = new Set<string>();
   constructor(
     private readonly durationMs: number,
     private readonly clock: () => number = Date.now,
-  ) {}
+  ) {
+    this.activeDurationMs = durationMs;
+  }
 
-  begin(id: string): boolean {
+  /** Apply a one-shot duration to the next search that starts. */
+  setNextDuration(durationMs: number): boolean {
+    if (
+      this.target !== null ||
+      this.nextDurationMs !== null ||
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0
+    ) {
+      return false;
+    }
+    this.nextDurationMs = Math.min(this.durationMs, durationMs);
+    return true;
+  }
+
+  begin(id: string, durationOrApplyNext: number | boolean = true): boolean {
     if (this.opened.has(id)) {
       return false;
     }
     if (this.target !== id) {
+      const applyNextDuration = durationOrApplyNext !== false;
+      const baseDurationMs =
+        typeof durationOrApplyNext === 'number' ? durationOrApplyNext : this.durationMs;
+      this.activeUsesNextDuration = applyNextDuration && this.nextDurationMs !== null;
       this.target = id;
       this.startedAtMs = this.clock();
+      this.activeDurationMs =
+        applyNextDuration && this.nextDurationMs !== null
+          ? Math.min(baseDurationMs, this.nextDurationMs)
+          : baseDurationMs;
+      if (applyNextDuration) this.nextDurationMs = null;
     }
     return true;
+  }
+  /** Read-only presentation state; the existing start/cancel rules own consumption. */
+  nextDurationState(): 'ready' | 'searching' | undefined {
+    return this.nextDurationMs !== null
+      ? 'ready'
+      : this.activeUsesNextDuration
+        ? 'searching'
+        : undefined;
   }
   progress(): number {
     return this.target === null
       ? 0
-      : Math.min(1, (this.clock() - this.startedAtMs) / this.durationMs);
+      : Math.min(1, (this.clock() - this.startedAtMs) / this.activeDurationMs);
   }
   current(): string | null {
     return this.target;
@@ -37,9 +73,12 @@ export class SearchInteraction {
   }
   cancel(): void {
     this.target = null;
+    this.activeUsesNextDuration = false;
+    this.activeDurationMs = this.durationMs;
   }
   reset(): void {
     this.cancel();
+    this.nextDurationMs = null;
     this.opened.clear();
   }
 

@@ -1,0 +1,63 @@
+.weapon-durability {
+  --durability-color: #9bded3;
+  display: grid;
+  gap: 4px;
+  color: var(--durability-color);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+}
+.weapon-durability[hidden] {
+  display: none;
+}
+.weapon-durability[data-state='low'] {
+  --durability-color: #f4c46b;
+}
+.weapon-durability[data-state='empty'] {
+  --durability-color: #ff9b8d;
+}
+.weapon-durability progress {
+  display: block;
+  width: 100%;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  appearance: none;
+  background: #ffffff26;
+  accent-color: var(--durability-color);
+}
+.weapon-durability progress::-webkit-progress-bar {
+  background: #ffffff26;
+  border-radius: 4px;
+}
+.weapon-durability progress::-webkit-progress-value {
+  background: var(--durability-color);
+  border-radius: 4px;
+}
+.weapon-durability progress::-moz-progress-bar {
+  background: var(--durability-color);
+  border-radius: 4px;
+}
+.raid-hotbar > .weapon-durability {
+  position: absolute;
+  right: calc(100% + 12px);
+  bottom: 0;
+  width: 220px;
+  max-width: max(100px, calc((var(--game-width, 100vw) - 440px) / 2));
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid #b4c4c640;
+  border-radius: 7px;
+  background: #101b25ed;
+  text-shadow: 0 1px 3px #0008;
+}
+html[data-touch='true'] .raid-hotbar > .weapon-durability {
+  width: 150px;
+  max-width: max(60px, calc((var(--game-width, 100vw) - 542px) / 2));
+  padding: 4px 8px;
+  font-size: 10px;
+  line-height: 15px;
+}

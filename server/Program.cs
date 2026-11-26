@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
 
@@ -21,6 +22,11 @@ var database = new GameDatabase(builder.Configuration["Auth:DataDirectory"] ?? P
 var accounts = new AccountStore(database);
 var sessions = new LoginSessions();
 var app = builder.Build();
+// R15 好友与私聊：关系、屏蔽、消息与已读游标都由服务端维护。
+var friends = new FriendStore(database);
+SocialApi.Map(app, sessions, friends);
+var leaderboard = new LeaderboardStore(database);
+LeaderboardApi.Map(app, sessions, leaderboard);
 app.UseForwardedHeaders();
 app.UseRateLimiter();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
@@ -158,7 +164,7 @@ IResult WithSocial(HttpContext context, Func<LoginSession, IResult> action)
 
 var rooms = new RoomDirectory();
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-const int protocolVersion = 1;
+const int protocolVersion = 2;
 const int maxMessageBytes = 4096;
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", protocol = protocolVersion }));
@@ -213,26 +219,10 @@ app.Map("/ws", async context =>
                 case "set-ready":
                 case "start-game":
                 case "finish-game":
+                case "player-death":
                 case "room-settings":
                 case "transfer-host":
-                    if (type is "create-room" or "join-room" or "set-ready" or "start-game")
-                    {
-                        if (type is "create-room" or "join-room")
-                            client.SkinId = database.GetEquippedSkinId(session.User.Id);
-                        try
-                        {
-                            if (!database.CanPlayOnline(session.User.Id))
-                            {
-                                await SendError(client, "ONLINE_LOCKED", "通关全部三个章节并保存进度后，才能解锁联机。", json);
-                                break;
-                            }
-                        }
-                        catch (SqliteException)
-                        {
-                            await SendError(client, "SAVE_UNAVAILABLE", "暂时无法读取通关进度，请稍后重试。", json);
-                            break;
-                        }
-                    }
+                    // 章节完成度暂不作为联机入口门槛，保留存档校验供后续重新启用。
                     RoomAction action;
                     if (type == "set-ready" && (!root.TryGetProperty("ready", out var readyValue)
                         || readyValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False)))
@@ -249,14 +239,19 @@ app.Map("/ws", async context =>
                     }
                     try
                     {
+                        if (type is "create-room" or "join-room")
+                            client.SkinId = database.GetEquippedSkinId(session.User.Id);
                         action = type switch
                         {
                             "create-room" => rooms.Create(client),
                             "join-room" => rooms.Join(client, ReadString(root, "roomId", "")),
                             "set-ready" => rooms.Ready(client, root.GetProperty("ready").GetBoolean()),
-                            "start-game" => rooms.Start(client, database.CanPlayOnline, database.GetEquippedSkinId),
+                            "start-game" => rooms.Start(client, database.GetEquippedSkinId),
                             "room-settings" => rooms.Settings(client, root.GetProperty("maxPlayers").GetInt32(), root.GetProperty("admissionOpen").GetBoolean()),
                             "transfer-host" => rooms.TransferHost(client, ReadString(root, "playerId", "")),
+                            "player-death" => ReadRelics(root) is { } relics
+                                ? rooms.Die(client, ReadString(root, "roundId", ""), relics)
+                                : new RoomAction("INVALID_MESSAGE", "遗物箱物品无效。"),
                             _ => rooms.Finish(client, ReadString(root, "roundId", "")),
                         };
                     }
@@ -280,6 +275,30 @@ app.Map("/ws", async context =>
                         joinedRoomId = null;
                     }
                     break;
+                case "room-chat":
+                    var chatText = ReadString(root, "text", "").Trim();
+                    if (chatText.Length is 0 or > 160)
+                    {
+                        await SendError(client, "INVALID_MESSAGE", "聊天消息须为 1 至 160 个字符。", json);
+                        break;
+                    }
+                    if (joinedRoomId is null || !rooms.TryGetValue(joinedRoomId, out var chatRoom)) break;
+                    Client[] chatRecipients;
+                    lock (chatRoom.Gate)
+                    {
+                        if (!chatRoom.Clients.TryGetValue(client.Id, out var member) || member != client) break;
+                        chatRecipients = chatRoom.Clients.Values.ToArray();
+                    }
+                    var chatMessage = new
+                    {
+                        type = "room-chat",
+                        roomId = joinedRoomId,
+                        playerId = client.Id,
+                        displayName = client.DisplayName,
+                        text = chatText,
+                    };
+                    await Task.WhenAll(chatRecipients.Select(peer => Send(peer, chatMessage, json)));
+                    break;
                 case "player-input":
                     if (joinedRoomId is null) break;
                     if (!root.TryGetProperty("sequence", out var sequenceValue) || !sequenceValue.TryGetInt64(out var sequence) || sequence <= client.LastSequence) break;
@@ -300,7 +319,7 @@ app.Map("/ws", async context =>
                     var requestId = ReadString(root, "requestId", "");
                     var chestId = ReadString(root, "chestId", "");
                     var stage = ReadString(root, "stage", "");
-                    if (requestId.Length is < 1 or > 64 || (type == "loot-search" && (chestId.Length is < 1 or > 64 || stage is not ("hold" or "claim" or "cancel")))
+                    if (requestId.Length is < 1 or > 64 || (type == "loot-search" && (chestId.Length is < 1 or > 64 || stage is not ("hold" or "claim" or "cancel" or "take")))
                         || (type == "loot-ack" && (!root.TryGetProperty("accepted", out var acceptedValue) || acceptedValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False))))
                     {
                         await SendError(client, "INVALID_MESSAGE", "搜索请求无效。", json);
@@ -358,7 +377,17 @@ if (Directory.Exists(frontendPath))
 {
     var files = new PhysicalFileProvider(frontendPath);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-    app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+    var contentTypes = new FileExtensionContentTypeProvider();
+    contentTypes.Mappings[".glb"] = "model/gltf-binary";
+    contentTypes.Mappings[".gltf"] = "model/gltf+json";
+    // public/ 资产同名换图时 URL 不变，浏览器 heuristic 缓存会顶掉新图（2026-11-26 右上角交子徽章）。
+    // no-cache 只要求每次 revalidate：内容没变走 304，带宽几乎为零，但永远拿得到最新字节。
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = files,
+        ContentTypeProvider = contentTypes,
+        OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache",
+    });
 }
 app.Run();
 
@@ -385,6 +414,23 @@ static string ReadString(JsonElement root, string name, string fallback) =>
     root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
         ? value.GetString() ?? fallback
         : fallback;
+
+static string[]? ReadRelics(JsonElement root)
+{
+    if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() > 6)
+        return null;
+    var result = new List<string>();
+    var slots = 0;
+    foreach (var item in items.EnumerateArray())
+    {
+        if (item.ValueKind != JsonValueKind.String || item.GetString() is not { } id || !RelicItems.Allowed.Contains(id))
+            return null;
+        slots += id == "yellow-bike" ? 2 : 1;
+        if (slots > 6) return null;
+        result.Add(id);
+    }
+    return result.ToArray();
+}
 
 static float ReadFiniteProperty(JsonElement root, string name) =>
     root.TryGetProperty(name, out var value) ? ReadFiniteNumber(value) : 0;
@@ -428,17 +474,23 @@ static async Task BroadcastRoom(string roomId, Room room, RoomDirectory rooms, J
             started = room.Started,
             roundId = room.RoundId,
             chests = room.Loot?.Chests.Select(chest => new { chest.Id, chest.X, chest.Y, chest.ZoneId, chest.ItemId, chest.ClaimedBy }).ToArray() ?? [],
+            relics = room.Loot?.Relics.Select(relic => new
+            {
+                relic.OwnerId, relic.X, relic.Y,
+                slots = relic.Slots.Select(slot => new { slot.Id, slot.ItemId, slot.ClaimedBy }).ToArray(),
+            }).ToArray() ?? [],
             players = clients.Select(client => new
             {
                 playerId = client.Id,
                 displayName = client.DisplayName,
                 position = client.Position ?? CampusWorld.Spawn(0),
                 aim = client.Aim,
-                health = 100,
+                health = client.Dead ? 0 : 100,
+                skinId = client.SkinId,
                 connected = client.Socket.State == WebSocketState.Open,
                 ready = client.Ready,
                 finished = client.Finished,
-                skinId = room.Started ? client.RaidSkinId : client.SkinId,
+                dead = client.Dead,
             }).ToArray(),
         };
     }
@@ -475,6 +527,20 @@ sealed class Point(float x, float y)
     public float Y { get; } = y;
 }
 
+static class RelicItems
+{
+    public static readonly HashSet<string> Allowed = new(StringComparer.Ordinal)
+    {
+        "scratch-paper", "half-eraser", "portable-medkit", "torn-notebook", "window-seat", "morning-coffee",
+        "school-badge", "anomalous-feather", "gpa-charm", "library-reward-ticket", "siyuan-key",
+        "strange-veined-ginkgo-leaf", "hunter-binoculars", "roller-skates", "quick-note-card", "simple-detector",
+        "star-compass", "silent-cloak", "reflective-filter", "marked-campus-map", "soothe-charm",
+        "complete-record", "electric-bike-helmet", "david-head-statue", "silver-watch", "training-bat",
+        "stun-baton", "folding-ruler", "long-broom", "window-breaker", "night-watch-spear", "bandage",
+        "yellow-bike", "thick-down-jacket",
+    };
+}
+
 sealed class Client(WebSocket socket, string id)
 {
     public WebSocket Socket { get; } = socket;
@@ -488,8 +554,8 @@ sealed class Client(WebSocket socket, string id)
     public string? RoomId { get; set; }
     public bool Ready { get; set; }
     public bool Finished { get; set; }
+    public bool Dead { get; set; }
     public string SkinId { get; set; } = "school-uniform";
-    public string RaidSkinId { get; set; } = "school-uniform";
     public SemaphoreSlim SendGate { get; } = new(1, 1);
 }
 

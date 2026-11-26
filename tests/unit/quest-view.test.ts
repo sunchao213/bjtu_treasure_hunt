@@ -19,20 +19,20 @@ const result = (overrides: Partial<RaidResult> = {}): RaidResult => ({
 });
 
 describe('撤离成功但未解锁时的说明', () => {
-  it('未带回本局手记时提示手记来源', () => {
+  it('未带回两件证据时逐项提示缺失物品', () => {
     const hint = chapterLockHint(result());
-    expect(hint).toBe('本章未解锁：需带回本局在思源楼前取得的「残缺手记」。');
+    expect(hint).toBe('本章未解锁：需同时带回「残缺手记」和「异常羽毛」。');
   });
 
-  it('带回手记但未调查石碑时提示调查目标', () => {
+  it('带回手记但未带回羽毛时提示第二件证据', () => {
     const hint = chapterLockHint(result({ items: [loot('torn-notebook', 'a')] }));
-    expect(hint).toBe('本章未解锁：尚未调查明湖石碑。');
+    expect(hint).toBe('本章未解锁：需同时带回「异常羽毛」。');
   });
 
   it('只有羽毛仍视为缺少本局手记', () => {
     const hint = chapterLockHint(result({ items: [loot('anomalous-feather', 'b')] }));
     expect(hint).toContain('「残缺手记」');
-    expect(hint).not.toContain('异常羽毛');
+    expect(hint).toContain('残缺手记');
   });
 
   it('带入的物品不算证据，仍提示两件都缺', () => {
@@ -44,14 +44,14 @@ describe('撤离成功但未解锁时的说明', () => {
         ],
       }),
     );
-    expect(hint).toBe('本章未解锁：需带回本局在思源楼前取得的「残缺手记」。');
+    expect(hint).toBe('本章未解锁：需同时带回「残缺手记」和「异常羽毛」。');
   });
 
-  it('两件都在但主线标志缺失时给兜底文案，不输出残缺句子', () => {
+  it('两件都在但主线标志缺失时给兜底文案', () => {
     const hint = chapterLockHint(
       result({ items: [loot('torn-notebook', 'a'), loot('anomalous-feather', 'b')] }),
     );
-    expect(hint).toBe('本章未解锁：尚未调查明湖石碑。');
+    expect(hint).toBe('本章未解锁：任务完成状态未记录，请核对本局任务进度。');
   });
 
   it('两件证据齐全且任务完成时不再提示', () => {
@@ -62,6 +62,10 @@ describe('撤离成功但未解锁时的说明', () => {
       }),
     );
     expect(hint).toBeNull();
+  });
+
+  it('全部剧情完成后不再提示未解锁章节', () => {
+    expect(chapterLockHint(result(), null)).toBeNull();
   });
 
   it('失败结算不提示解锁说明', () => {

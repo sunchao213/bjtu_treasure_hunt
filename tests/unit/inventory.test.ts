@@ -16,7 +16,7 @@ const value = (items: readonly ItemInstance[]) =>
 
 describe('B reference inventory contract', () => {
   it('deduplicates equipped/bag aliases and excludes carry-in and other raids', () => {
-    const epic = loot('epic', 'gpa-charm');
+    const epic = loot('epic', 'hunter-binoculars');
     expect(
       value([
         epic,
@@ -36,7 +36,7 @@ describe('B reference inventory contract', () => {
   it('rejects duplicate pickup of the same instance without changing value', () => {
     const inventory = new ReferenceInventory(new EventBus(), 6, ITEM_DEFINITIONS);
     inventory.begin('current', []);
-    const item = loot('duplicate', 'gpa-charm');
+    const item = loot('duplicate', 'hunter-binoculars');
     expect(inventory.addLoot(item)).toEqual({ ok: true, value: undefined });
     expect(inventory.addLoot(item)).toEqual({ ok: false, error: 'INVALID_ITEM' });
     expect(inventory.getCarriedItems()).toEqual([item]);
@@ -53,10 +53,10 @@ describe('B reference inventory contract', () => {
   });
   it('covers 95/100/110 boundaries and excludes a valuable carry-in item', () => {
     expect(
-      value([loot('epic-1', 'gpa-charm'), loot('rare-1'), loot('common', 'scratch-paper')]),
+      value([loot('epic-1', 'hunter-binoculars'), loot('rare-1'), loot('common', 'scratch-paper')]),
     ).toBe(95);
     expect(value([loot('rare-1'), loot('rare-2'), loot('rare-3'), loot('rare-4')])).toBe(100);
-    expect(value([loot('epic-1', 'gpa-charm'), loot('rare-1'), loot('rare-2')])).toBe(110);
+    expect(value([loot('epic-1', 'hunter-binoculars'), loot('rare-1'), loot('rare-2')])).toBe(110);
     expect(
       value([
         { instanceId: 'carry', itemId: 'siyuan-key', origin: { kind: 'carry-in' } },
@@ -69,7 +69,7 @@ describe('B reference inventory contract', () => {
       value([
         loot('same', 'school-badge'),
         {
-          ...loot('same', 'gpa-charm'),
+          ...loot('same', 'hunter-binoculars'),
           origin: { kind: 'raid-loot', obtainedInRaidId: 'old' },
         },
       ]),

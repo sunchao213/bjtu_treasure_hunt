@@ -1,0 +1,18 @@
+{
+  "retrievedAt": "2026-11-20",
+  "permission": "用户已明确授权复用官网资源，要求思源楼样板。",
+  "kind": "reference-reconstruction",
+  "mesh": "本项目 Blender 重建；非官网原始三维网格。",
+  "mapUrlPattern": "https://map.bjtu.edu.cn/mapdata/zoom2/{x}_{y}.jpg?v=20260624",
+  "panorama": "https://map.bjtu.edu.cn/qj/bjdzx101/index.html",
+  "panoramaPreview": "https://map.bjtu.edu.cn/qj/bjdzx101/preview.jpg",
+  "xml": "https://map.bjtu.edu.cn/xml/tips/1/49_43.xml",
+  "xmlUsage": "仅用于官网楼名及图像轮廓核对，非平面碰撞数据。",
+  "userCorrection": {
+    "eastReference": "east-building-user.png",
+    "westReference": "west-building-user.png",
+    "buildings": "思源楼、思源东楼、思源西楼互不相连，楼间有道路。",
+    "rearContext": "东楼后方是科学会堂；西楼后方是信息中心。两者只标位，尚未建模。"
+  },
+  "sourceImagesUsage": "建模与对照，运行时不加载外站或全景图片。"
+}

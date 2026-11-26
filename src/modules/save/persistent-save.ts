@@ -1,13 +1,22 @@
+import { occupiedSlots } from '../inventory/inventory-sections';
 import {
   isCarryInAllowed,
   isExplorationItem,
   ITEM_DEFINITIONS,
   RAID_RULES,
+  WAREHOUSE_CAPACITY,
 } from '../../config/game-config';
-import type { ItemInstance, RaidResult, SavePort } from '../../shared/types/game';
+import type {
+  ItemInstance,
+  MailClaimResult,
+  MailItem,
+  RaidResult,
+  SavePort,
+} from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
 import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
 import { retainSettlementItems } from './settlement-retention';
+import { migrateRetiredItems } from './retired-items';
 
 // Keep the storage key stable so existing browsers can migrate in place.
 export const FORMAL_SAVE_KEY = 'bjtu-treasure-hunt:save:v2';
@@ -29,22 +38,33 @@ export interface FormalSaveData {
   schemaVersion: typeof FORMAL_SCHEMA_VERSION;
   warehouse: ItemInstance[];
   currency: number;
-  ownedSkinIds: SkinId[];
-  equippedSkinId: SkinId;
-  activeRaidSkinId: SkinId | null;
   codexIds: string[];
   unlockedChapterIds: string[];
   activeRaid: { raidId: string; loadout: ItemInstance[] } | null;
   settledRaidIds: string[];
   lastResult: RaidResult | null;
+  /** 仓库爆仓后由信箱代管的补发物资；领完即整封删除 */
+  mailbox: MailItem[];
+  ownedSkinIds: SkinId[];
+  equippedSkinId: SkinId;
+  activeRaidSkinId: SkinId | null;
 }
 
 type PreviousSaveData = Omit<
   FormalSaveData,
-  'schemaVersion' | 'activeRaid' | 'ownedSkinIds' | 'equippedSkinId' | 'activeRaidSkinId'
+  | 'schemaVersion'
+  | 'activeRaid'
+  | 'mailbox'
+  | 'ownedSkinIds'
+  | 'equippedSkinId'
+  | 'activeRaidSkinId'
 > & {
-  schemaVersion: 1 | 2 | 3;
+  schemaVersion: 1 | 2 | 3 | 4;
   activeRaid: { raidId: string; loadout?: ItemInstance[] } | null;
+  mailbox?: MailItem[];
+  ownedSkinIds?: SkinId[];
+  equippedSkinId?: SkinId;
+  activeRaidSkinId?: SkinId | null;
 };
 
 export type SaveImportResult = {
@@ -120,16 +140,28 @@ function validSettlementResult(result: RaidResult, loadout: readonly ItemInstanc
   );
 }
 
+function validMail(value: unknown): value is MailItem {
+  return (
+    record(value) &&
+    typeof value.mailId === 'string' &&
+    value.mailId.length > 0 &&
+    typeof value.title === 'string' &&
+    typeof value.body === 'string' &&
+    typeof value.createdAt === 'number' &&
+    Number.isSafeInteger(value.createdAt) &&
+    (value.sourceRaidId === undefined ||
+      (typeof value.sourceRaidId === 'string' && value.sourceRaidId.length > 0)) &&
+    Array.isArray(value.attachments) &&
+    value.attachments.length > 0 &&
+    value.attachments.every(validItem)
+  );
+}
+
 function isSkinId(value: unknown): value is SkinId {
   return SKIN_DEFINITIONS.some((skin) => skin.id === value);
 }
 
-function validData(value: unknown, version: 4): value is FormalSaveData;
-function validData(value: unknown, version: 1 | 2 | 3): value is PreviousSaveData;
-function validData(
-  value: unknown,
-  version: 1 | 2 | 3 | 4,
-): value is FormalSaveData | PreviousSaveData {
+function validData(value: unknown, version: 1 | 2 | 3 | 4): value is PreviousSaveData {
   if (
     !record(value) ||
     value.schemaVersion !== version ||
@@ -139,19 +171,6 @@ function validData(
     !uniqueStrings(value.unlockedChapterIds) ||
     !uniqueStrings(value.settledRaidIds) ||
     !(
-      version < 4 ||
-      (Array.isArray(value.ownedSkinIds) &&
-        value.ownedSkinIds.every(isSkinId) &&
-        value.ownedSkinIds.includes(DEFAULT_SKIN_ID) &&
-        new Set(value.ownedSkinIds).size === value.ownedSkinIds.length &&
-        isSkinId(value.equippedSkinId) &&
-        value.ownedSkinIds.includes(value.equippedSkinId) &&
-        ((value.activeRaidSkinId === null && value.activeRaid === null) ||
-          (isSkinId(value.activeRaidSkinId) &&
-            value.activeRaid !== null &&
-            value.ownedSkinIds.includes(value.activeRaidSkinId))))
-    ) ||
-    !(
       value.activeRaid === null ||
       (record(value.activeRaid) &&
         typeof value.activeRaid.raidId === 'string' &&
@@ -159,6 +178,56 @@ function validData(
         !value.settledRaidIds.includes(value.activeRaid.raidId))
     ) ||
     !(value.lastResult === null || validResult(value.lastResult))
+  ) {
+    return false;
+  }
+  // 硬上限只对 v4 起效：v3 及更早的存档可能已经超量，拦在校验层会让人打不开旧档，
+  // 超量部分交给 migratePrevious 折进信箱。
+  if (version === 4) {
+    if (value.mailbox !== undefined && value.warehouse.length > WAREHOUSE_CAPACITY) return false;
+    const mailbox = value.mailbox;
+    if (
+      mailbox !== undefined &&
+      (!Array.isArray(mailbox) ||
+        !mailbox.every(validMail) ||
+        new Set(mailbox.map((mail) => mail.mailId)).size !== mailbox.length)
+    ) {
+      return false;
+    }
+    // 信箱与仓库共用 instanceId 空间：一件物品要么在仓库、要么在信里，不能两头都有
+    const warehouseIds = new Set(value.warehouse.map((item) => item.instanceId as string));
+    const mailIds = new Set<string>();
+    for (const mail of mailbox ?? []) {
+      for (const item of mail.attachments) {
+        if (warehouseIds.has(item.instanceId) || mailIds.has(item.instanceId)) return false;
+        mailIds.add(item.instanceId);
+      }
+    }
+  } else if (
+    value.mailbox !== undefined ||
+    value.ownedSkinIds !== undefined ||
+    value.equippedSkinId !== undefined ||
+    value.activeRaidSkinId !== undefined
+  ) {
+    return false;
+  }
+  if (
+    version === 4 &&
+    (value.ownedSkinIds !== undefined ||
+      value.equippedSkinId !== undefined ||
+      value.activeRaidSkinId !== undefined) &&
+    (!Array.isArray(value.ownedSkinIds) ||
+      !value.ownedSkinIds.every(isSkinId) ||
+      !value.ownedSkinIds.includes(DEFAULT_SKIN_ID) ||
+      new Set(value.ownedSkinIds).size !== value.ownedSkinIds.length ||
+      !isSkinId(value.equippedSkinId) ||
+      !value.ownedSkinIds.includes(value.equippedSkinId) ||
+      !(
+        (value.activeRaidSkinId === null && value.activeRaid === null) ||
+        (isSkinId(value.activeRaidSkinId) &&
+          value.activeRaid !== null &&
+          value.ownedSkinIds.includes(value.activeRaidSkinId))
+      ))
   ) {
     return false;
   }
@@ -221,18 +290,17 @@ function decodeFormal(raw: string): { data: FormalSaveData; sourceSchemaVersion:
   } catch {
     throw new Error('Formal save is not valid JSON; preserve the original before recovery.');
   }
+  migrateRetiredItems(value);
   if (validData(value, FORMAL_SCHEMA_VERSION)) {
     return {
-      data: {
-        ...structuredClone(value),
-        currency: typeof value.currency === 'number' ? value.currency : 0,
-      },
+      data:
+        value.mailbox !== undefined && value.ownedSkinIds !== undefined
+          ? ({ ...structuredClone(value), currency: value.currency ?? 0 } as FormalSaveData)
+          : migratePrevious(value),
       sourceSchemaVersion: FORMAL_SCHEMA_VERSION,
     };
   }
-  if (validData(value, 3)) {
-    return { data: migratePrevious(value), sourceSchemaVersion: 3 };
-  }
+  if (validData(value, 3)) return { data: migratePrevious(value), sourceSchemaVersion: 3 };
   if (validData(value, 2)) {
     return { data: migratePrevious(value), sourceSchemaVersion: 2 };
   }
@@ -246,6 +314,7 @@ function decodeLegacy(raw: string): SaveData {
   } catch {
     throw new Error('Reference save is not valid JSON; import was not performed.');
   }
+  migrateRetiredItems(value);
   if (
     !record(value) ||
     value.schemaVersion !== 1 ||
@@ -268,26 +337,47 @@ function decodeLegacy(raw: string): SaveData {
   return value as unknown as SaveData;
 }
 
+function overflowMail(attachments: ItemInstance[], sourceRaidId?: string): MailItem {
+  return {
+    mailId: `mail:overflow:${crypto.randomUUID()}`,
+    title: '物资补发',
+    body: `本次撤离有 ${attachments.length} 件物资仓库放不下（上限 ${WAREHOUSE_CAPACITY} 格），暂时存放在思源信箱，腾出格子后再来领取。`,
+    createdAt: Date.now(),
+    ...(sourceRaidId ? { sourceRaidId } : {}),
+    attachments,
+  };
+}
+
 function migratePrevious(legacy: PreviousSaveData): FormalSaveData {
+  // v3 及更早的存档没有上限，超量的部分不能凭空蒸发，折进信箱等玩家自己腾格子。
+  const warehouse = structuredClone(legacy.warehouse);
+  const overflow = warehouse.slice(WAREHOUSE_CAPACITY);
+  warehouse.length = Math.min(warehouse.length, WAREHOUSE_CAPACITY);
   const migrated: FormalSaveData = {
     schemaVersion: FORMAL_SCHEMA_VERSION,
-    warehouse: structuredClone(legacy.warehouse),
+    warehouse,
     currency: typeof legacy.currency === 'number' ? legacy.currency : 0,
-    ownedSkinIds: [DEFAULT_SKIN_ID],
-    equippedSkinId: DEFAULT_SKIN_ID,
-    activeRaidSkinId: null,
     codexIds: [...legacy.codexIds],
     unlockedChapterIds: [...legacy.unlockedChapterIds],
     activeRaid: null,
     settledRaidIds: [...legacy.settledRaidIds],
     lastResult: legacy.lastResult ? structuredClone(legacy.lastResult) : null,
+    mailbox: structuredClone(legacy.mailbox ?? []),
+    ownedSkinIds: legacy.ownedSkinIds ? [...legacy.ownedSkinIds] : [DEFAULT_SKIN_ID],
+    equippedSkinId: legacy.equippedSkinId ?? DEFAULT_SKIN_ID,
+    activeRaidSkinId: null,
   };
-  if (legacy.activeRaid?.loadout && legacy.schemaVersion === 3) {
+  if (overflow.length > 0) migrated.mailbox.push(overflowMail(overflow));
+  // Old active raids have no trustworthy carry-in manifest; never guess returns.
+  if ((legacy.schemaVersion === 3 || legacy.schemaVersion === 4) && legacy.activeRaid?.loadout) {
     migrated.activeRaid = {
       raidId: legacy.activeRaid.raidId,
       loadout: structuredClone(legacy.activeRaid.loadout),
     };
-    migrated.activeRaidSkinId = DEFAULT_SKIN_ID;
+    migrated.activeRaidSkinId =
+      legacy.schemaVersion === 4
+        ? (legacy.activeRaidSkinId ?? migrated.equippedSkinId)
+        : migrated.equippedSkinId;
   } else if (legacy.activeRaid) {
     migrated.settledRaidIds.push(legacy.activeRaid.raidId);
     migrated.lastResult = {
@@ -369,7 +459,11 @@ export class PersistentSave implements SavePort {
     return true;
   }
 
-  async beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]> {
+  async beginRaid(
+    raidId: string,
+    loadoutIds: readonly string[],
+    reservedSlots = 0,
+  ): Promise<readonly ItemInstance[]> {
     if (
       !raidId ||
       this.data.activeRaid ||
@@ -393,6 +487,12 @@ export class PersistentSave implements SavePort {
         origin: source ? { kind: 'carry-in' as const, source } : { kind: 'carry-in' as const },
       };
     });
+    if (
+      !Number.isSafeInteger(reservedSlots) ||
+      reservedSlots < 0 ||
+      occupiedSlots(loadout, ITEM_DEFINITIONS) + reservedSlots > RAID_RULES.bagCapacity
+    )
+      throw new Error('Loadout exceeds capacity');
     const next = this.view();
     next.warehouse = next.warehouse.filter((item) => !loadoutIds.includes(item.instanceId));
     next.activeRaid = { raidId, loadout: structuredClone(loadout) };
@@ -430,8 +530,13 @@ export class PersistentSave implements SavePort {
         ITEM_DEFINITIONS,
         RAID_RULES.values,
       );
+      // 重复收藏已在 retain 里折成交子，真正进仓的是 retained.warehouse 的尾部增量。
+      // 超出 100 格的那部分原样进信箱，玩家腾出格子后自己领。
+      const overflow = retained.warehouse.slice(WAREHOUSE_CAPACITY);
+      retained.warehouse.length = Math.min(retained.warehouse.length, WAREHOUSE_CAPACITY);
       next.warehouse = retained.warehouse;
       next.currency = retained.currency;
+      if (overflow.length > 0) next.mailbox.push(overflowMail(overflow, result.raidId));
     }
     next.activeRaid = null;
     next.activeRaidSkinId = null;
@@ -444,7 +549,7 @@ export class PersistentSave implements SavePort {
     if (this.data.unlockedChapterIds.includes(chapterId)) return;
     const chapter = activeQuestChapter(this.data.unlockedChapterIds);
     if (
-      chapter.id !== chapterId ||
+      chapter?.id !== chapterId ||
       !this.data.lastResult ||
       !chapterUnlockGranted(this.data.lastResult, chapterId)
     ) {
@@ -467,10 +572,13 @@ export class PersistentSave implements SavePort {
     itemId: string,
   ):
     | { ok: true; value: ItemInstance }
-    | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' } {
+    | { ok: false; error: 'UNKNOWN_ITEM' | 'INSUFFICIENT_FUNDS' | 'WAREHOUSE_FULL' } {
     const definition = ITEM_DEFINITIONS[itemId];
     const price = definition?.price;
     if (!definition || price === undefined) return { ok: false, error: 'UNKNOWN_ITEM' };
+    // 先判仓库再判钱：仓库满了就算有钱也不该扣款
+    if (this.data.warehouse.length >= WAREHOUSE_CAPACITY)
+      return { ok: false, error: 'WAREHOUSE_FULL' };
     if (this.data.currency < price) return { ok: false, error: 'INSUFFICIENT_FUNDS' };
     const item: ItemInstance = {
       instanceId: `purchase:${itemId}:${crypto.randomUUID()}`,
@@ -510,6 +618,72 @@ export class PersistentSave implements SavePort {
     return true;
   }
 
+  /**
+   * 按实例顺序重排仓库（仓库界面拖拽互换落盘）。
+   * 一格一件：传入的是 instanceId 列表；同 itemId 的实例可以拆开排在任意位置。
+   * 未列出的实例按原顺序补在末尾，所以传入残缺的列表也不会丢物品。
+   */
+  reorderWarehouse(instanceIds: readonly string[]): void {
+    const byId = new Map(this.data.warehouse.map((item) => [item.instanceId, item]));
+    const seen = new Set<string>();
+    const ordered: ItemInstance[] = [];
+    for (const id of instanceIds) {
+      const item = byId.get(id);
+      if (!item) continue;
+      ordered.push(item);
+      seen.add(id);
+    }
+    for (const item of this.data.warehouse) {
+      if (!seen.has(item.instanceId)) ordered.push(item);
+    }
+    if (
+      ordered.every((item, index) => item.instanceId === this.data.warehouse[index]?.instanceId)
+    ) {
+      return;
+    }
+    const next = this.view();
+    next.warehouse = structuredClone(ordered);
+    this.commit(next);
+  }
+
+  /**
+   * 领取信箱附件。仓库满时只放得下多少放多少，剩下的留在信里；
+   * 领空的邮件整封删除（信箱只放补发物资，没有「已读存档」的概念）。
+   * 传 null 表示「全部领取」，一次 commit 写完，不会一封信写一次盘。
+   */
+  claimMail(mailId: string | null): MailClaimResult {
+    const next = this.view();
+    let room = Math.max(0, WAREHOUSE_CAPACITY - next.warehouse.length);
+    const pending = next.mailbox.reduce((sum, mail) => sum + mail.attachments.length, 0);
+    if (room === 0 || pending === 0) return { moved: 0, remaining: pending };
+
+    const targets =
+      mailId === null ? next.mailbox : next.mailbox.filter((mail) => mail.mailId === mailId);
+    if (targets.length === 0) return { moved: 0, remaining: pending };
+
+    let moved = 0;
+    const kept: MailItem[] = [];
+    for (const mail of next.mailbox) {
+      // 单封领取时，没点到的信原样留下
+      if (mailId !== null && mail.mailId !== mailId) {
+        kept.push(mail);
+        continue;
+      }
+      const take = Math.min(room, mail.attachments.length);
+      if (take > 0) {
+        next.warehouse.push(...structuredClone(mail.attachments.slice(0, take)));
+        room -= take;
+        moved += take;
+      }
+      const left = mail.attachments.slice(take);
+      if (left.length > 0) kept.push({ ...mail, attachments: left });
+    }
+    next.mailbox = kept;
+    if (moved === 0) return { moved: 0, remaining: pending };
+    this.commit(next);
+    return { moved, remaining: pending - moved };
+  }
+
   private commit(next: FormalSaveData): void {
     if (!validData(next, FORMAL_SCHEMA_VERSION)) {
       throw new Error('Refusing to commit invalid formal save data.');
@@ -523,14 +697,15 @@ export class PersistentSave implements SavePort {
       schemaVersion: FORMAL_SCHEMA_VERSION,
       warehouse: [],
       currency: 0,
-      ownedSkinIds: [DEFAULT_SKIN_ID],
-      equippedSkinId: DEFAULT_SKIN_ID,
-      activeRaidSkinId: null,
       codexIds: [],
       unlockedChapterIds: [],
       activeRaid: null,
       settledRaidIds: [],
       lastResult: null,
+      mailbox: [],
+      ownedSkinIds: [DEFAULT_SKIN_ID],
+      equippedSkinId: DEFAULT_SKIN_ID,
+      activeRaidSkinId: null,
     };
   }
 }

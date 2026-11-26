@@ -1,3 +1,4 @@
+import { COMBAT_RULES } from './combat-config';
 import type { Enemy } from '../modules/world/night-systems';
 
 export interface MonsterAnimationAsset {
@@ -8,12 +9,36 @@ export interface MonsterAnimationAsset {
 
 export const MONSTER_FRAME_SIZE = 176;
 
+const AMPLIFIER_ANIMATIONS = {
+  idle: 'amplifier-idle',
+  moving: 'amplifier-walk',
+  attack: 'amplifier-attack',
+  hurt: 'amplifier-idle',
+  death: 'amplifier-death',
+} as const;
+
 const DUCK_ANIMATIONS = {
   idle: 'duck-idle',
   moving: 'duck-walk',
   attack: 'duck-attack',
   hurt: 'duck-hurt',
   death: 'duck-death',
+} as const;
+
+const CAT_ANIMATIONS = {
+  idle: 'cat-idle',
+  moving: 'cat-walk',
+  attack: 'cat-attack',
+  hurt: 'cat-hurt',
+  death: 'cat-death',
+} as const;
+
+const SWAN_ANIMATIONS = {
+  idle: 'swan-idle',
+  moving: 'swan-walk',
+  attack: 'swan-attack',
+  hurt: 'swan-hurt',
+  death: 'swan-death',
 } as const;
 
 const SQUIRREL_ANIMATIONS = {
@@ -33,11 +58,26 @@ const MUTANT_ANIMATIONS = {
 } as const;
 
 export const MONSTER_SPRITE_SHEETS = [
+  'amplifier-idle',
+  'amplifier-walk',
+  'amplifier-attack',
+  'amplifier-death',
+  'amplifier-wave',
   'duck-idle',
   'duck-walk',
   'duck-attack',
   'duck-hurt',
   'duck-death',
+  'cat-idle',
+  'cat-walk',
+  'cat-attack',
+  'cat-hurt',
+  'cat-death',
+  'swan-idle',
+  'swan-walk',
+  'swan-attack',
+  'swan-hurt',
+  'swan-death',
   'squirrel-idle',
   'squirrel-walk',
   'squirrel-request',
@@ -51,11 +91,26 @@ export const MONSTER_SPRITE_SHEETS = [
 ] as const;
 
 export const MONSTER_ANIMATIONS: Readonly<Record<string, MonsterAnimationAsset>> = {
+  'amplifier-idle': { texture: 'amplifier-idle', frameRate: 3, repeat: -1 },
+  'amplifier-walk': { texture: 'amplifier-walk', frameRate: 7, repeat: -1 },
+  'amplifier-attack': { texture: 'amplifier-attack', frameRate: 7, repeat: 0 },
+  'amplifier-death': { texture: 'amplifier-death', frameRate: 7, repeat: 0 },
+  'amplifier-wave': { texture: 'amplifier-wave', frameRate: 14, repeat: -1 },
   'duck-idle': { texture: 'duck-idle', frameRate: 5, repeat: -1 },
   'duck-walk': { texture: 'duck-walk', frameRate: 9, repeat: -1 },
   'duck-attack': { texture: 'duck-attack', frameRate: 9, repeat: 0 },
   'duck-hurt': { texture: 'duck-hurt', frameRate: 10, repeat: 0 },
   'duck-death': { texture: 'duck-death', frameRate: 8, repeat: 0 },
+  'cat-idle': { texture: 'cat-idle', frameRate: 5, repeat: -1 },
+  'cat-walk': { texture: 'cat-walk', frameRate: 9, repeat: -1 },
+  'cat-attack': { texture: 'cat-attack', frameRate: 9, repeat: 0 },
+  'cat-hurt': { texture: 'cat-hurt', frameRate: 10, repeat: 0 },
+  'cat-death': { texture: 'cat-death', frameRate: 8, repeat: 0 },
+  'swan-idle': { texture: 'swan-idle', frameRate: 5, repeat: -1 },
+  'swan-walk': { texture: 'swan-walk', frameRate: 9, repeat: -1 },
+  'swan-attack': { texture: 'swan-attack', frameRate: 9, repeat: 0 },
+  'swan-hurt': { texture: 'swan-hurt', frameRate: 10, repeat: 0 },
+  'swan-death': { texture: 'swan-death', frameRate: 8, repeat: 0 },
   'squirrel-idle': { texture: 'squirrel-idle', frameRate: 6, repeat: -1 },
   'squirrel-walk': { texture: 'squirrel-walk', frameRate: 10, repeat: -1 },
   'squirrel-request': { texture: 'squirrel-request', frameRate: 10, repeat: -1 },
@@ -72,7 +127,20 @@ export const MONSTER_ANIMATIONS: Readonly<Record<string, MonsterAnimationAsset>>
   'squirrel-mutant-death': { texture: 'squirrel-mutant-death', frameRate: 8, repeat: 0 },
 };
 
+function patrolAnimations(enemy: Enemy) {
+  if (enemy.species === 'cat') return CAT_ANIMATIONS;
+  if (enemy.species === 'swan') return SWAN_ANIMATIONS;
+  return DUCK_ANIMATIONS;
+}
+
 export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
+  if (enemy.kind === 'amplifier') {
+    if (enemy.state === 'dead') return AMPLIFIER_ANIMATIONS.death;
+    if (enemy.state === 'windup') return AMPLIFIER_ANIMATIONS.attack;
+    if (enemy.state === 'stunned') return AMPLIFIER_ANIMATIONS.hurt;
+    if (enemy.state === 'recovery') return AMPLIFIER_ANIMATIONS.idle;
+    return moving ? AMPLIFIER_ANIMATIONS.moving : AMPLIFIER_ANIMATIONS.idle;
+  }
   if (enemy.state === 'mutation-warning') {
     return SQUIRREL_ANIMATIONS.request;
   }
@@ -80,15 +148,15 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
     if (enemy.kind === 'hug' && enemy.mutated) {
       return MUTANT_ANIMATIONS.death;
     }
-    return enemy.kind === 'hug' ? SQUIRREL_ANIMATIONS.death : DUCK_ANIMATIONS.death;
+    return enemy.kind === 'hug' ? SQUIRREL_ANIMATIONS.death : patrolAnimations(enemy).death;
   }
 
-  if (enemy.state === 'windup') {
+  if (enemy.state === 'windup' || enemy.state === 'pouncing') {
     return enemy.kind === 'hug' && enemy.mutated
       ? MUTANT_ANIMATIONS.attack
       : enemy.kind === 'hug'
         ? SQUIRREL_ANIMATIONS.idle
-        : DUCK_ANIMATIONS.attack;
+        : patrolAnimations(enemy).attack;
   }
 
   if (enemy.state === 'stunned') {
@@ -96,7 +164,7 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
       ? MUTANT_ANIMATIONS.hurt
       : enemy.kind === 'hug'
         ? SQUIRREL_ANIMATIONS.hurt
-        : DUCK_ANIMATIONS.hurt;
+        : patrolAnimations(enemy).hurt;
   }
 
   if (enemy.kind === 'hug') {
@@ -109,10 +177,26 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
     return moving ? SQUIRREL_ANIMATIONS.moving : SQUIRREL_ANIMATIONS.idle;
   }
 
-  return moving ? DUCK_ANIMATIONS.moving : DUCK_ANIMATIONS.idle;
+  const patrol = patrolAnimations(enemy);
+  return moving ? patrol.moving : patrol.idle;
+}
+
+export function monsterConcealed(enemy: Enemy): boolean {
+  return (
+    enemy.kind === 'patrol' &&
+    enemy.species === 'cat' &&
+    (enemy.state === 'lurking' || enemy.state === 'vanished')
+  );
+}
+
+export function monsterOpacityFor(enemy: Enemy): number {
+  if (!monsterConcealed(enemy)) return 1;
+  return enemy.state === 'vanished' ? 0 : COMBAT_RULES.enemy.cat.hiddenOpacity;
 }
 
 export function monsterScaleFor(enemy: Enemy): number {
+  if (enemy.kind === 'patrol' && enemy.species === 'cat') return 0.4 * COMBAT_RULES.enemy.cat.scale;
+  if (enemy.kind === 'amplifier') return 0.44;
   if (enemy.kind === 'hug' && enemy.mutated) {
     return 0.48;
   }

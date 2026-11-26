@@ -1,9 +1,18 @@
-import { WORLD } from '../../config/world-config';
+import { activeMap } from '../../config/play-map';
 import type { Point } from '../../shared/types/game';
+import type { StoryTrigger } from './story-triggers';
 
 export const EXPLORED_CELL_SIZE = 16;
-const EXPLORED_COLUMNS = Math.ceil(WORLD.width / EXPLORED_CELL_SIZE);
-const EXPLORED_ROWS = Math.ceil(WORLD.height / EXPLORED_CELL_SIZE);
+
+function exploredGrid(): { columns: number; rows: number; width: number; height: number } {
+  const map = activeMap();
+  return {
+    columns: Math.ceil(map.width / EXPLORED_CELL_SIZE),
+    rows: Math.ceil(map.height / EXPLORED_CELL_SIZE),
+    width: map.width,
+    height: map.height,
+  };
+}
 
 export type ExploredMap = Uint8Array;
 
@@ -13,10 +22,12 @@ export interface CampusOverviewOptions {
   /** World-space radius shown around the player in the compact view. */
   viewRadius?: number;
   teammates?: readonly { readonly position: Point; readonly name: string }[];
+  storyMarkers?: readonly StoryTrigger[];
 }
 
 export function createExploredMap(): ExploredMap {
-  return new Uint8Array(EXPLORED_COLUMNS * EXPLORED_ROWS);
+  const { columns, rows } = exploredGrid();
+  return new Uint8Array(columns * rows);
 }
 
 export function clearExploredMap(explored: ExploredMap): void {
@@ -24,13 +35,11 @@ export function clearExploredMap(explored: ExploredMap): void {
 }
 
 export function revealExploredArea(explored: ExploredMap, center: Point, radius = 68): void {
+  const { columns, rows } = exploredGrid();
   const minColumn = Math.max(0, Math.floor((center.x - radius) / EXPLORED_CELL_SIZE));
-  const maxColumn = Math.min(
-    EXPLORED_COLUMNS - 1,
-    Math.floor((center.x + radius) / EXPLORED_CELL_SIZE),
-  );
+  const maxColumn = Math.min(columns - 1, Math.floor((center.x + radius) / EXPLORED_CELL_SIZE));
   const minRow = Math.max(0, Math.floor((center.y - radius) / EXPLORED_CELL_SIZE));
-  const maxRow = Math.min(EXPLORED_ROWS - 1, Math.floor((center.y + radius) / EXPLORED_CELL_SIZE));
+  const maxRow = Math.min(rows - 1, Math.floor((center.y + radius) / EXPLORED_CELL_SIZE));
   const radiusSquared = radius * radius;
 
   for (let row = minRow; row <= maxRow; row += 1) {
@@ -40,19 +49,20 @@ export function revealExploredArea(explored: ExploredMap, center: Point, radius 
       const distanceX = cellCenterX - center.x;
       const distanceY = cellCenterY - center.y;
       if (distanceX * distanceX + distanceY * distanceY <= radiusSquared) {
-        explored[row * EXPLORED_COLUMNS + column] = 1;
+        explored[row * columns + column] = 1;
       }
     }
   }
 }
 
 function isExplored(explored: ExploredMap, worldX: number, worldY: number): boolean {
+  const { columns, rows } = exploredGrid();
   const column = Math.floor(worldX / EXPLORED_CELL_SIZE);
   const row = Math.floor(worldY / EXPLORED_CELL_SIZE);
-  if (column < 0 || column >= EXPLORED_COLUMNS || row < 0 || row >= EXPLORED_ROWS) {
+  if (column < 0 || column >= columns || row < 0 || row >= rows) {
     return false;
   }
-  return explored[row * EXPLORED_COLUMNS + column] === 1;
+  return explored[row * columns + column] === 1;
 }
 
 export function drawCampusOverview(
@@ -65,19 +75,20 @@ export function drawCampusOverview(
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  const map = exploredGrid();
   const followPlayer = options.followPlayer === true;
   const viewRadius = Math.max(96, options.viewRadius ?? 320);
   const scale = followPlayer
     ? Math.min(canvas.width, canvas.height) / (viewRadius * 2)
-    : Math.min(canvas.width / WORLD.width, canvas.height / WORLD.height);
-  const width = followPlayer ? viewRadius * 2 : WORLD.width;
-  const height = followPlayer ? viewRadius * 2 : WORLD.height;
+    : Math.min(canvas.width / map.width, canvas.height / map.height);
+  const width = followPlayer ? viewRadius * 2 : map.width;
+  const height = followPlayer ? viewRadius * 2 : map.height;
   const viewCenterX = followPlayer
-    ? Math.max(viewRadius, Math.min(WORLD.width - viewRadius, player.x))
-    : WORLD.width / 2;
+    ? Math.max(viewRadius, Math.min(map.width - viewRadius, player.x))
+    : map.width / 2;
   const viewCenterY = followPlayer
-    ? Math.max(viewRadius, Math.min(WORLD.height - viewRadius, player.y))
-    : WORLD.height / 2;
+    ? Math.max(viewRadius, Math.min(map.height - viewRadius, player.y))
+    : map.height / 2;
   const offsetX = followPlayer
     ? (canvas.width - width * scale) / 2 - (viewCenterX - viewRadius) * scale
     : (canvas.width - width * scale) / 2;
@@ -95,15 +106,15 @@ export function drawCampusOverview(
     ctx.beginPath();
     ctx.rect(0, 0, canvas.width, canvas.height);
     ctx.clip();
-    ctx.drawImage(image, offsetX, offsetY, WORLD.width * scale, WORLD.height * scale);
+    ctx.drawImage(image, offsetX, offsetY, map.width * scale, map.height * scale);
   } else {
     ctx.drawImage(image, offsetX, offsetY, width * scale, height * scale);
   }
 
   ctx.fillStyle = '#020305';
-  for (let row = 0; row < EXPLORED_ROWS; row += 1) {
-    for (let column = 0; column < EXPLORED_COLUMNS; column += 1) {
-      if (explored[row * EXPLORED_COLUMNS + column] === 1) continue;
+  for (let row = 0; row < map.rows; row += 1) {
+    for (let column = 0; column < map.columns; column += 1) {
+      if (explored[row * map.columns + column] === 1) continue;
       const worldX = column * EXPLORED_CELL_SIZE;
       const worldY = row * EXPLORED_CELL_SIZE;
       ctx.fillRect(
@@ -115,12 +126,66 @@ export function drawCampusOverview(
     }
   }
 
-  for (const gate of WORLD.gates) {
+  for (const gate of activeMap().gates) {
     if (!isExplored(explored, gate.x, gate.y)) continue;
     ctx.beginPath();
     ctx.arc(x(gate.x), y(gate.y), gate.role === 'extraction' ? 5 : 3, 0, Math.PI * 2);
     ctx.fillStyle = gate.role === 'extraction' ? '#8cdeb2' : '#d3c08d';
     ctx.fill();
+    if (!followPlayer) {
+      ctx.font = '11px sans-serif';
+      ctx.fillText(gate.name, x(gate.x) + 7, y(gate.y) - 5);
+    }
+  }
+
+  const layout = activeMap();
+  const landmarks = [
+    ...(layout.questChest ? [{ ...layout.questChest, name: '手记宝箱' }] : []),
+    ...(layout.chapterTwoPoints
+      ? [
+          { ...layout.chapterTwoPoints.campusMap, name: '教学区公告栏' },
+          { ...layout.chapterTwoPoints.siyuanKey, name: '思源楼东侧' },
+        ]
+      : []),
+    ...layout.lootZones
+      .filter((zone) => ['east-garden', 'central-lawn'].includes(zone.id))
+      .map((zone) => ({
+        x: zone.x + zone.width / 2,
+        y: zone.y + zone.height / 2,
+        name: zone.id === 'east-garden' ? '芳华园搜寻区' : '中心广场搜寻区',
+      })),
+  ];
+  for (const landmark of options.storyMarkers ? [] : landmarks) {
+    if (!isExplored(explored, landmark.x, landmark.y)) continue;
+    ctx.fillStyle = '#ddbd7a';
+    ctx.fillRect(x(landmark.x) - 2, y(landmark.y) - 2, 5, 5);
+    if (!followPlayer) {
+      ctx.font = '11px sans-serif';
+      ctx.fillText(landmark.name, x(landmark.x) + 7, y(landmark.y) + 10);
+    }
+  }
+
+  // Known story clues remain visible over unexplored areas so a new chapter has a destination.
+  for (const marker of options.storyMarkers ?? []) {
+    if (marker.status === 'inactive') continue;
+    if (marker.status !== 'active' && !isExplored(explored, marker.x, marker.y)) continue;
+    ctx.fillStyle =
+      marker.status === 'active' ? '#f5ce77' : marker.status === 'done' ? '#83bc9f' : '#899baf';
+    ctx.beginPath();
+    ctx.moveTo(x(marker.x), y(marker.y) - 5);
+    ctx.lineTo(x(marker.x) + 5, y(marker.y));
+    ctx.lineTo(x(marker.x), y(marker.y) + 5);
+    ctx.lineTo(x(marker.x) - 5, y(marker.y));
+    ctx.closePath();
+    ctx.fill();
+    if (!followPlayer) {
+      ctx.font = '11px sans-serif';
+      ctx.fillText(
+        `${marker.status === 'active' ? '当前线索 · ' : ''}${marker.title}`,
+        x(marker.x) + 8,
+        y(marker.y) - 7,
+      );
+    }
   }
 
   for (const teammate of options.teammates ?? []) {
@@ -128,6 +193,10 @@ export function drawCampusOverview(
     ctx.arc(x(teammate.position.x), y(teammate.position.y), 4, 0, Math.PI * 2);
     ctx.fillStyle = '#78c4ee';
     ctx.fill();
+    if (!followPlayer) {
+      ctx.font = '11px sans-serif';
+      ctx.fillText(teammate.name, x(teammate.position.x) + 7, y(teammate.position.y) - 5);
+    }
   }
 
   ctx.beginPath();

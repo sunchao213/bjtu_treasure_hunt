@@ -7,9 +7,17 @@ sealed class RoomLoot
 {
     public static LootRules Rules { get; } = LoadRules();
     public List<RoomChest> Chests { get; } = Generate();
+    public List<RelicChest> Relics { get; } = new();
     private readonly Dictionary<string, Search> searches = new();
     private readonly Dictionary<string, Offer> offers = new();
     private readonly HashSet<string> usedRequests = new();
+
+    public void DropRelics(Client client, IReadOnlyList<string> items)
+    {
+        if (client.Position is not { } position) return;
+        Relics.Add(new(client.Id, position.X, position.Y, items.Select((item, i) =>
+            new RoomChest($"relic-{client.Id}-{i}", position.X, position.Y, "relic", item)).ToArray()));
+    }
 
     private static LootRules LoadRules()
     {
@@ -21,7 +29,7 @@ sealed class RoomLoot
     {
         var result = new List<RoomChest>();
         var geometry = CampusWorld.Geometry;
-        foreach (var zone in Rules.Zones)
+        foreach (var zone in geometry.LootZones)
         {
             var candidates = new List<Point>();
             for (var x = zone.X + 25; x < zone.X + zone.Width - 20; x += 50)
@@ -30,13 +38,11 @@ sealed class RoomLoot
                     var p = new Point(x, y);
                     if (x - 35 < geometry.Bounds.X || x + 35 > geometry.Bounds.X + geometry.Bounds.Width
                         || y - 35 < geometry.Bounds.Y || y + 35 > geometry.Bounds.Y + geometry.Bounds.Height) continue;
-                    if (geometry.Obstacles.Concat(Rules.Occlusion).Any(w => x + 35 > w.X && x - 35 < w.X + w.Width && y + 35 > w.Y && y - 35 < w.Y + w.Height)) continue;
+                    if (geometry.Obstacles.Any(w => x + 35 > w.X && x - 35 < w.X + w.Width && y + 35 > w.Y && y - 35 < w.Y + w.Height)) continue;
                     if (Rules.Fixed.Any(q => Distance(p, new Point(q.X, q.Y)) < 90) || result.Any(q => Distance(p, new Point(q.X, q.Y)) < 120)) continue;
                     candidates.Add(p);
                 }
-            var shuffled = candidates.ToArray();
-            Random.Shared.Shuffle(shuffled);
-            var selected = Choose(shuffled, zone.Id == "lake" ? 1 : 3)
+            var selected = Choose(candidates.ToArray(), zone.Id == "lake" ? 1 : 3)
                 ?? throw new InvalidOperationException($"No accessible room loot positions in {zone.Id}");
             for (var i = 0; i < selected.Count; i++)
                 result.Add(new RoomChest($"{zone.Id}-{i}", selected[i].X, selected[i].Y, zone.Id, Rules.Pool[RandomNumberGenerator.GetInt32(Rules.Pool.Length)]));
@@ -47,11 +53,16 @@ sealed class RoomLoot
     private static List<Point>? Choose(Point[] candidates, int count)
     {
         if (count == 0) return new();
-        for (var i = 0; i < candidates.Length; i++)
+        for (var attempt = 0; attempt < 32; attempt++)
         {
-            var p = candidates[i];
-            var rest = Choose(candidates.Skip(i + 1).Where(other => Distance(p, other) >= 120).ToArray(), count - 1);
-            if (rest is not null) { rest.Insert(0, p); return rest; }
+            var shuffled = candidates.ToArray();
+            Random.Shared.Shuffle(shuffled);
+            var selected = new List<Point>(count);
+            foreach (var candidate in shuffled)
+            {
+                if (selected.All(point => Distance(candidate, point) >= 120)) selected.Add(candidate);
+                if (selected.Count == count) return selected;
+            }
         }
         return null;
     }
@@ -73,7 +84,9 @@ sealed class RoomLoot
         if (offers.TryGetValue(key, out var pending)) return Reply(roundId, requestId, chestId, "offered", pending.Chest.ItemId);
         if (usedRequests.Contains(key) || usedRequests.Count >= 4096)
             return Reply(roundId, requestId, chestId, "rejected", reason: "REQUEST_EXPIRED");
-        var chest = Chests.Find(q => q.Id == chestId);
+        var chest = stage == "take"
+            ? Relics.SelectMany(relic => relic.Slots).FirstOrDefault(slot => slot.Id == chestId)
+            : Chests.Find(q => q.Id == chestId);
         if (chest is null || client.Position is null || Distance(client.Position, new Point(chest.X, chest.Y)) >= Rules.Range
             || !CampusWorld.LineOfSight(client.Position, new Point(chest.X, chest.Y)))
         {
@@ -86,6 +99,12 @@ sealed class RoomLoot
             Cancel(client);
             usedRequests.Add(key);
             return Reply(roundId, requestId, chestId, "rejected", reason: "CHEST_UNAVAILABLE");
+        }
+        if (stage == "take")
+        {
+            usedRequests.Add(key);
+            offers.Add(key, new(client.Id, chest));
+            return Reply(roundId, requestId, chestId, "offered", chest.ItemId);
         }
         if (!searches.TryGetValue(client.Id, out var search) || search.RequestId != requestId || search.ChestId != chestId)
         {
@@ -140,4 +159,5 @@ sealed record RoomChest(string Id, float X, float Y, string ZoneId, string ItemI
 {
     public string? ClaimedBy { get; set; }
 }
+sealed record RelicChest(string OwnerId, float X, float Y, RoomChest[] Slots);
 sealed record LootReply(string Type, string RoundId, string RequestId, string ChestId, string Status, string? ItemId = null, string? Reason = null);

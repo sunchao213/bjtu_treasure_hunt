@@ -69,6 +69,38 @@ describe('monster sprite manifest', () => {
     );
   });
 
+  it('maps cat and swan patrol states with the same poses as the duck', () => {
+    for (const species of ['cat', 'swan'] as const) {
+      expect(monsterAnimationFor(makeEnemy({ species }), false)).toBe(`${species}-idle`);
+      expect(monsterAnimationFor(makeEnemy({ species }), true)).toBe(`${species}-walk`);
+      expect(monsterAnimationFor(makeEnemy({ species, state: 'windup' }), false)).toBe(
+        `${species}-attack`,
+      );
+      expect(monsterAnimationFor(makeEnemy({ species, state: 'stunned' }), false)).toBe(
+        `${species}-hurt`,
+      );
+      expect(monsterAnimationFor(makeEnemy({ species, state: 'dead' }), false)).toBe(
+        `${species}-death`,
+      );
+      expect(monsterScaleFor(makeEnemy({ species }))).toBe(species === 'cat' ? 0.26 : 0.4);
+    }
+  });
+
+  it('maps amplifier states and exposes the standalone sound wave animation', () => {
+    const amplifier = makeEnemy({ kind: 'amplifier' });
+    expect(monsterAnimationFor(amplifier, false)).toBe('amplifier-idle');
+    expect(monsterAnimationFor(amplifier, true)).toBe('amplifier-walk');
+    expect(monsterAnimationFor({ ...amplifier, state: 'windup' }, false)).toBe('amplifier-attack');
+    expect(monsterAnimationFor({ ...amplifier, state: 'recovery' }, false)).toBe('amplifier-idle');
+    expect(monsterAnimationFor({ ...amplifier, state: 'stunned' }, false)).toBe('amplifier-idle');
+    expect(monsterAnimationFor({ ...amplifier, state: 'dead' }, false)).toBe('amplifier-death');
+    expect(monsterScaleFor(amplifier)).toBe(0.44);
+    expect(MONSTER_ANIMATIONS['amplifier-wave']).toMatchObject({
+      texture: 'amplifier-wave',
+      repeat: -1,
+    });
+  });
+
   it('keeps the reduced relative scale for each visual variant', () => {
     expect(monsterScaleFor(makeEnemy())).toBe(0.4);
     expect(monsterScaleFor(makeEnemy({ kind: 'hug' }))).toBe(0.38);

@@ -13,6 +13,18 @@ sealed partial class GameDatabase
 {
     private const long LeaseDurationMs = 90_000;
     private readonly string connectionString;
+    private static readonly string[] OnlineChapters = LoadOnlineChapters();
+
+    private static string[] LoadOnlineChapters()
+    {
+        using var stream = typeof(GameDatabase).Assembly.GetManifestResourceStream("online-unlock.json")
+            ?? throw new InvalidOperationException("Online unlock rules are missing.");
+        using var rules = JsonDocument.Parse(stream);
+        return rules.RootElement.GetProperty("requiredChapterIds")
+            .EnumerateArray()
+            .Select(id => id.GetString()!)
+            .ToArray();
+    }
 
     public GameDatabase(string directory)
     {
@@ -29,7 +41,8 @@ sealed partial class GameDatabase
         command.CommandText = "PRAGMA journal_mode=WAL;";
         command.ExecuteScalar();
         command.CommandText = "PRAGMA user_version;";
-        if (Convert.ToInt32(command.ExecuteScalar()) > 2) throw new InvalidDataException("Database schema is newer than this game host.");
+        // v2 起包含好友与私聊；v3 加入每局不可变成绩和排行榜快照。
+        if (Convert.ToInt32(command.ExecuteScalar()) > 3) throw new InvalidDataException("Database schema is newer than this game host.");
         using (var transaction = connection.BeginTransaction())
         {
             command.Transaction = transaction;
@@ -47,11 +60,25 @@ sealed partial class GameDatabase
         command.ExecuteNonQuery();
     }
 
-    private SqliteConnection Open()
+    /// <summary>好友与私聊模块共用同一条连接串，避免复制连接配置。</summary>
+    public SqliteConnection Open()
     {
         var connection = new SqliteConnection(connectionString);
         connection.Open();
         return connection;
+    }
+
+    /// <summary>按 UID 查询账号，用于好友申请与聊天对端校验。</summary>
+    public AccountUser? FindUserById(string id)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, username, display_name FROM accounts WHERE id=$id;";
+        command.Parameters.AddWithValue("$id", id);
+        using var reader = command.ExecuteReader();
+        return reader.Read()
+            ? new AccountUser(reader.GetString(0), reader.GetString(1), reader.GetString(2))
+            : null;
     }
 
     private static void ImportLegacyAccounts(SqliteConnection connection, string path)
@@ -109,6 +136,26 @@ sealed partial class GameDatabase
         return reader.Read() ? new AccountRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4)) : null;
     }
 
+    public bool CanPlayOnline(string userId)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT data FROM player_saves WHERE user_id=$user;";
+        command.Parameters.AddWithValue("$user", userId);
+        if (command.ExecuteScalar() is not string raw) return false;
+
+        using var data = JsonDocument.Parse(raw);
+        if (!data.RootElement.TryGetProperty("unlockedChapterIds", out var chapters)
+            || chapters.ValueKind != JsonValueKind.Array)
+            return false;
+
+        var completed = chapters.EnumerateArray()
+            .Where(id => id.ValueKind == JsonValueKind.String)
+            .Select(id => id.GetString())
+            .ToHashSet(StringComparer.Ordinal);
+        return OnlineChapters.All(completed.Contains);
+    }
+
     public CloudSaveReply OpenSave(LoginSession session, string clientId)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -144,27 +191,6 @@ sealed partial class GameDatabase
         return new CloudSaveReply(data, revision, token, expires);
     }
 
-    private static readonly string[] OnlineChapters = LoadOnlineChapters();
-    private static string[] LoadOnlineChapters()
-    {
-        using var stream = typeof(GameDatabase).Assembly.GetManifestResourceStream("online-unlock.json")!;
-        using var rules = JsonDocument.Parse(stream);
-        return rules.RootElement.GetProperty("requiredChapterIds").EnumerateArray().Select(id => id.GetString()!).ToArray();
-    }
-
-    public bool CanPlayOnline(string userId)
-    {
-        using var connection = Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT data FROM player_saves WHERE user_id=$user;";
-        command.Parameters.AddWithValue("$user", userId);
-        if (command.ExecuteScalar() is not string raw) return false;
-        using var data = JsonDocument.Parse(raw);
-        if (!data.RootElement.TryGetProperty("unlockedChapterIds", out var chapters) || chapters.ValueKind != JsonValueKind.Array) return false;
-        var completed = chapters.EnumerateArray().Where(id => id.ValueKind == JsonValueKind.String).Select(id => id.GetString()).ToHashSet(StringComparer.Ordinal);
-        return OnlineChapters.All(completed.Contains);
-    }
-
     public string GetEquippedSkinId(string userId)
     {
         using var connection = Open();
@@ -172,12 +198,11 @@ sealed partial class GameDatabase
         command.CommandText = "SELECT data FROM player_saves WHERE user_id=$user;";
         command.Parameters.AddWithValue("$user", userId);
         if (command.ExecuteScalar() is not string raw) return "school-uniform";
-        using var document = JsonDocument.Parse(raw);
-        var data = document.RootElement;
-        if (!data.TryGetProperty("schemaVersion", out var version) || !version.TryGetInt32(out var schema) || schema != 4
-            || !data.TryGetProperty("equippedSkinId", out var skin) || skin.ValueKind != JsonValueKind.String
-            || !SaveValidation.IsSkinId(skin.GetString())) return "school-uniform";
-        return skin.GetString()!;
+        using var save = JsonDocument.Parse(raw);
+        return save.RootElement.TryGetProperty("equippedSkinId", out var skin)
+            && skin.ValueKind == JsonValueKind.String && SaveValidation.IsSkinId(skin.GetString())
+            ? skin.GetString()!
+            : "school-uniform";
     }
 
     public object WriteSave(LoginSession session, SaveWriteRequest input)
@@ -207,9 +232,45 @@ sealed partial class GameDatabase
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         command.Parameters.AddWithValue("$expires", expires);
         if (command.ExecuteNonQuery() != 1) throw new SaveConflictException("云存档占用已失效，请刷新重试。");
+        if (current is not null) RecordNewSettlement(connection, transaction, session.User.Id, current, input.Data);
         CaptureRaidHistory(connection, transaction, session.User.Id, input.Data);
         transaction.Commit();
         return new { revision = nextRevision, leaseExpiresAt = expires };
+    }
+
+    private static void RecordNewSettlement(SqliteConnection connection, SqliteTransaction transaction, string userId, string currentRaw, JsonElement next)
+    {
+        try
+        {
+            using var previous = JsonDocument.Parse(currentRaw);
+            var previousSettled = previous.RootElement.GetProperty("settledRaidIds");
+            var settled = next.GetProperty("settledRaidIds");
+            var result = next.GetProperty("lastResult");
+            if (result.ValueKind != JsonValueKind.Object) return;
+            var raidId = result.GetProperty("raidId").GetString();
+            if (string.IsNullOrWhiteSpace(raidId)
+                || previousSettled.EnumerateArray().Any(item => item.GetString() == raidId)
+                || !settled.EnumerateArray().Any(item => item.GetString() == raidId)) return;
+
+            var outcome = result.GetProperty("outcome").GetString();
+            if (outcome is not ("success" or "failed")) return;
+            var value = result.GetProperty("value").GetInt64();
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "INSERT OR IGNORE INTO raid_results(user_id, raid_id, settled_at_ms, outcome, value) VALUES($user, $raid, $settled, $outcome, $value);";
+            command.Parameters.AddWithValue("$user", userId);
+            command.Parameters.AddWithValue("$raid", raidId);
+            command.Parameters.AddWithValue("$settled", now);
+            command.Parameters.AddWithValue("$outcome", outcome);
+            command.Parameters.AddWithValue("$value", value);
+            command.ExecuteNonQuery();
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+        {
+            // SaveValidation already guards the shape. Do not let a legacy optional field
+            // turn a valid cloud-save write into a failure; malformed entries are not ranked.
+        }
     }
 
     public object Heartbeat(LoginSession session, string token)
