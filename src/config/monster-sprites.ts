@@ -1,3 +1,4 @@
+import { COMBAT_RULES } from './combat-config';
 import type { Enemy } from '../modules/world/night-systems';
 
 export interface MonsterAnimationAsset {
@@ -150,7 +151,7 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
     return enemy.kind === 'hug' ? SQUIRREL_ANIMATIONS.death : patrolAnimations(enemy).death;
   }
 
-  if (enemy.state === 'windup') {
+  if (enemy.state === 'windup' || enemy.state === 'pouncing') {
     return enemy.kind === 'hug' && enemy.mutated
       ? MUTANT_ANIMATIONS.attack
       : enemy.kind === 'hug'
@@ -180,7 +181,21 @@ export function monsterAnimationFor(enemy: Enemy, moving: boolean): string {
   return moving ? patrol.moving : patrol.idle;
 }
 
+export function monsterConcealed(enemy: Enemy): boolean {
+  return (
+    enemy.kind === 'patrol' &&
+    enemy.species === 'cat' &&
+    (enemy.state === 'lurking' || enemy.state === 'vanished')
+  );
+}
+
+export function monsterOpacityFor(enemy: Enemy): number {
+  if (!monsterConcealed(enemy)) return 1;
+  return enemy.state === 'vanished' ? 0 : COMBAT_RULES.enemy.cat.hiddenOpacity;
+}
+
 export function monsterScaleFor(enemy: Enemy): number {
+  if (enemy.kind === 'patrol' && enemy.species === 'cat') return 0.4 * COMBAT_RULES.enemy.cat.scale;
   if (enemy.kind === 'amplifier') return 0.44;
   if (enemy.kind === 'hug' && enemy.mutated) {
     return 0.48;

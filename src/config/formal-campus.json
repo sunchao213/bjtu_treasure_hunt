@@ -5675,6 +5675,17 @@
       ]
     },
     {
+      "id": "library-amplifier",
+      "kind": "amplifier",
+      "fixedPosition": true,
+      "route": [
+        {
+          "x": 2700,
+          "y": 1070
+        }
+      ]
+    },
+    {
       "id": "central-amplifier",
       "kind": "amplifier",
       "fixedPosition": true,

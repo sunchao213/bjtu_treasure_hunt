@@ -98,6 +98,14 @@ npm.cmd run check
 - 运行命令：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --quick-note-only`；PowerShell 中先设置 `$env:DOTNET_ROLL_FORWARD = 'Major'` 再运行 Node 命令。
 - 截图及结果：`artifacts/game-flow-1795656903570/`，桌面与手机模拟结果均通过，错误列表为空。
 
+## 2026-11-26 猫咪怪近距离伏击（CHG-41）
+
+- 桌面 Chrome 自动实测：1280×720、1440×900、1024×576，页面无横向或纵向滚动；检查截图，潜伏猫咪不显示血条和脚下光圈，预警时重新显示。
+- 手机 Chrome 触屏模拟：390×844 视口，沿用现有横屏布局；潜伏、预警、扑击和隐身状态均验证。未在真实 iOS / Android 上验收。
+- 专项通过真实场景测试接缝固定猫咪及玩家位置，并逐步推进原有 NightCombat，实现可重复的近距触发、扑击单次伤害、1.2 秒隐身和恢复潜伏检查；穿墙、侧移躲避、眩晕打断、死亡停止和玩家无敌由单元测试覆盖。
+- 运行命令：先在 PowerShell 设置 `$env:DOTNET_ROLL_FORWARD = 'Major'`，再运行 `node tests/browser/game-flow-smoke.mjs --cat-only`。
+- 截图及结果：`artifacts/game-flow-1795657513677/`，桌面与手机模拟均通过，错误列表为空。
+
 ## 2026-11-26 折叠铁尺局内特效（CHG-42）
 
 - 桌面 Chrome 自动实测：1280×720、1440×900、1024×576，页面无横向或纵向滚动。双残影约 160ms、命中火星约 140ms；素材透明无黑底，尺寸经实际截图缩小调整，保留场景深度遮挡。
@@ -114,3 +122,10 @@ npm.cmd run check
 - 铁尺专项浏览器复测通过：桌面 1280×720、1440×900、1024×576 与手机 390×844 触屏横屏布局模拟，检查四方向头顶锚点、透明图集、真实伤害/挥空、锁定方向、动画结束、暂停和攻击输入；桌面页面零滚动，浏览器未捕获异常。手机结论仅来自浏览器模拟。
 - 证据：`artifacts/game-flow-1795659246604/result.json`、`ruler-desktop-hit.png`、`ruler-mobile-hit.png`。
 - 8 条铁尺专项测试、ESLint、TypeScript、生产构建通过；完整 `npm run check` 仍被已有 8 个无关文件的格式问题阻断。提交前对仅含铁尺改动的独立副本复核，84 个文件 / 598 条测试、数据库 3 条、ESLint、TypeScript 及构建均通过；本次仅本地提交，不推送远端。
+
+## 2026-11-26 怪物刷新与图书馆扩音器（CHG-44）
+
+- Chrome 桌面浏览器：1280×720、1440×900、1024×576，检查图书馆入口南侧与中央广场扩音器位置，页面均无滚动。
+- 真实生产场景测试接缝验证开局 12 只敌人（包括图书馆与中央广场各一只扩音器）、合法出生地、单批 6 只普通怪、80 秒时 3 只抱抱怪；独立单测覆盖 86% 概率边界、22 只总上限及无可用出生地停止。
+- 运行命令：PowerShell 设置 `$env:DOTNET_ROLL_FORWARD = 'Major'` 后运行 `node tests/browser/game-flow-smoke.mjs --spawning-only`。
+- 截图及结果：`artifacts/game-flow-1795674014970/`，自动检查通过。

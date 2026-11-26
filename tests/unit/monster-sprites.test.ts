@@ -82,7 +82,7 @@ describe('monster sprite manifest', () => {
       expect(monsterAnimationFor(makeEnemy({ species, state: 'dead' }), false)).toBe(
         `${species}-death`,
       );
-      expect(monsterScaleFor(makeEnemy({ species }))).toBe(0.4);
+      expect(monsterScaleFor(makeEnemy({ species }))).toBe(species === 'cat' ? 0.26 : 0.4);
     }
   });
 

@@ -169,7 +169,14 @@ describe('night combat', () => {
     const firstWave = combat.updateSpawns(1, findPosition);
     expect(firstWave).toHaveLength(COMBAT_RULES.spawning.spawnCount);
     expect(firstWave.every((enemy) => enemy.kind === 'patrol')).toBe(true);
-    expect(firstWave.map((enemy) => enemy.species)).toEqual(['duck', 'cat', 'swan', 'duck']);
+    expect(firstWave.map((enemy) => enemy.species)).toEqual([
+      'duck',
+      'cat',
+      'swan',
+      'duck',
+      'cat',
+      'swan',
+    ]);
     expect(new Set(firstWave.map((enemy) => enemy.health))).toEqual(
       new Set([COMBAT_RULES.enemy.patrol.health]),
     );
@@ -203,7 +210,10 @@ describe('night combat', () => {
 
     const availableSlots = COMBAT_RULES.spawning.maxAlive - combat.enemies.length;
     const expectedPatrols = Math.min(COMBAT_RULES.spawning.spawnCount, availableSlots);
-    const expectedHugs = Math.min(1, availableSlots - expectedPatrols);
+    const expectedHugs = Math.min(
+      COMBAT_RULES.spawning.hugSpawnCount,
+      availableSlots - expectedPatrols,
+    );
     const aliveAmplifiers = combat.enemies.filter(
       (enemy) => enemy.kind === 'amplifier' && enemy.state !== 'dead',
     ).length;
@@ -235,12 +245,13 @@ describe('night combat', () => {
           .updateSpawns(step, findPosition)
           .every((enemy) => enemy.kind === 'patrol' || enemy.kind === 'amplifier'),
       ).toBe(true);
+      combat.enemies = [];
       elapsed += step;
     }
     const spawned = combat.updateSpawns(1, findPosition);
-    expect(spawned).toHaveLength(1);
-    expect(spawned[0]!.kind).toBe('hug');
-    expect(combat.enemies.filter((enemy) => enemy.kind === 'hug')).toHaveLength(1);
+    expect(spawned).toHaveLength(3);
+    expect(spawned.every((enemy) => enemy.kind === 'hug')).toBe(true);
+    expect(combat.enemies.filter((enemy) => enemy.kind === 'hug')).toHaveLength(3);
     expect(combat.updateSpawns(0, findPosition)).toHaveLength(0);
   });
 
@@ -885,6 +896,9 @@ describe('amplifier monster', () => {
   it('enforces max 1 amplifier per encounter region and max 2 amplifiers on the map', () => {
     const combat = new NightCombat(() => 0);
     combat.enemies = [];
+    // Isolate amplifier limits from the independently tested shared spawn cap.
+    Reflect.set(combat, 'spawnTimer', Infinity);
+    Reflect.set(combat, 'hugSpawnTimer', Infinity);
     // 第一次刷新到 (200, 200) -> 成功
     const wave1 = combat.updateSpawns(ampRules.spawnIntervalMs, () => ({
       x: 200,

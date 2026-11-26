@@ -40,13 +40,18 @@ describe('shared production 3D campus', () => {
       for (const p of generateLootSpawns(roundRandom(String(i))))
         expect(clearLootPosition(p)).toBe(true);
   });
-  it('starts all eleven enemies including the amplifier fixed on Siyuan forecourt lawn', () => {
+  it('starts twelve enemies including fixed amplifiers on Siyuan lawn and beside the library', () => {
     const enemies = createEnemies(roundRandom('enemies'));
     const otherSeed = createEnemies(roundRandom('enemies-2'));
-    expect(enemies).toHaveLength(11);
+    expect(enemies).toHaveLength(12);
+    expect(enemies.filter((e) => e.kind === 'amplifier')).toHaveLength(2);
+    expect(enemies.find((e) => e.id === 'library-amplifier')!.position).toEqual({
+      x: 2700,
+      y: 1070,
+    });
     expect(enemies.filter((e) => e.kind === 'hug')).toHaveLength(3);
-    const amplifier = enemies.find((e) => e.kind === 'amplifier')!;
-    const otherAmplifier = otherSeed.find((e) => e.kind === 'amplifier')!;
+    const amplifier = enemies.find((e) => e.id === 'central-amplifier')!;
+    const otherAmplifier = otherSeed.find((e) => e.id === 'central-amplifier')!;
     expect(amplifier.position).toEqual({ x: 1060, y: 1520 });
     expect(otherAmplifier.position).toEqual({ x: 1060, y: 1520 });
     const lawn = district.forecourt.lawn;
