@@ -1337,13 +1337,12 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     bagRoot.querySelector<HTMLButtonElement>('[data-bp-repair]')?.addEventListener('click', () => {
       notify('装备耐久暂未启用，现在不需要维修。');
     });
-    // 左侧竖排导航：背包是当前页；商店/购买去道具商店，出售归商城（负责出售，暂为占位页）
+    // 左侧竖排导航：背包是当前页；商店/购买/出售都进入道具商店（商城占位页已移除）
     for (const nav of bagRoot.querySelectorAll<HTMLButtonElement>('[data-bp-nav]')) {
       nav.addEventListener('click', () => {
         if (nav.dataset.bpNav === 'bag') return;
-        const target = nav.dataset.bpNav === 'sell' ? 'mall' : 'shop';
         element<HTMLDialogElement>('v19-loadout-dialog').close();
-        document.querySelector<HTMLButtonElement>(`[data-lobby-tab="${target}"]`)?.click();
+        document.querySelector<HTMLButtonElement>('[data-lobby-tab="shop"]')?.click();
       });
     }
     element('v19-mission-open').onclick = () =>

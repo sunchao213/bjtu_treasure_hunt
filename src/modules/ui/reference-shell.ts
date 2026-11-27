@@ -145,12 +145,6 @@ export function prepViewMarkup(): string {
               <details><summary>存档管理</summary><button id="export-save" class="secondary">导出存档备份（JSON）</button><button id="reset-save" class="text-button">重置存档</button></details>
             </div>
           </section>
-          <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="mall" hidden aria-labelledby="lobby-mall-title">
-            <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
-            <div class="lobby-panel-heading"><div><p class="prep-kicker">交子流通</p><h2 id="lobby-mall-title">商城</h2></div><span class="lobby-panel-meta">建设中</span></div>
-            <p class="lobby-panel-intro">商城负责武器购买、升级与出售，以及成长类商品。界面尚未开放，当前补给请走大厅底部的「商店」。</p>
-            <button class="v19-gold-button" type="button" data-lobby-tab="shop">前往道具商店</button>
-          </section>
           ${shopMarkup()}
           ${friendsPanelMarkup()
             // R15 好友面板由 main 提供，这里补上 v19 子页的实底背景与返回大厅按钮。
