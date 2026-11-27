@@ -1682,22 +1682,6 @@ html.lobby-open:not([data-touch='true']) #game-page {
   border-color: #5c563a;
   background: linear-gradient(180deg, #1b1a14, #14130f);
 }
-.lobby-fill-team {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 10px 0 0;
-  color: #d7cfb8;
-  font-size: 12px;
-  cursor: pointer;
-}
-.lobby-fill-team input {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  accent-color: #d9b35e;
-  cursor: pointer;
-}
 .lobby-commandbar .lobby-room-open {
   flex: 0 0 auto;
   width: auto;
