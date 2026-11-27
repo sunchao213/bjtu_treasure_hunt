@@ -41,9 +41,7 @@ export function prepViewMarkup(): string {
               <button class="v19-hotspot v19-teammate v19-teammate-one" type="button" aria-label="邀请队友" data-open-room></button>
               <button class="v19-hotspot v19-teammate v19-teammate-two" type="button" aria-label="邀请队友" data-open-room></button>
               <button class="v19-hotspot v19-teammate v19-teammate-three" type="button" aria-label="邀请队友" data-open-room></button>
-
-              <label class="v19-fill-team"><input id="fill-team" type="checkbox" /><span>补齐队友-4人</span></label>
-              <div class="v19-fill-cost"><span>需要消耗</span><b aria-hidden="true">●</b><span>10000</span></div>
+              <div class="v19-fill-cost"><span>需要消耗</span><b aria-hidden="true">●</b><span>100</span></div>
               <button id="v19-map-open" class="v19-hotspot v19-map-card" type="button" aria-label="查看海淀校区地图"></button>
               <button id="mode-room" class="v19-hotspot v19-hidden-mode" type="button" aria-label="组队探索"></button>
               <!-- 联机房间页的程序化入口；v19 大厅的好友图标改为打开好友面板，房间仍由队友位与模式按钮进入。 -->

@@ -3864,7 +3864,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   width: 1280px;
   height: 720px;
   overflow: hidden;
-  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261120b') center / 1280px 720px
+  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261127i') center / 1280px 720px
     no-repeat;
   color: #fff0c2;
   font-family: 'Zpix', 'Microsoft YaHei', sans-serif;
@@ -3881,7 +3881,6 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
 .v19-wallet,
 .v19-player-name,
 .v19-hotspot,
-.v19-fill-team,
 .v19-fill-cost,
 .v19-chat,
 .v19-risk-consent,
@@ -4034,42 +4033,6 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
 }
 /* 三个队友位的金圈与圈内加号都已烘进背景图（11/12/13 队友槽），
    HTML 只保留可点击的透明热区，不能再画一遍「+」，否则大字号字符会压出重影。 */
-/* 背景图已画好勾选框与「补齐队友-4人」文字，HTML 只保留可点击的透明热区与勾选状态 */
-.v19-fill-team {
-  left: 1001px;
-  top: 371px;
-  width: 214px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: transparent;
-  font-size: 19px;
-  cursor: pointer;
-}
-.v19-fill-team span {
-  display: none;
-}
-.v19-fill-team input {
-  appearance: none;
-  flex: 0 0 46px;
-  width: 46px;
-  height: 41px;
-  margin: 0;
-  border: 3px solid #f4d37c;
-  border-radius: 3px;
-  background: #241310;
-  cursor: pointer;
-}
-.v19-fill-team input:checked::after {
-  content: '✓';
-  display: block;
-  color: #fff2cf;
-  font:
-    bold 27px/35px Arial,
-    sans-serif;
-  text-align: center;
-}
 /* 只渲染数字，紧接在背景图的金球右侧 */
 .v19-fill-cost {
   left: 1125px;
@@ -4192,19 +4155,19 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   background-image: url('/assets/ui/audio/volume-off-cream.png?v=20261119');
 }
 .v19-shop-bottom {
-  left: 504px;
+  left: 494px;
   top: 628px;
   width: 142px;
   height: 83px;
 }
 .v19-backpack {
-  left: 660px;
+  left: 650px;
   top: 628px;
   width: 136px;
   height: 83px;
 }
 /* 风险勾选：F01 要求的「勾选框」必须保留（未勾选时 startExploration 直接返回 false），
-   但用像素风金框重绘，与「补齐队友」的勾选框同一套视觉，不再用浏览器原生方块 */
+   用像素风金框重绘，不再用浏览器原生方块 */
 .v19-risk-consent {
   left: 802px;
   top: 654px;
