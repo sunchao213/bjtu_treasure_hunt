@@ -59,6 +59,28 @@ describe('formal persistence and migration', () => {
     expect(carried.every((item) => item.origin.kind === 'carry-in')).toBe(true);
   });
 
+  it('preserves exploration provenance for items that are later added to the shop', async () => {
+    const save = new PersistentSave(new MemoryStorage());
+    await save.beginRaid('find-medkit', []);
+    await save.finalizeRaid({
+      raidId: 'find-medkit',
+      outcome: 'success',
+      reason: null,
+      value: 15,
+      items: [
+        {
+          instanceId: 'exploration:portable-medkit',
+          itemId: 'portable-medkit',
+          origin: { kind: 'raid-loot', obtainedInRaidId: 'find-medkit' },
+        },
+      ],
+    });
+
+    const [carried] = await save.beginRaid('carry-medkit', ['exploration:portable-medkit']);
+
+    expect(carried?.origin).toEqual({ kind: 'carry-in', source: 'exploration' });
+  });
+
   it('saves chapter unlocks atomically with evidence and keeps them after reload and failure', async () => {
     const storage = new MemoryStorage();
     const save = new PersistentSave(storage);

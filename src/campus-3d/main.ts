@@ -22,7 +22,7 @@ import { EMPTY_INPUT, TrialSession } from './session';
 import { CampusView } from './view';
 import { MODEL_URL } from './map';
 import type { NightAction } from './night';
-import type { CombatWeaponId } from '../modules/world/night-systems';
+import { isCombatWeaponId, type CombatWeaponId } from '../modules/world/night-systems';
 
 const NIGHT_MODE = new URLSearchParams(location.search).get('time') !== 'day';
 document.body.classList.toggle('night', NIGHT_MODE);
@@ -64,7 +64,7 @@ root.innerHTML = `
       <p class="eyebrow">CAMPUS FIELD NOTES / ${NIGHT_MODE ? 'NIGHT' : 'DAY'}</p>
       <p class="mode-choice">${NIGHT_MODE ? '月下校园 · 夜间探索' : '白昼校园 · 自由探索'} <a href="${modeLink.href}">切换${NIGHT_MODE ? '白昼' : '黑夜'}</a></p>
       ${NIGHT_MODE ? '<p class="night-intro">用手电照亮宝箱再搜索。F 开关手电，T 更换电池，G 放置照明弹。电量可连续使用约 3 分钟，每局有 2 节备用电池和 2 枚持续 30 秒的照明弹。移动鼠标转动视角，手电照向镜头前方。Esc 释放鼠标并暂停。</p>' : ''}
-      ${NIGHT_MODE ? '<p class="night-intro">巡逻动物会追击，红圈提示攻击将至。左键或空格攻击镜头前方，长按 Q 安抚抱抱怪；攻击它或请求超时会触发变异。受伤会中断搜索和撤离，生命归零本局失败。</p><label class="weapon-choice">本局武器 <select id="starter-weapon"><option value="training-bat">训练棍 · 35伤害，可反复使用</option><option value="stun-baton">电击器 · 15伤害，眩晕，15次</option></select></label>' : ''}
+      ${NIGHT_MODE ? '<p class="night-intro">巡逻动物会追击，红圈提示攻击将至。左键或空格攻击镜头前方，长按 Q 安抚抱抱怪；攻击它或请求超时会触发变异。受伤会中断搜索和撤离，生命归零本局失败。</p><label class="weapon-choice">本局武器 <select id="starter-weapon"><option value="training-bat">训练棍 · 10伤害，100次耐久</option><option value="stun-baton">电击器 · 25伤害，眩晕，100次耐久</option></select></label>' : ''}
       <h2 id="welcome-title">${IS_DISTRICT ? '从南门到明湖，<br/>走进这一片校园。' : IS_SIYUAN ? '走近思源楼，<br/>沿银杏大道漫游。' : '从南门出发，<br/>逛一小段校园。'}</h2>
       <p class="intro">${IS_DISTRICT ? '按你选取的区域重建思源楼一带、图书馆、教学楼、明湖和天佑会堂，以道路和庭园连成一片。<br/>可切换区域总览，沿途搜集四件物资，再回南门。建筑细部与尺寸为参考估算。' : IS_SIYUAN ? '左侧思源西楼，中间思源楼，右侧思源东楼，三栋楼之间可沿道路通行。西楼后方为信息中心，东楼后方为科学会堂（后方两栋待建）。<br/>找到四件物资，再回到楼前集合点。' : '穿过树影，沿着小路寻找宝箱。带上四件物资，再回到红色拱门。<br/>参考交大虚拟校园南门外观，按探索尺度重建。'}</p>
       <div class="rules-grid"><div><strong>8</strong><span>只宝箱</span></div><div><strong>100</strong><span>撤离价值</span></div><div><strong>5 秒</strong><span>${IS_SIYUAN ? '集合点撤离' : '南门撤离'}</span></div></div>
@@ -449,7 +449,8 @@ async function bootstrap(): Promise<void> {
           `${weapon}${frame.combat.uses === null ? '' : ` · 余 ${frame.combat.uses} 次`}${frame.combat.cooldown > 0 ? ' · 冷却中' : ''}`;
         renderWeaponDurability(
           element('campus-weapon-durability'),
-          frame.combat.weapon === 'stun-baton',
+          active,
+          isCombatWeaponId(frame.combat.weapon) ? frame.combat.weapon : null,
           frame.combat.uses,
         );
         element('damage-overlay').hidden = frame.action !== 'hurt' || !active;

@@ -113,7 +113,7 @@ export function prepViewMarkup(): string {
                   <h3 id="prep-kit-title">装备与带入</h3>
                   <ul class="prep-equipment"><li><b>手电筒</b><span>电量 100% · 默认开启，照亮搜索点</span></li></ul>
                   <label class="field-label" for="starter-weapon">初始武器</label>
-                  <select id="starter-weapon"><option value="">不携带武器</option><option value="training-bat" selected>训练棍 · 伤害 35</option><option value="stun-baton">电击器 · 伤害 15 · 可使用 15 次</option></select>
+                  <select id="starter-weapon"><option value="">不携带武器</option><option value="training-bat" selected>训练棍 · 伤害 10 · 100 次耐久</option><option value="stun-baton">电击器 · 伤害 25 · 100 次耐久</option></select>
                   <label class="field-label" for="loadout-item">仓库带入选择</label>
                   <div id="loadout" class="loadout-options" aria-describedby="loadout-slots"><p class="loadout-empty">仓库中暂无可带入的功能物品。</p></div>
                   <p id="loadout-slots" class="loadout-slots">已选 0 / 6 格</p>

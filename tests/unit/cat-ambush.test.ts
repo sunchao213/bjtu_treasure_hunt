@@ -144,7 +144,7 @@ describe('cat ambush', () => {
     cat.position = { x: 840, y: 800 };
     cat.state = 'pouncing';
     cat.timer = 300;
-    combat.attack({ x: 800, y: 800 }, 0, [], 15, 'stun-baton');
+    combat.attack({ x: 800, y: 800 }, 0, [], 25, 'stun-baton');
     expect(cat.state).toBe('stunned');
     expect(advance(combat, { x: 800, y: 800 }, 1000)).toBe(0);
     combat.attackCooldown = 0;

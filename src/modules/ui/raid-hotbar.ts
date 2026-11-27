@@ -4,6 +4,7 @@ import { HOTBAR_SIZE, type RaidHotbar } from '../inventory/raid-hotbar';
 import { itemIconSvg } from './codex';
 import { renderWeaponDurability, weaponDurabilityMarkup } from './weapon-durability';
 import { isTouchLayout } from './mobile-layout';
+import type { CombatWeaponId } from '../world/night-systems';
 
 export function raidHotbarMarkup(): string {
   return (
@@ -40,16 +41,13 @@ export function bindRaidHotbar(select: (index: number) => void) {
       active: boolean,
       blocked: boolean,
       assigningItem: ItemInstance | null = null,
-      stunBatonUses: number | null = null,
+      weaponId: CombatWeaponId | null = null,
+      weaponUses: number | null = null,
     ): void {
       panel.hidden = !active;
       panel.dataset.assigning = String(assigningItem !== null);
       const slots = hotbar.slots();
-      renderWeaponDurability(
-        durability,
-        active && slots.some((slot) => slot.itemId === 'stun-baton'),
-        stunBatonUses,
-      );
+      renderWeaponDurability(durability, active, weaponId, weaponUses);
       for (const [index, slot] of slots.entries()) {
         const button = buttons[index]!;
         const definition = slot.itemId ? ITEM_DEFINITIONS[slot.itemId] : undefined;
@@ -77,10 +75,11 @@ export function bindRaidHotbar(select: (index: number) => void) {
       }
       const selected = slots[hotbar.selectedIndex]!;
       const definition = selected.itemId ? ITEM_DEFINITIONS[selected.itemId] : undefined;
+      const selectedWeaponExhausted = selected.itemId === weaponId && weaponUses === 0;
       const text = !selected.itemId
         ? '空手 · 1–4 切换道具'
-        : selected.itemId === 'stun-baton' && stunBatonUses === 0
-          ? '电击器 · 次数已耗尽，请切换道具'
+        : selectedWeaponExhausted
+          ? `${definition?.name ?? '武器'} · 次数已耗尽，请切换武器`
           : (definition?.name ?? '') +
             ' · ' +
             (isTouchLayout()

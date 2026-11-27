@@ -18,7 +18,9 @@ import { trialStorage } from './storage';
 import {
   NightLighting,
   NightCombat,
+  combatWeaponConfig,
   findEnemySpawnPosition,
+  isCombatWeaponId,
   shouldDropPatrolLoot,
   type CombatMap,
   type CombatWeaponId,
@@ -196,16 +198,18 @@ export class TrialSession {
         this.inventory.getEquipment().primary ??
         this.inventory.getCarriedItems().find((p) => ITEM_DEFINITIONS[p.itemId]?.kind === 'weapon');
       if (weapon && combat.attackCooldown <= 0) {
-        const stun = weapon.itemId === 'stun-baton';
+        const weaponId = isCombatWeaponId(weapon.itemId) ? weapon.itemId : 'training-bat';
         const defeated = combat.attack(
           this.position,
           this.aim,
           this.map.obstacles,
-          stun
-            ? COMBAT_RULES.player.attack.weapons.stunBaton.damage
-            : COMBAT_RULES.player.attack.weapons.trainingBat.damage,
-          stun ? 'stun-baton' : 'training-bat',
+          combatWeaponConfig(weaponId).damage,
+          weaponId,
+          weapon.instanceId,
         );
+        if (combat.weaponUsesRemaining === 0) {
+          this.inventory.remove(weapon.instanceId);
+        }
         if (combat.swingMs > 0) this.sound('hit');
         for (const enemy of defeated) {
           const raidId = this.controller.getView().raidId;
@@ -445,6 +449,10 @@ export class TrialSession {
   }
 
   frame(): TrialFrame {
+    const equippedWeapon = this.inventory.getEquipment().primary;
+    const equippedWeaponId = equippedWeapon?.itemId;
+    const combatWeaponId =
+      equippedWeaponId && isCombatWeaponId(equippedWeaponId) ? equippedWeaponId : null;
     return {
       chargingStations: this.chargingStations,
       position: { ...this.position },
@@ -494,14 +502,12 @@ export class TrialSession {
         cooldown: this.combat?.attackCooldown ?? 0,
         invulnerable: (this.combat?.invulnerability ?? 0) > 0,
         hit: this.combat?.attackHit ?? false,
-        weapon: this.inventory.getEquipment().primary?.itemId ?? '',
+        weapon: equippedWeaponId ?? '',
         bagCount: this.bagCount(),
-        uses:
-          this.combat?.getWeaponUsesRemaining(
-            this.inventory.getEquipment().primary?.itemId === 'stun-baton'
-              ? 'stun-baton'
-              : 'training-bat',
-          ) ?? null,
+        uses: combatWeaponId
+          ? (this.combat?.getWeaponUsesRemaining(combatWeaponId, equippedWeapon?.instanceId) ??
+            null)
+          : null,
       },
       night: {
         enabled: this.night,

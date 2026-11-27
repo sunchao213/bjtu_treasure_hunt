@@ -59,11 +59,31 @@ const details: Record<string, { icon: string; description: string }> = {
   },
   'training-bat': {
     icon: 'bat',
-    description: '携带时用于近身攻击的训练装备；仓库带入不计本局价值。',
+    description: '近身攻击伤害 10，可攻击 100 次后报废；仓库带入不计本局价值。',
   },
   'stun-baton': {
     icon: 'bat',
-    description: '可使用 15 次，命中后短暂击晕敌人；仓库带入不计本局价值。',
+    description: '伤害 25，命中后短暂击晕敌人，可攻击 100 次后报废；仓库带入不计本局价值。',
+  },
+  'folding-ruler': {
+    icon: 'bat',
+    description:
+      '伤害 20，攻击间隔 0.3 秒，攻击范围较宽，可攻击 100 次后报废；仓库带入不计本局价值。',
+  },
+  'long-broom': {
+    icon: 'bat',
+    description:
+      '伤害 15，攻击距离 105，攻击间隔 0.65 秒，可攻击 100 次后报废；仓库带入不计本局价值。',
+  },
+  'window-breaker': {
+    icon: 'bat',
+    description:
+      '伤害 35，攻击间隔 0.85 秒，攻击范围较窄，可攻击 100 次后报废；仓库带入不计本局价值。',
+  },
+  'night-watch-spear': {
+    icon: 'bat',
+    description:
+      '伤害 85，攻击距离 150，攻击间隔 0.95 秒，可攻击 100 次后报废；仓库带入不计本局价值。',
   },
   'reinforced-bat': {
     icon: 'bat',

@@ -71,7 +71,8 @@ describe('warehouse capacity 100', () => {
 
   it.each([
     ['training-bat', 10],
-    ['stun-baton', 25],
+    ['stun-baton', 40],
+    ['long-broom', 25],
   ])('buys %s, deducts its price and persists it in the warehouse', (itemId, price) => {
     const storage = seed(0, price);
     const save = new PersistentSave(storage);

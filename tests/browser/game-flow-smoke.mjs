@@ -850,6 +850,7 @@ async function verifyWeaponDurabilityFlow() {
       `(() => {
       testScene.combat.enemies = [];
       testScene.combat.updateSpawns = () => [];
+      globalThis.durabilityWeaponId = testScene.hotbar.selected().instanceId;
       globalThis.durabilityInput = {
         move: {x:0, y:0}, aim:0, interact:false, attack:false,
         hug:false, flashlight:false, refill:false, flare:false
@@ -858,13 +859,13 @@ async function verifyWeaponDurabilityFlow() {
     );
     await until(
       page,
-      '!document.querySelector("#hotbar-weapon-durability").hidden && document.querySelector("#hotbar-weapon-durability progress").value === 15',
+      '!document.querySelector("#hotbar-weapon-durability").hidden && document.querySelector("#hotbar-weapon-durability progress").value === 100',
     );
     await screenshot(page, 'durability-full-' + device);
     await evaluate(
       page,
       `(() => {
-      for (let i=0; i<12; i++) {
+      for (let i=0; i<80; i++) {
         testScene.combat.tick(1200);
         testScene.tick(16, {...durabilityInput, attack:true});
       }
@@ -872,39 +873,9 @@ async function verifyWeaponDurabilityFlow() {
     );
     await until(
       page,
-      'document.querySelector("#hotbar-weapon-durability").dataset.state === "low" && document.querySelector("#hotbar-weapon-durability progress").value === 3',
+      'document.querySelector("#hotbar-weapon-durability").dataset.state === "low" && document.querySelector("#hotbar-weapon-durability progress").value === 20',
     );
     await screenshot(page, 'durability-low-' + device);
-    await evaluate(
-      page,
-      `(() => {
-      for (let i=0; i<3; i++) {
-        testScene.combat.tick(1200);
-        testScene.tick(16, {...durabilityInput, attack:true});
-      }
-    })()`,
-    );
-    await until(
-      page,
-      'document.querySelector("#hotbar-weapon-durability").dataset.state === "empty" && document.querySelector("#hotbar-weapon-durability progress").value === 0 && document.querySelector("#hotbar-hint").textContent.includes("次数已耗尽")',
-    );
-    assert(
-      (await evaluate(page, 'document.querySelector("#map-toast").textContent')).includes(
-        '次数已耗尽',
-      ),
-    );
-    await screenshot(page, 'durability-empty-' + device);
-    await evaluate(
-      page,
-      `(() => {
-      testScene.tick(16, {...durabilityInput, quickSlot:3});
-      testScene.tick(16, {...durabilityInput, quickSlot:0});
-      testScene.combat.tick(1200);
-      testScene.tick(16, {...durabilityInput, attack:true});
-    })()`,
-    );
-    assert.equal(await evaluate(page, 'testScene.combat.getWeaponUsesRemaining("stun-baton")'), 0);
-    assert.equal(await evaluate(page, 'testScene.combat.swingMs'), 0);
     const rect = await evaluate(
       page,
       `(() => {
@@ -932,19 +903,45 @@ async function verifyWeaponDurabilityFlow() {
       ),
       'durability does not overlap interactions, shortcuts or touch sticks',
     );
+    await evaluate(
+      page,
+      `(() => {
+      for (let i=0; i<20; i++) {
+        testScene.combat.tick(1200);
+        testScene.tick(16, {...durabilityInput, attack:true});
+      }
+      testScene.tick(16, durabilityInput);
+    })()`,
+    );
+    await until(
+      page,
+      'document.querySelector("#hotbar-weapon-durability").hidden && document.querySelector("#hotbar-hint").textContent.includes("空手")',
+    );
+    assert.match(
+      await evaluate(page, 'document.querySelector("#map-toast").textContent'),
+      /电击器已报废/,
+    );
+    assert.equal(
+      await evaluate(
+        page,
+        'testScene.combat.getWeaponUsesRemaining("stun-baton", durabilityWeaponId)',
+      ),
+      0,
+    );
+    await screenshot(page, 'durability-empty-' + device);
     await abandon(page);
     await until(page, 'document.querySelector("#raid-hotbar").hidden');
     await consent(page);
     await click(page, '#start');
     await until(
       page,
-      'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#hotbar-weapon-durability progress").value === 15',
+      'document.querySelector("#app").dataset.phase === "active" && document.querySelector("#hotbar-weapon-durability progress").value === 100',
     );
     await command('Target.disposeBrowserContext', { browserContextId: page.browserContextId });
     pass(
       'Baton durability on ' +
         device +
-        ': 15 uses, low warning, exhausted text/toast, no attack at zero, new raid resets',
+        ': 100 uses, low warning, scrapping clears the shortcut, new raid resets',
     );
   }
 }
@@ -2472,10 +2469,24 @@ try {
     assert.equal(await evaluate(host, '!!document.querySelector("#room-panel")'), false);
     await screenshot(host, '01-lobby');
     await click(host, '.v19-shop-bottom');
+    await click(host, '[data-shop-category="support"]');
+    await until(
+      host,
+      '!document.querySelector("#shop-support").hidden && document.querySelector("#shop-weapons").hidden',
+    );
+    assert.equal(
+      await evaluate(host, 'document.querySelectorAll("#shop-support [data-shop-item]").length'),
+      12,
+    );
+    await click(host, '[data-shop-category="weapons"]');
+    await until(
+      host,
+      '!document.querySelector("#shop-weapons").hidden && document.querySelector("#shop-support").hidden',
+    );
     await click(host, '[data-shop-category="skins"]');
     await until(
       host,
-      '!document.querySelector("#shop-skins").hidden && document.querySelector("#shop-supplies").hidden',
+      '!document.querySelector("#shop-skins").hidden && document.querySelector("#shop-weapons").hidden',
     );
     assert.equal(await evaluate(host, 'document.querySelectorAll("[data-skin-shop]").length'), 6);
     await screenshot(host, '37-shop-skins');
@@ -2884,6 +2895,7 @@ try {
       );
 
       await click(storyPage, '[data-lobby-tab="shop"]');
+      await click(storyPage, '[data-shop-category="support"]');
       const initialBalance = await evaluate(
         storyPage,
         'Number(document.querySelector("#shop-balance").textContent)',

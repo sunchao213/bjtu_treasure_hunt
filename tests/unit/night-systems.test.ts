@@ -4,6 +4,7 @@ import {
   NightLighting,
   LAMPS,
   encounterRegionKey,
+  combatWeaponConfig,
   findEnemySpawnPosition,
   lineOfSight,
   shouldDropPatrolLoot,
@@ -324,65 +325,52 @@ describe('night combat', () => {
   it('blocks melee through walls, honors cooldown and returns a defeat only once', () => {
     const combat = isolatedCombat();
     const enemy = combat.enemies[0]!;
+    enemy.health = 10;
     const player = { x: enemy.position.x - 60, y: enemy.position.y };
     const wall = [{ x: player.x + 20, y: player.y - 40, width: 10, height: 80 }];
-    combat.attack(player, 0, wall, 35);
-    expect(enemy.health).toBe(70);
+    combat.attack(player, 0, wall, 10);
+    expect(enemy.health).toBe(10);
     expect(combat.attackHit).toBe(false);
     combat.tick(450);
-    combat.attack(player, 0, [], 35);
-    expect(enemy.health).toBe(35);
+    expect(combat.attack(player, 0, [], 10).map((entry) => entry.id)).toEqual([enemy.id]);
+    expect(enemy.health).toBe(0);
     expect(combat.attackHit).toBe(true);
-    combat.attack(player, 0, [], 35);
-    expect(enemy.health).toBe(35);
+    combat.attack(player, 0, [], 10);
+    expect(enemy.health).toBe(0);
     expect(combat.attackHit).toBe(false);
     combat.tick(450);
-    expect(combat.attack(player, 0, [], 35).map((e) => e.id)).toEqual([enemy.id]);
+    expect(combat.attack(player, 0, [], 10).map((e) => e.id)).toEqual([]);
     combat.tick(450);
-    expect(combat.attack(player, 0, [], 35)).toEqual([]);
+    expect(combat.attack(player, 0, [], 10)).toEqual([]);
     combat.reset();
     expect(combat.enemies[0]!.health).toBe(70);
     expect(combat.attackCooldown).toBe(0);
   });
-  it('uses a stun baton fifteen times with its shorter range, narrow arc and stun duration', () => {
+  it('applies the stun baton damage and stun within its narrow attack arc', () => {
     const combat = isolatedCombat();
     const enemy = combat.enemies[0]!;
     const player = { x: enemy.position.x - 70, y: enemy.position.y };
-    combat.attack(player, 0, [], 15, 'stun-baton');
-    expect(enemy.health).toBe(55);
+    const { damage } = combatWeaponConfig('stun-baton');
+    expect(damage).toBe(25);
+    combat.attack(player, 0, [], damage, 'stun-baton');
+    expect(enemy.health).toBe(45);
     expect(enemy.state).toBe('stunned');
     expect(enemy.timer).toBe(1_200);
-    expect(combat.weaponUsesRemaining).toBe(14);
+    expect(combat.weaponUsesRemaining).toBe(99);
 
     for (let i = 0; i < 12; i++)
       combat.update(100, { x: 900, y: 850 }, true, false, true, [], bounds);
     expect(enemy.state).toBe('chase');
 
     combat.tick(1_200);
-    combat.attack(player, 0, [], 15, 'stun-baton');
-    expect(enemy.health).toBe(40);
-    expect(combat.weaponUsesRemaining).toBe(13);
-    combat.tick(1_200);
-    combat.attack(player, 0, [], 15, 'stun-baton');
-    expect(enemy.health).toBe(25);
-    expect(combat.weaponUsesRemaining).toBe(12);
-    combat.tick(1_200);
-    for (let i = 0; i < 11; i++) {
-      combat.attack(player, 0, [], 15, 'stun-baton');
-      combat.tick(1_200);
-    }
-    expect(combat.weaponUsesRemaining).toBe(1);
-    combat.attack(player, 0, [], 15, 'stun-baton');
-    expect(combat.weaponUsesRemaining).toBe(0);
-    combat.tick(1_200);
-    combat.attack(player, 0, [], 15, 'stun-baton');
-    expect(combat.attackHit).toBe(false);
-    expect(combat.weaponUsesRemaining).toBe(0);
+    combat.attack(player, 0, [], damage, 'stun-baton');
+    expect(enemy.health).toBe(20);
+    expect(combat.weaponUsesRemaining).toBe(98);
 
     const narrow = isolatedCombat();
     const target = narrow.enemies[0]!;
     const narrowPlayer = { x: target.position.x - 70, y: target.position.y };
-    narrow.attack(narrowPlayer, Math.PI / 2, [], 15, 'stun-baton');
+    narrow.attack(narrowPlayer, Math.PI / 2, [], damage, 'stun-baton');
     expect(narrow.attackHit).toBe(false);
     expect(target.health).toBe(70);
   });
@@ -397,38 +385,62 @@ describe('night combat', () => {
   });
   it.each([
     ['folding-ruler', 20, 55],
-    ['long-broom', 22, 100],
-    ['window-breaker', 55, 65],
-    ['night-watch-spear', 70, 145],
+    ['long-broom', 15, 100],
+    ['window-breaker', 35, 65],
+    ['night-watch-spear', 85, 145],
   ] as const)('uses the configured %s weapon profile', (weaponId, damage, distance) => {
     const combat = isolatedCombat();
     const enemy = combat.enemies[0]!;
     const player = { x: enemy.position.x - distance, y: enemy.position.y };
-    combat.attack(player, 0, [], damage, weaponId);
-    expect(enemy.health).toBe(70 - damage);
+    expect(combatWeaponConfig(weaponId).damage).toBe(damage);
+    combat.attack(player, 0, [], combatWeaponConfig(weaponId).damage, weaponId);
+    expect(enemy.health).toBe(Math.max(0, 70 - damage));
     expect(combat.currentWeaponId).toBe(weaponId);
   });
   it('preserves baton durability across weapon switches and restores it for a new raid', () => {
     const combat = isolatedCombat();
     combat.enemies = [];
     const player = { x: 1000, y: 1000 };
-    expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(15);
-    for (let i = 0; i < 15; i++) {
+    expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(100);
+    for (let i = 0; i < 100; i++) {
       combat.tick(1200);
-      combat.attack(player, 0, [], 15, 'stun-baton');
-      expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(14 - i);
+      combat.attack(player, 0, [], 25, 'stun-baton');
+      expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(99 - i);
       combat.tick(1200);
-      combat.attack(player, 0, [], 35, 'training-bat');
-      expect(combat.getWeaponUsesRemaining('training-bat')).toBeNull();
-      expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(14 - i);
+      combat.attack(player, 0, [], 10, 'training-bat');
+      expect(combat.getWeaponUsesRemaining('training-bat')).toBe(99 - i);
+      expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(99 - i);
     }
     combat.tick(1200);
-    combat.attack(player, 0, [], 15, 'stun-baton');
+    combat.attack(player, 0, [], 25, 'stun-baton');
     expect(combat.weaponUsesRemaining).toBe(0);
     expect(combat.swingMs).toBe(0);
     expect(combat.attackCooldown).toBe(0);
     combat.reset();
-    expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(15);
+    expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(100);
+  });
+  it.each([
+    ['training-bat', 10],
+    ['folding-ruler', 20],
+    ['long-broom', 15],
+    ['window-breaker', 35],
+    ['night-watch-spear', 85],
+  ] as const)('depletes the configured 100-use durability for %s', (weaponId, damage) => {
+    const combat = isolatedCombat();
+    combat.enemies = [];
+    const weapon = combatWeaponConfig(weaponId);
+    const player = { x: 1000, y: 1000 };
+
+    expect(combat.getWeaponUsesRemaining(weaponId)).toBe(100);
+    for (let use = 0; use < 100; use++) {
+      combat.tick(weapon.cooldownMs);
+      combat.attack(player, 0, [], damage, weaponId);
+      expect(combat.getWeaponUsesRemaining(weaponId)).toBe(99 - use);
+    }
+    combat.tick(weapon.cooldownMs);
+    combat.attack(player, 0, [], damage, weaponId);
+    expect(combat.getWeaponUsesRemaining(weaponId)).toBe(0);
+    expect(combat.attackCooldown).toBe(0);
   });
   it('stuns mutated enemies for 600ms and respects the 75-unit attack range', () => {
     const combat = isolatedCombat('hug');
@@ -436,13 +448,13 @@ describe('night combat', () => {
     hug.mutated = true;
     hug.state = 'chase';
     const player = { x: hug.position.x - 80, y: hug.position.y };
-    combat.attack(player, 0, [], 15, 'stun-baton');
+    combat.attack(player, 0, [], 25, 'stun-baton');
     expect(combat.attackHit).toBe(false);
     expect(hug.health).toBe(100);
     combat.tick(1_200);
     player.x = hug.position.x - 70;
-    combat.attack(player, 0, [], 15, 'stun-baton');
-    expect(hug.health).toBe(85);
+    combat.attack(player, 0, [], 25, 'stun-baton');
+    expect(hug.health).toBe(75);
     expect(hug.state).toBe('stunned');
     expect(hug.timer).toBe(600);
     for (let i = 0; i < 6; i++)
@@ -493,13 +505,13 @@ describe('night combat', () => {
     const hug = combat.enemies.find((enemy) => enemy.kind === 'hug')!;
     const player = { x: hug.position.x + 30, y: hug.position.y };
 
-    combat.attack(player, Math.PI, [], 35);
+    combat.attack(player, Math.PI, [], 10);
     expect(hug.mutated).toBe(false);
     expect(hug.state).toBe('mutation-warning');
-    expect(hug.health).toBe(COMBAT_RULES.hug.health - 35);
+    expect(hug.health).toBe(COMBAT_RULES.hug.health - 10);
 
     advance(combat, player, 500);
-    combat.attack(player, Math.PI, [], 35);
+    combat.attack(player, Math.PI, [], 10);
     expect(hug.timer).toBe(COMBAT_RULES.hug.mutationWarningMs - 500);
     advance(combat, player, 500);
     expect(hug.mutated).toBe(true);
@@ -513,7 +525,7 @@ describe('night combat', () => {
     const player = { x: hug.position.x + 30, y: hug.position.y };
     advance(combat, player, 1_500, true);
     expect(hug.state).toBe('calmed');
-    combat.attack(player, Math.PI, [], 15, 'stun-baton');
+    combat.attack(player, Math.PI, [], 25, 'stun-baton');
     expect(hug.state).toBe('mutation-warning');
     expect(hug.mutated).toBe(false);
     advance(combat, player, COMBAT_RULES.hug.mutationWarningMs);
@@ -640,20 +652,19 @@ describe('amplifier monster', () => {
     return { damage, soundWaveHit, amplifierWindups };
   };
 
-  it('has 85 health and dies in exactly 3 training-bat hits', () => {
+  it('has 85 health and dies in 9 training-bat hits', () => {
     const combat = isolatedCombat('amplifier');
     const amp = combat.enemies[0]!;
     expect(amp.health).toBe(85);
     const inFront = () => ({ x: amp.position.x - 50, y: amp.position.y });
 
-    expect(combat.attack(inFront(), 0, [], 35, 'training-bat')).toHaveLength(0);
-    expect(amp.health).toBe(50);
-    combat.tick(COMBAT_RULES.player.attack.cooldownMs);
-    expect(combat.attack(inFront(), 0, [], 35, 'training-bat')).toHaveLength(0);
-    expect(amp.health).toBe(15);
-    combat.tick(COMBAT_RULES.player.attack.cooldownMs);
-    const third = combat.attack(inFront(), 0, [], 35, 'training-bat');
-    expect(third).toHaveLength(1);
+    for (let hit = 0; hit < 8; hit++) {
+      expect(combat.attack(inFront(), 0, [], 10, 'training-bat')).toHaveLength(0);
+      expect(amp.health).toBe(85 - (hit + 1) * 10);
+      combat.tick(COMBAT_RULES.player.attack.cooldownMs);
+    }
+    const ninth = combat.attack(inFront(), 0, [], 10, 'training-bat');
+    expect(ninth).toHaveLength(1);
     expect(amp.state).toBe('dead');
   });
 
@@ -870,13 +881,13 @@ describe('amplifier monster', () => {
     expect(amp.state).toBe('windup');
 
     // 训练棍打中蓄力中的扩音器怪：仅扣血，不打断蓄力
-    combat.attack({ x: amp.position.x - 50, y: amp.position.y }, 0, [], 35, 'training-bat');
-    expect(amp.health).toBe(50);
+    combat.attack({ x: amp.position.x - 50, y: amp.position.y }, 0, [], 10, 'training-bat');
+    expect(amp.health).toBe(75);
     expect(amp.state).toBe('windup');
 
     // 冷却后再用电击器眩晕：立刻打断蓄力进入 stunned，且至少等待 1.5s 才允许重新蓄力
     combat.attackCooldown = 0;
-    combat.attack({ x: amp.position.x - 40, y: amp.position.y }, 0, [], 15, 'stun-baton');
+    combat.attack({ x: amp.position.x - 40, y: amp.position.y }, 0, [], 25, 'stun-baton');
     expect(amp.state).toBe('stunned');
     expect(amp.cooldown).toBeGreaterThanOrEqual(ampRules.interruptCooldownMs);
     expect(combat.soundWaves).toHaveLength(0);

@@ -516,7 +516,7 @@ export class NightCombat {
   attackHit = false;
   currentWeaponId: CombatWeaponId = 'training-bat';
   weaponUsesRemaining: number | null = null;
-  private readonly remainingWeaponUses = new Map<CombatWeaponId, number>();
+  private readonly remainingWeaponUses = new Map<string, number>();
   private spawnTimer = 0;
   private hugSpawnTimer: number = COMBAT_RULES.spawning.hugSpawnIntervalMs;
   private nextSpawnId = 1;
@@ -680,12 +680,15 @@ export class NightCombat {
     this.invulnerability = Math.max(0, this.invulnerability - deltaMs);
     this.swingMs = Math.max(0, this.swingMs - deltaMs);
   }
-  getWeaponUsesRemaining(weaponId: CombatWeaponId): number | null {
-    if (weaponId === this.currentWeaponId && this.weaponUsesRemaining !== null) {
-      return this.weaponUsesRemaining;
-    }
+  private weaponDurabilityKey(weaponId: CombatWeaponId, instanceId?: string): string {
+    return instanceId ? `instance:${instanceId}` : weaponId;
+  }
+
+  getWeaponUsesRemaining(weaponId: CombatWeaponId, instanceId?: string): number | null {
     const weapon = combatWeaponConfig(weaponId);
-    return this.remainingWeaponUses.get(weaponId) ?? weapon.maxUses;
+    return (
+      this.remainingWeaponUses.get(this.weaponDurabilityKey(weaponId, instanceId)) ?? weapon.maxUses
+    );
   }
 
   attack(
@@ -694,10 +697,11 @@ export class NightCombat {
     walls: readonly Rect[],
     damage: number,
     weaponId: CombatWeaponId = 'training-bat',
+    instanceId?: string,
   ): Enemy[] {
     this.attackHit = false;
     const weapon = combatWeaponConfig(weaponId);
-    this.weaponUsesRemaining = this.getWeaponUsesRemaining(weaponId);
+    this.weaponUsesRemaining = this.getWeaponUsesRemaining(weaponId, instanceId);
     this.currentWeaponId = weaponId;
     if (this.attackCooldown > 0 || this.weaponUsesRemaining === 0) {
       return [];
@@ -706,7 +710,10 @@ export class NightCombat {
     this.swingMs = COMBAT_RULES.player.attack.swingMs;
     if (this.weaponUsesRemaining !== null) {
       this.weaponUsesRemaining--;
-      this.remainingWeaponUses.set(weaponId, this.weaponUsesRemaining);
+      this.remainingWeaponUses.set(
+        this.weaponDurabilityKey(weaponId, instanceId),
+        this.weaponUsesRemaining,
+      );
     }
     const defeated: Enemy[] = [];
     for (const enemy of this.enemies) {

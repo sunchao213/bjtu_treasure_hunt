@@ -826,8 +826,7 @@ export class WorldScene extends Phaser.Scene {
           const weapon = combatWeaponConfig(weaponId);
           if (
             weapon.maxUses !== null &&
-            this.combat.currentWeaponId === weaponId &&
-            this.combat.weaponUsesRemaining === 0
+            this.combat.getWeaponUsesRemaining(weaponId, weaponItem.instanceId) === 0
           ) {
             if (!this.previousAttack) {
               this.services.notify(`${ITEM_DEFINITIONS[weaponId]?.name ?? weaponId}已用尽。`);
@@ -841,8 +840,13 @@ export class WorldScene extends Phaser.Scene {
             activeMap().obstacles,
             weapon.damage,
             weaponId,
+            weaponItem.instanceId,
           );
           if (previousCooldown <= 0 && this.combat.attackCooldown > 0) {
+            if (this.combat.weaponUsesRemaining === 0) {
+              this.services.inventory.remove(weaponItem.instanceId);
+              this.services.notify(`${ITEM_DEFINITIONS[weaponId]?.name ?? weaponId}已报废。`);
+            }
             this.setPlayerAction('attack', COMBAT_RULES.player.attack.swingMs + 140);
             this.services.sound.play('hit');
             this.attackFeedbackMs = COMBAT_RULES.feedback.playerAttackFlashMs;

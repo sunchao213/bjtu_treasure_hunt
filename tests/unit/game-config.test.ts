@@ -3,11 +3,13 @@ import {
   ALL_ITEM_IDS,
   ITEM_CATALOG_IDS,
   ITEM_DEFINITIONS,
+  PURCHASE_ITEM_IDS,
   assertKnownItemId,
   HEALING_AMOUNTS,
   isCarryInAllowed,
   isCatalogItemId,
   isKnownItemId,
+  isPurchasedItem,
 } from '../../src/config/game-config';
 import { generateLootSpawns, questSpawnPlan } from '../../src/modules/world/loot-spawns';
 import { QUEST_CHAPTERS } from '../../src/modules/quests/quest-service';
@@ -49,6 +51,47 @@ describe('product item catalog configuration', () => {
     expect(ITEM_DEFINITIONS['silver-watch']).toMatchObject({ rarity: 'legendary', value: 100 });
     expect(ITEM_DEFINITIONS['gpa-charm']).toMatchObject({ rarity: 'epic', value: 50 });
     expect(ITEM_DEFINITIONS['library-reward-ticket']).toMatchObject({ rarity: 'epic', value: 50 });
+  });
+
+  it('adds the seven functional discoveries to the shop at their item values', () => {
+    const newShopItems = [
+      ['portable-medkit', 15],
+      ['morning-coffee', 25],
+      ['roller-skates', 15],
+      ['electric-bike-helmet', 15],
+      ['star-compass', 150],
+      ['silent-cloak', 60],
+      ['reflective-filter', 30],
+    ] as const;
+
+    for (const [itemId, price] of newShopItems) {
+      expect(PURCHASE_ITEM_IDS).toContain(itemId);
+      expect(ITEM_DEFINITIONS[itemId]?.price).toBe(price);
+    }
+  });
+
+  it('uses the current weapon extraction values from the item list', () => {
+    expect(ITEM_DEFINITIONS['training-bat']?.value).toBe(10);
+    expect(ITEM_DEFINITIONS['folding-ruler']?.value).toBe(20);
+    expect(ITEM_DEFINITIONS['long-broom']?.value).toBe(25);
+    expect(ITEM_DEFINITIONS['window-breaker']?.value).toBe(90);
+    expect(ITEM_DEFINITIONS['night-watch-spear']?.value).toBe(200);
+  });
+
+  it('keeps newly shop-listed exploration items distinct from purchases when carried in', () => {
+    const explorationItem = {
+      instanceId: 'found-medkit',
+      itemId: 'portable-medkit',
+      origin: { kind: 'carry-in' as const, source: 'exploration' as const },
+    };
+    const purchaseItem = {
+      instanceId: 'purchase:portable-medkit:one',
+      itemId: 'portable-medkit',
+      origin: { kind: 'carry-in' as const, source: 'purchase' as const },
+    };
+
+    expect(isPurchasedItem(explorationItem)).toBe(false);
+    expect(isPurchasedItem(purchaseItem)).toBe(true);
   });
 
   it('keeps quest evidence in the warehouse but forbids bringing it into a raid', () => {

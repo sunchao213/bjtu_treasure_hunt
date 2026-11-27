@@ -27,6 +27,7 @@ import {
   UTILITY_EFFECTS,
 } from './config/game-config';
 import { COMBAT_RULES } from './config/combat-config';
+import { isCombatWeaponId } from './modules/world/night-systems';
 import { bindShopCategories, renderShop, renderWardrobe, SHOP_EFFECTS } from './modules/ui/shop';
 import { renderMailPanel } from './modules/ui/mail-panel';
 import { createFriendsPanel } from './modules/ui/friends-panel';
@@ -1339,9 +1340,9 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       syncLoadoutSelection();
       notify(`${count} 件装备已放回仓库。`);
     });
-    // 维修全部：耐久系统还没进这一版，先给玩家一个明确答复
+    // 当前没有维修服务，有限耐久武器耗尽后可回商店补充。
     bagRoot.querySelector<HTMLButtonElement>('[data-bp-repair]')?.addEventListener('click', () => {
-      notify('装备耐久暂未启用，现在不需要维修。');
+      notify('当前不提供武器维修，可前往商店重新购买。');
     });
     // 左侧竖排导航：背包是当前页；商店/购买去道具商店，出售归商城（负责出售，暂为占位页）
     for (const nav of bagRoot.querySelectorAll<HTMLButtonElement>('[data-bp-nav]')) {
@@ -1777,6 +1778,10 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         button.setAttribute('aria-pressed', String(assigning));
       }
       scene.syncHotbar();
+      const selectedSlot = scene.hotbar.selected();
+      const selectedItemId = selectedSlot.itemId;
+      const combatWeaponId =
+        selectedItemId && isCombatWeaponId(selectedItemId) ? selectedItemId : null;
       raidHotbar.render(
         scene.hotbar,
         ['active', 'extracting'].includes(activeController.getView().phase),
@@ -1785,7 +1790,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
           !!document.querySelector('dialog[open]') ||
           roomOpen,
         carried.find((item) => item.instanceId === assigningHotbarItem) ?? null,
-        scene.combat.getWeaponUsesRemaining('stun-baton'),
+        combatWeaponId,
+        combatWeaponId
+          ? scene.combat.getWeaponUsesRemaining(
+              combatWeaponId,
+              selectedSlot.instanceId ?? undefined,
+            )
+          : null,
       );
       renderArchiveBrowser(element('lobby-archive-browser'), archive);
       renderWarehousePanel(element('warehouse-panel'), archive.warehouse, archive.currency);

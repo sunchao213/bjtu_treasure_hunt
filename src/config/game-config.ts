@@ -20,10 +20,10 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
   [
     ['scratch-paper', '草稿纸', 'common', 'collectible'],
     ['half-eraser', '半块橡皮', 'common', 'collectible'],
-    ['portable-medkit', '随身急救包', 'common', 'healing', undefined, undefined, 15],
+    ['portable-medkit', '随身急救包', 'common', 'healing', undefined, 15, 15],
     ['torn-notebook', '残缺手记', 'uncommon', 'quest'],
     ['window-seat', '靠窗座凭证', 'uncommon', 'collectible'],
-    ['morning-coffee', '早八不困咖啡', 'uncommon', 'healing'],
+    ['morning-coffee', '早八不困咖啡', 'uncommon', 'healing', undefined, 25],
     ['school-badge', '校训徽章', 'uncommon', 'collectible'],
     ['anomalous-feather', '异常羽毛', 'epic', 'collectible', undefined, undefined, 60],
     ['gpa-charm', 'GPA 4.0 护符', 'epic', 'collectible', undefined, undefined, 50],
@@ -31,24 +31,24 @@ export const ITEM_DEFINITIONS: Readonly<Record<string, ItemDefinition>> = Object
     ['siyuan-key', '思源楼金钥匙', 'legendary', 'collectible'],
     ['strange-veined-ginkgo-leaf', '叶脉奇怪的银杏叶', 'legendary', 'collectible'],
     ['hunter-binoculars', '猎手望远镜', 'epic', 'collectible'],
-    ['roller-skates', '轮滑鞋', 'common', 'utility', undefined, undefined, 15],
+    ['roller-skates', '轮滑鞋', 'common', 'utility', undefined, 15, 15],
     ['quick-note-card', '速记卡片', 'common', 'utility', undefined, 40, 10],
     ['simple-detector', '简易探测器', 'common', 'utility', undefined, 60, 15],
-    ['star-compass', '星光罗盘', 'legendary', 'utility', undefined, undefined, 150],
-    ['silent-cloak', '静音斗篷', 'epic', 'utility', undefined, undefined, 60],
-    ['reflective-filter', '反光滤片', 'uncommon', 'utility', undefined, undefined, 30],
+    ['star-compass', '星光罗盘', 'legendary', 'utility', undefined, 150, 150],
+    ['silent-cloak', '静音斗篷', 'epic', 'utility', undefined, 60, 60],
+    ['reflective-filter', '反光滤片', 'uncommon', 'utility', undefined, 30, 30],
     ['marked-campus-map', '被涂改的校园地图', 'common', 'quest'],
     ['soothe-charm', '安抚护符', 'epic', 'quest'],
     ['complete-record', '完整记录', 'legendary', 'quest'],
-    ['electric-bike-helmet', '电瓶车头盔', 'common', 'utility', undefined, undefined, 15],
+    ['electric-bike-helmet', '电瓶车头盔', 'common', 'utility', undefined, 15, 15],
     ['david-head-statue', '大卫头雕像', 'epic', 'collectible', undefined, undefined, 80],
     ['silver-watch', '银色手表', 'legendary', 'collectible', undefined, undefined, 100],
-    ['training-bat', '训练棍', 'common', 'weapon', undefined, 10],
-    ['stun-baton', '电击器', 'uncommon', 'weapon', undefined, 25],
-    ['folding-ruler', '折叠铁尺', 'common', 'weapon', undefined, 90],
-    ['long-broom', '长柄扫帚', 'common', 'weapon', undefined, 80],
-    ['window-breaker', '破窗锤', 'epic', 'weapon', undefined, 260],
-    ['night-watch-spear', '夜巡长枪', 'legendary', 'weapon', undefined, 500],
+    ['training-bat', '训练棍', 'common', 'weapon', undefined, 10, 10],
+    ['stun-baton', '电击器', 'uncommon', 'weapon', undefined, 40],
+    ['folding-ruler', '折叠铁尺', 'common', 'weapon', undefined, 90, 20],
+    ['long-broom', '长柄扫帚', 'common', 'weapon', undefined, 25, 25],
+    ['window-breaker', '破窗锤', 'epic', 'weapon', undefined, 260, 90],
+    ['night-watch-spear', '夜巡长枪', 'legendary', 'weapon', undefined, 500, 200],
     ['bandage', '创可贴', 'common', 'healing', 1, 10],
     ['yellow-bike', '小黄车', 'uncommon', 'utility', 2, 50, 30],
     ['thick-down-jacket', '超厚羽绒服', 'uncommon', 'utility', 1, 100, 30],
@@ -109,10 +109,17 @@ export const ALL_ITEM_IDS = Object.keys(ITEM_DEFINITIONS) as readonly string[];
 /** Items created by the shop are functional supplies, not exploration discoveries. */
 export const PURCHASE_ITEM_IDS = [
   'bandage',
+  'portable-medkit',
+  'morning-coffee',
   'yellow-bike',
   'thick-down-jacket',
+  'roller-skates',
+  'electric-bike-helmet',
   'quick-note-card',
   'simple-detector',
+  'star-compass',
+  'silent-cloak',
+  'reflective-filter',
   'training-bat',
   'stun-baton',
   'folding-ruler',
@@ -136,9 +143,10 @@ export function isPurchasedItem(
   item: Pick<ItemInstance, 'itemId' | 'instanceId' | 'origin'>,
 ): boolean {
   return (
-    (item.origin.kind === 'carry-in' &&
-      (PURCHASE_ITEM_IDS as readonly string[]).includes(item.itemId)) ||
     (item.origin.kind === 'carry-in' && item.origin.source === 'purchase') ||
+    (item.origin.kind === 'carry-in' &&
+      item.origin.source === undefined &&
+      (PURCHASE_ITEM_IDS as readonly string[]).includes(item.itemId)) ||
     item.instanceId.startsWith('purchase:')
   );
 }

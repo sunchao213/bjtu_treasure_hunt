@@ -70,15 +70,15 @@ async function setup(weapon: CombatWeaponId = 'training-bat', custom = map) {
 describe('three-dimensional combat integration', () => {
   it('equips a starter outside the six loot slots, attacks ahead, respects cooldown and drops pickable raid loot', async () => {
     const { session, tick, enemy } = await setup();
-    const e = enemy();
+    const e = enemy({ health: 20 });
     session.combat!.enemies = [e];
     expect(session.inventory.getEquipment().primary?.itemId).toBe('training-bat');
     expect(session.frame().combat.bagCount).toBe(0);
     expect(session.controller.getView().value).toBe(0);
     tick(20, { ...EMPTY_INPUT, attack: true });
-    expect(e.health).toBe(35);
+    expect(e.health).toBe(10);
     tick(100, { ...EMPTY_INPUT, attack: true });
-    expect(e.health).toBe(35);
+    expect(e.health).toBe(10);
     tick(500, { ...EMPTY_INPUT, attack: true });
     expect(e.state).toBe('dead');
     const drop = session.frame().ground[0]!;
@@ -127,16 +127,21 @@ describe('three-dimensional combat integration', () => {
 
   it('applies stun-baton damage, stun and finite uses', async () => {
     const { session, tick, enemy } = await setup('stun-baton');
-    expect(session.frame().combat.uses).toBe(15);
+    const weapon = session.inventory.getEquipment().primary!;
+    expect(session.frame().combat.uses).toBe(100);
     const e = enemy();
     session.combat!.enemies = [e];
     tick(20, { ...EMPTY_INPUT, attack: true });
-    expect(e.health).toBe(55);
+    expect(e.health).toBe(45);
     expect(e.state).toBe('stunned');
-    expect(session.frame().combat.uses).toBe(14);
+    expect(session.frame().combat.uses).toBe(99);
     session.combat!.enemies = [];
-    tick(20_000, { ...EMPTY_INPUT, attack: true });
-    expect(session.frame().combat.uses).toBe(0);
+    for (let use = 0; use < 99; use++) {
+      session.combat!.tick(1200);
+      tick(20, { ...EMPTY_INPUT, attack: true });
+    }
+    expect(session.combat!.getWeaponUsesRemaining('stun-baton', weapon.instanceId)).toBe(0);
+    expect(session.inventory.getEquipment().primary).toBeUndefined();
     tick(2000);
     tick(20, { ...EMPTY_INPUT, attack: true });
     expect(session.frame().combat.swing).toBe(0);

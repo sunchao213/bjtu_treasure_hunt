@@ -87,21 +87,23 @@ describe('selected quickbar item in the real world', () => {
     s.world.dispose();
     s.controller.dispose();
   });
-  it('announces the final baton use and retries without spamming while attack is held', async () => {
+  it('scraps the baton after 100 attacks and leaves a spare at full durability', async () => {
     const s = await setup();
-    s.add('stun-baton');
-    for (let i = 0; i < 15; i++) {
+    s.add('stun-baton', 'baton-1');
+    s.add('stun-baton', 'baton-2');
+    for (let i = 0; i < 99; i++) {
       s.world.combat.tick(1200);
       s.world.tick(16, { ...idle, attack: true });
     }
-    expect(s.world.combat.getWeaponUsesRemaining('stun-baton')).toBe(0);
-    expect(s.notify).toHaveBeenCalledExactlyOnceWith('电击器次数已耗尽，请切换道具。');
+    expect(s.world.combat.getWeaponUsesRemaining('stun-baton', 'baton-1')).toBe(1);
+    s.world.combat.tick(1200);
+    s.world.tick(16, { ...idle, attack: true });
+    expect(s.world.combat.getWeaponUsesRemaining('stun-baton', 'baton-1')).toBe(0);
+    expect(s.inventory.getCarriedItems().map((item) => item.instanceId)).toEqual(['baton-2']);
+    expect(s.notify).toHaveBeenCalledExactlyOnceWith('电击器已报废，请切换武器。');
     for (let i = 0; i < 10; i++) s.world.tick(16, { ...idle, attack: true });
     expect(s.notify).toHaveBeenCalledTimes(1);
-    s.world.tick(16, idle);
-    s.world.tick(16, { ...idle, attack: true });
-    expect(s.notify).toHaveBeenCalledTimes(2);
-    expect(s.world.combat.getWeaponUsesRemaining('stun-baton')).toBe(0);
+    expect(s.world.combat.getWeaponUsesRemaining('stun-baton', 'baton-2')).toBe(100);
     s.world.dispose();
     s.controller.dispose();
   });
@@ -138,6 +140,24 @@ describe('selected quickbar item in the real world', () => {
     expect(s.world.hotbar.selected()).toEqual({ itemId: null, instanceId: null, item: null });
     expect(s.world.hotbar.selectedIndex).toBe(2);
     expect(attack).not.toHaveBeenCalled();
+    s.world.dispose();
+    s.controller.dispose();
+  });
+
+  it('breaks only the spent weapon after its hundredth attack', async () => {
+    const s = await setup();
+    s.add('folding-ruler', 'ruler-1');
+    s.add('folding-ruler', 'ruler-2');
+    for (let use = 0; use < 100; use++) {
+      s.world.combat.tick(300);
+      s.world.tick(16, { ...idle, attack: true });
+    }
+    expect(s.inventory.getCarriedItems().map((item) => item.instanceId)).toEqual(['ruler-2']);
+    expect(s.world.combat.getWeaponUsesRemaining('folding-ruler', 'ruler-1')).toBe(0);
+    expect(s.world.combat.getWeaponUsesRemaining('folding-ruler', 'ruler-2')).toBe(100);
+    s.world.combat.tick(300);
+    s.world.tick(16, { ...idle, quickSlot: 1, attack: true });
+    expect(s.world.combat.getWeaponUsesRemaining('folding-ruler', 'ruler-2')).toBe(99);
     s.world.dispose();
     s.controller.dispose();
   });

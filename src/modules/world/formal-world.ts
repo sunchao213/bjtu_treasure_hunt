@@ -411,14 +411,15 @@ export class FormalWorld {
         this.search.cancel();
         if (weapon) {
           const weaponId = isCombatWeaponId(weapon.itemId) ? weapon.itemId : 'training-bat';
-          const baton = weaponId === 'stun-baton';
           const stats = combatWeaponConfig(weaponId);
           if (
-            baton &&
-            this.combat.getWeaponUsesRemaining('stun-baton') === 0 &&
+            stats.maxUses !== null &&
+            this.combat.getWeaponUsesRemaining(weaponId, weapon.instanceId) === 0 &&
             !this.previousAttack
           ) {
-            this.services.notify('电击器次数已耗尽，请切换道具。');
+            this.services.notify(
+              `${ITEM_DEFINITIONS[weaponId]?.name ?? '武器'}次数已耗尽，请切换武器。`,
+            );
           }
           const before = this.combat.attackCooldown;
           const rulerTargets =
@@ -435,6 +436,7 @@ export class FormalWorld {
             map.obstacles,
             stats.damage,
             weaponId,
+            weapon.instanceId,
           );
           if (before <= 0 && this.combat.attackCooldown > 0) {
             if (weaponId === 'folding-ruler') {
@@ -453,8 +455,12 @@ export class FormalWorld {
             }
             this.attackUntil = this.clock() + COMBAT_RULES.player.attack.swingMs + 140;
             this.services.sound.play('hit');
-            if (baton && this.combat.weaponUsesRemaining === 0) {
-              this.services.notify('电击器次数已耗尽，请切换道具。');
+            if (stats.maxUses !== null && this.combat.weaponUsesRemaining === 0) {
+              const scrapped =
+                !this.services.network?.getRoomState()?.started &&
+                this.services.inventory.remove(weapon.instanceId).ok;
+              const name = ITEM_DEFINITIONS[weaponId]?.name ?? '武器';
+              this.services.notify(`${name}${scrapped ? '已报废' : '次数已耗尽'}，请切换武器。`);
             }
             if (this.combat.attackHit) this.hitStopMs = COMBAT_RULES.feedback.playerAttackHitStopMs;
           }

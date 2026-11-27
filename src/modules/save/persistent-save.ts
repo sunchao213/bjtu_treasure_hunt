@@ -482,9 +482,11 @@ export class PersistentSave implements SavePort {
         throw new Error('Quest items cannot be brought into a raid');
       }
       const source = item.origin.kind === 'carry-in' ? item.origin.source : undefined;
+      const carrySource =
+        source ?? (item.instanceId.startsWith('purchase:') ? 'purchase' : 'exploration');
       return {
         ...structuredClone(item),
-        origin: source ? { kind: 'carry-in' as const, source } : { kind: 'carry-in' as const },
+        origin: { kind: 'carry-in' as const, source: carrySource },
       };
     });
     if (
