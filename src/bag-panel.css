@@ -176,7 +176,11 @@
 }
 /* 稀有度底色：与仓库格子同一套色板（取自 v5 slot-{rarity}.png 内部实测色），
    只染图标区 —— 名称栏分隔线在框内 76.8% 处，::before 止步线上，且画在
-   图标/名称 DOM 之前（::before 是首个子节点），不会盖住它们 */
+   图标/名称 DOM 之前（::before 是首个子节点），不会盖住它们。
+   2026-11-26：仓库格用烘好光效的 slot-*.png（图标区顶部亮度≈44、底部≈32、
+   150~200 个色阶），背包格原先只有一层纯色，看起来偏平。这里改用
+   「上亮下暗纵向渐变 + SVG 细噪点」复刻同一套质感，中间停靠点仍是仓库贴图
+   实测的基色，两边色调保持一致。 */
 .bp-slot::before {
   content: '';
   position: absolute;
@@ -184,20 +188,30 @@
   right: 5px;
   top: 5px;
   bottom: 24%;
+  /* 64×64 灰度噪点平铺，模拟 slot-*.png 的颗粒；透明度压低，只给质感不显脏 */
+  --bp-slot-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='64' height='64' filter='url(%23n)' opacity='0.14'/%3E%3C/svg%3E");
   background: transparent;
   pointer-events: none;
 }
 .bp-slot[data-rarity='common']::before {
-  background: #1e2431;
+  background:
+    var(--bp-slot-noise) 0 0 / 64px 64px repeat,
+    linear-gradient(180deg, #242d41 0%, #1e2431 46%, #181d27 100%) 0 0 / 100% 100% no-repeat;
 }
 .bp-slot[data-rarity='uncommon']::before {
-  background: #291e38;
+  background:
+    var(--bp-slot-noise) 0 0 / 64px 64px repeat,
+    linear-gradient(180deg, #352549 0%, #291e38 46%, #21182d 100%) 0 0 / 100% 100% no-repeat;
 }
 .bp-slot[data-rarity='epic']::before {
-  background: #3c2b11;
+  background:
+    var(--bp-slot-noise) 0 0 / 64px 64px repeat,
+    linear-gradient(180deg, #523b14 0%, #3c2b11 46%, #30220e 100%) 0 0 / 100% 100% no-repeat;
 }
 .bp-slot[data-rarity='legendary']::before {
-  background: #371816;
+  background:
+    var(--bp-slot-noise) 0 0 / 64px 64px repeat,
+    linear-gradient(180deg, #491d1a 0%, #371816 46%, #2c1312 100%) 0 0 / 100% 100% no-repeat;
 }
 .bp-slot > img {
   position: absolute;
@@ -249,31 +263,6 @@
 }
 .bp-hot-put-all:disabled {
   filter: grayscale(0.5) brightness(0.7);
-}
-
-/* 「出发准备」：旧那套勾选列表的入口，做成左下角小字链接 */
-.bp-prep-link {
-  position: absolute;
-  left: 392px;
-  top: 74px;
-  padding: 6px 10px;
-  border: 1px solid #6b4a2a;
-  border-radius: 3px;
-  background: #1c1109cc;
-  color: #c9a469;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.bp-prep-link:hover:not(:disabled) {
-  border-color: #c9a469;
-  color: #ffe4a0;
-}
-.bp-prep-link:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 
 /* 右：仓库面板（内部另在 warehouse-panel.css）

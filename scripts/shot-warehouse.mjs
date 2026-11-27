@@ -323,7 +323,7 @@ try {
     await shot('13-carry-mark', scrollClip);
 
     // 行前准备子弹窗：旧那套仍在，且状态是同一份
-    await evaluate(`document.querySelector('[data-wh-prep]').click()`);
+    await evaluate(`document.querySelector('#v19-prepare-dialog').showModal()`);
     await delay(500);
     const prep = await evaluate(
       `(() => { const d = document.querySelector('#v19-prepare-dialog');

@@ -30,7 +30,6 @@ export function prepViewMarkup(): string {
               <span id="lobby-player-avatar" class="v19-sr-only"></span>
               <span id="lobby-player-name" class="v19-player-name"></span>
 
-              <button class="v19-hotspot v19-nav-shop" type="button" data-lobby-tab="mall" aria-label="商城"></button>
               <button class="v19-hotspot v19-nav-archive" type="button" data-lobby-tab="profile" aria-label="玩家档案"></button>
               <button class="v19-hotspot v19-nav-friends" type="button" data-lobby-tab="friends" aria-label="好友"></button>
               <button class="v19-hotspot v19-nav-codex" type="button" data-lobby-tab="warehouse" aria-label="图鉴与仓库"></button>
@@ -45,9 +44,7 @@ export function prepViewMarkup(): string {
               <button class="v19-hotspot v19-teammate v19-teammate-one" type="button" aria-label="邀请队友" data-open-room></button>
               <button class="v19-hotspot v19-teammate v19-teammate-two" type="button" aria-label="邀请队友" data-open-room></button>
               <button class="v19-hotspot v19-teammate v19-teammate-three" type="button" aria-label="邀请队友" data-open-room></button>
-
-              <label class="v19-fill-team"><input id="fill-team" type="checkbox" /><span>补齐队友-4人</span></label>
-              <div class="v19-fill-cost"><span>需要消耗</span><b aria-hidden="true">●</b><span>10000</span></div>
+              <div class="v19-fill-cost"><span>需要消耗</span><b aria-hidden="true">●</b><span>100</span></div>
               <button id="v19-map-open" class="v19-hotspot v19-map-card" type="button" aria-label="查看海淀校区地图"></button>
               <button id="mode-room" class="v19-hotspot v19-hidden-mode" type="button" aria-label="组队探索"></button>
               <!-- 联机房间页的程序化入口；v19 大厅的好友图标改为打开好友面板，房间仍由队友位与模式按钮进入。 -->
@@ -99,7 +96,6 @@ export function prepViewMarkup(): string {
                   <div class="bp-bag-grid" data-bp-bag-grid role="group" aria-label="随身背包"></div>
                   <button class="bp-hot bp-hot-put-all" data-bp-put-all type="button" aria-label="一键放入仓库"></button>
                   <button class="bp-hot bp-hot-repair" data-bp-repair type="button" aria-label="维修全部"></button>
-                  <button class="bp-prep-link" data-wh-prep type="button">出发准备</button>
                 </div>
                 <div id="warehouse-panel" class="bp-wh">${warehousePanelMarkup()}</div>
               </div>
@@ -148,12 +144,6 @@ export function prepViewMarkup(): string {
               <ul id="codex-list" hidden></ul><details class="archive-story"><summary>剧情档案</summary><div id="story-archive"></div></details>
               <details><summary>存档管理</summary><button id="export-save" class="secondary">导出存档备份（JSON）</button><button id="reset-save" class="text-button">重置存档</button></details>
             </div>
-          </section>
-          <section class="lobby-panel lobby-panel-wide v19-subpage" data-lobby-panel="mall" hidden aria-labelledby="lobby-mall-title">
-            <button class="v19-back-button" type="button" data-lobby-tab="prepare">返回大厅</button>
-            <div class="lobby-panel-heading"><div><p class="prep-kicker">交子流通</p><h2 id="lobby-mall-title">商城</h2></div><span class="lobby-panel-meta">建设中</span></div>
-            <p class="lobby-panel-intro">商城负责武器购买、升级与出售，以及成长类商品。界面尚未开放，当前补给请走大厅底部的「商店」。</p>
-            <button class="v19-gold-button" type="button" data-lobby-tab="shop">前往道具商店</button>
           </section>
           ${shopMarkup()}
           ${friendsPanelMarkup()
