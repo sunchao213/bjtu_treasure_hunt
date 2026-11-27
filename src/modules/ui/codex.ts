@@ -235,3 +235,5 @@ export async function exportCodexImage(
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+export { warehouseItemIconSvg as itemIconSvg } from './warehouse-items';

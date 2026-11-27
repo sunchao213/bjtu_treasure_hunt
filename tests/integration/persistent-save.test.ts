@@ -31,6 +31,34 @@ const result = (raidId: string, itemId = 'school-badge'): RaidResult => {
 };
 
 describe('formal persistence and migration', () => {
+  it('rejects weighted loadouts and reserved starter slots before changing the save', async () => {
+    const storage = new MemoryStorage();
+    const save = new PersistentSave(storage);
+    await save.beginRaid('seed-slots', []);
+    await save.finalizeRaid({
+      raidId: 'seed-slots',
+      outcome: 'success',
+      reason: null,
+      value: 0,
+      items: Array.from({ length: 4 }, (_, i) => ({
+        instanceId: `purchase:bike-${i}`,
+        itemId: 'yellow-bike',
+        origin: { kind: 'raid-loot', obtainedInRaidId: 'seed-slots' },
+      })),
+    });
+    const before = save.exportRaw();
+    const ids = save.view().warehouse.map((item) => item.instanceId);
+    await expect(save.beginRaid('too-many-slots', ids)).rejects.toThrow('capacity');
+    await expect(save.beginRaid('starter-overflow', ids.slice(0, 3), 1)).rejects.toThrow(
+      'capacity',
+    );
+    expect(save.exportRaw()).toBe(before);
+    expect(storage.getItem(FORMAL_SAVE_KEY)).toBe(before);
+    const carried = await save.beginRaid('valid-slots', ids.slice(0, 3));
+    expect(carried).toHaveLength(3);
+    expect(carried.every((item) => item.origin.kind === 'carry-in')).toBe(true);
+  });
+
   it('saves chapter unlocks atomically with evidence and keeps them after reload and failure', async () => {
     const storage = new MemoryStorage();
     const save = new PersistentSave(storage);
@@ -166,6 +194,60 @@ describe('formal persistence and migration', () => {
       expect(imported.importRaw(raw)).toEqual({ sourceSchemaVersion: 2, targetSchemaVersion: 4 });
       expect(imported.view()).toEqual(save.view());
     }
+  });
+
+  it('merges main schema 4 mailbox saves and map schema 4 wardrobe saves', () => {
+    const mainStorage = new MemoryStorage();
+    const mainTarget = new PersistentSave(mainStorage);
+    const mainSchemaFour = mainTarget.view();
+    delete (mainSchemaFour as Partial<typeof mainSchemaFour>).ownedSkinIds;
+    delete (mainSchemaFour as Partial<typeof mainSchemaFour>).equippedSkinId;
+    delete (mainSchemaFour as Partial<typeof mainSchemaFour>).activeRaidSkinId;
+    mainSchemaFour.mailbox = [
+      {
+        mailId: 'mail-main-4',
+        title: '物资补发',
+        body: '来自 main schema 4',
+        createdAt: 1,
+        attachments: [
+          {
+            instanceId: 'mail-item',
+            itemId: 'school-badge',
+            origin: { kind: 'raid-loot', obtainedInRaidId: 'mail-raid' },
+          },
+        ],
+      },
+    ];
+    expect(mainTarget.importRaw(JSON.stringify(mainSchemaFour))).toEqual({
+      sourceSchemaVersion: 4,
+      targetSchemaVersion: 4,
+    });
+    expect(mainTarget.view()).toMatchObject({
+      mailbox: [{ mailId: 'mail-main-4' }],
+      ownedSkinIds: ['school-uniform'],
+      equippedSkinId: 'school-uniform',
+      activeRaidSkinId: null,
+    });
+
+    const mapStorage = new MemoryStorage();
+    const mapTarget = new PersistentSave(mapStorage);
+    const mapSchemaFour = mapTarget.view();
+    mapSchemaFour.ownedSkinIds.push('red-trailblazer');
+    mapSchemaFour.equippedSkinId = 'red-trailblazer';
+    delete (mapSchemaFour as Partial<typeof mapSchemaFour>).mailbox;
+    mapSchemaFour.activeRaid = { raidId: 'active-map-raid', loadout: [] };
+    mapSchemaFour.activeRaidSkinId = 'red-trailblazer';
+    expect(mapTarget.importRaw(JSON.stringify(mapSchemaFour))).toEqual({
+      sourceSchemaVersion: 4,
+      targetSchemaVersion: 4,
+    });
+    expect(mapTarget.view()).toMatchObject({
+      mailbox: [],
+      ownedSkinIds: ['school-uniform', 'red-trailblazer'],
+      equippedSkinId: 'red-trailblazer',
+      activeRaid: { raidId: 'active-map-raid', loadout: [] },
+      activeRaidSkinId: 'red-trailblazer',
+    });
   });
 
   it('rejects fabricated carry-ins, changed identities, changed origins and duplicate returns', async () => {
@@ -310,7 +392,7 @@ describe('formal persistence and migration', () => {
       inventory,
       save,
       events,
-      RAID_RULES,
+      { ...RAID_RULES, threshold: 100 },
       ITEM_DEFINITIONS,
       () => now,
       () => 'formal-raid',
@@ -353,7 +435,7 @@ describe('formal persistence and migration', () => {
       inventory,
       save,
       events,
-      RAID_RULES,
+      { ...RAID_RULES, threshold: 100 },
       ITEM_DEFINITIONS,
       () => now,
       () => `formal-${++raidNumber}`,

@@ -1,0 +1,55 @@
+{
+  "blenderVersion": "5.2.3 LTS",
+  "sourceKind": "reference-reconstruction",
+  "sourceWebsite": "https://map.bjtu.edu.cn/",
+  "sourceMarker": {
+    "title": "南门",
+    "panoramaTitle": "东校区南门",
+    "x": 14763,
+    "y": 13052
+  },
+  "unitsPerMetre": 32,
+  "runtimeMeshCount": 17,
+  "triangles": 9280,
+  "materials": [
+    "academic_warm_stucco",
+    "blue_grey_window",
+    "brick_paving",
+    "gate_metal",
+    "gate_red_granite",
+    "granite_recess",
+    "light_stone_trim",
+    "limestone_roof",
+    "paving_joints",
+    "school_name_brass"
+  ],
+  "textures": [
+    {
+      "name": "academic-stucco",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "name": "courtyard-brick",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "name": "gate-granite",
+      "width": 256,
+      "height": 256
+    }
+  ],
+  "glbBytes": 626036,
+  "optimization": {
+    "tool": "glTF Transform 4.2.1",
+    "operations": ["dedup", "prune"],
+    "beforeBytes": 631560,
+    "afterBytes": 626036
+  },
+  "validation": {
+    "tool": "Khronos glTF Validator",
+    "errors": 0,
+    "warnings": 0
+  }
+}

@@ -69,6 +69,24 @@ describe('warehouse capacity 100', () => {
     expect(save.view().currency).toBe(490);
   });
 
+  it.each([
+    ['training-bat', 10],
+    ['stun-baton', 25],
+  ])('buys %s, deducts its price and persists it in the warehouse', (itemId, price) => {
+    const storage = seed(0, price);
+    const save = new PersistentSave(storage);
+    const result = save.purchaseItem(itemId);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { itemId, origin: { kind: 'carry-in', source: 'purchase' } },
+    });
+    expect(save.purchaseItem(itemId)).toEqual({ ok: false, error: 'INSUFFICIENT_FUNDS' });
+    expect(new PersistentSave(storage).view()).toMatchObject({
+      currency: 0,
+      warehouse: [expect.objectContaining({ itemId })],
+    });
+  });
+
   it('routes extraction overflow into the mailbox instead of growing the warehouse', async () => {
     const save = new PersistentSave(seed(WAREHOUSE_CAPACITY - 2));
     await save.beginRaid('overflow-raid', []);

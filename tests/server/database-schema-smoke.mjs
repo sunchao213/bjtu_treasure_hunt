@@ -63,12 +63,34 @@ test('schema initialization is repeatable and an online SQLite backup preserves 
       'now',
     );
     db.exec(schema);
-    // user_version=2 起包含好友关系、屏蔽、私聊消息与已读游标（R15）。
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+    // user_version=3 起增加每局成绩及排行榜快照（R16）。
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
+    db.prepare(
+      'INSERT INTO raid_results(user_id, raid_id, settled_at_ms, outcome, value) VALUES(?,?,?,?,?)',
+    ).run('alice-id', 'raid-one', 1, 'success', 100);
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            'INSERT INTO raid_results(user_id, raid_id, settled_at_ms, outcome, value) VALUES(?,?,?,?,?)',
+          )
+          .run('alice-id', 'raid-one', 2, 'success', 200),
+      /UNIQUE/,
+      'a player and raid can only create one immutable result',
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare('UPDATE raid_results SET value=? WHERE user_id=? AND raid_id=?')
+          .run(999, 'alice-id', 'raid-one'),
+      /immutable/,
+      'settled result rows cannot be edited after insertion',
+    );
     await backup(db, join(directory, 'backup.db'));
     const restored = new DatabaseSync(join(directory, 'backup.db'), { readOnly: true });
     try {
       assert.equal(restored.prepare('SELECT revision FROM player_saves').get().revision, 7);
+      assert.equal(restored.prepare('SELECT value FROM raid_results').get().value, 100);
       assert.equal(
         JSON.parse(restored.prepare('SELECT data FROM player_saves').get().data).codexIds[0],
         'school-badge',

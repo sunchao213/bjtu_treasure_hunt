@@ -110,7 +110,7 @@ export const QUEST_CHAPTERS: readonly QuestChapterSpec[] = [
       {
         itemId: EVIDENCE_SOOTHE_CHARM,
         label: '「安抚护符」',
-        searchHint: '去芳华园，用手电寻找安抚护符',
+        searchHint: '前往芳华园求助信号，停住长按 Q 安抚求助者，取得护符',
         placeName: '芳华园',
         spawnZoneId: 'east-garden',
         spawnIndex: 0,
@@ -118,7 +118,7 @@ export const QUEST_CHAPTERS: readonly QuestChapterSpec[] = [
       {
         itemId: EVIDENCE_COMPLETE_RECORD,
         label: '「完整记录」',
-        searchHint: '去中心广场，用手电寻找完整记录',
+        searchHint: '携带本局护符前往中心广场记录台，按 E 读取完整记录',
         placeName: '中心广场',
         spawnZoneId: 'central-lawn',
         spawnIndex: 0,
@@ -146,12 +146,12 @@ export function questChapterForEvidence(itemId: string): string {
 }
 
 /**
- * 当前进行中的章节：第一个尚未解锁的章节；三章全通时停在第三章（已解锁，不再重复发奖）。
+ * 当前进行中的章节：第一个尚未解锁的章节；全部完成后返回 null。
  * 大厅只展示「已解锁章节」与「当前章节」，所以这就是玩家下一步要打的那一关。
  */
-export function activeQuestChapter(unlockedChapterIds: readonly string[]): QuestChapterSpec {
+export function activeQuestChapter(unlockedChapterIds: readonly string[]): QuestChapterSpec | null {
   const next = QUEST_CHAPTERS.find((chapter) => !unlockedChapterIds.includes(chapter.id));
-  return next ?? QUEST_CHAPTERS[QUEST_CHAPTERS.length - 1]!;
+  return next ?? null;
 }
 
 /** 大厅里应当展示的章节：已解锁的全部 + 当前进行中的那一章。 */
@@ -160,7 +160,8 @@ export function visibleQuestChapters(
 ): readonly QuestChapterSpec[] {
   const active = activeQuestChapter(unlockedChapterIds);
   return QUEST_CHAPTERS.filter(
-    (chapter) => chapter.order <= active.order || unlockedChapterIds.includes(chapter.id),
+    (chapter) =>
+      (active !== null && chapter.order <= active.order) || unlockedChapterIds.includes(chapter.id),
   );
 }
 
@@ -191,7 +192,7 @@ export interface QuestProgressView extends CarriedEvidence {
   readonly steleInvestigated: boolean;
 }
 
-function hasEvidence(
+export function hasEvidence(
   items: readonly ItemInstance[],
   evidenceId: string,
   raidId: string | null,
@@ -254,8 +255,9 @@ export function prerequisiteHint(
   chestItemId: string,
   items: readonly ItemInstance[],
   raidId: string | null,
-  chapterId: string = QUEST_CHAPTER_ID,
+  chapterId: string | null = QUEST_CHAPTER_ID,
 ): string | null {
+  if (chapterId === null) return null;
   const chapter = questChapterById(chapterId);
   const [, second] = chapter.evidence;
   if (chestItemId !== second.itemId) {
@@ -269,9 +271,10 @@ export function prerequisiteHint(
 export function isQuestComplete(
   items: readonly ItemInstance[],
   raidId: string | null,
-  chapterOrStele: string | boolean = QUEST_CHAPTER_ID,
+  chapterOrStele: string | boolean | null = QUEST_CHAPTER_ID,
   steleInvestigated = false,
 ): boolean {
+  if (chapterOrStele === null) return false;
   const chapterId = typeof chapterOrStele === 'string' ? chapterOrStele : QUEST_CHAPTER_ID;
   const stele = typeof chapterOrStele === 'boolean' ? chapterOrStele : steleInvestigated;
   return chapterEvidence(items, raidId, chapterId, stele).complete;

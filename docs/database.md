@@ -32,11 +32,15 @@ $env:Auth__DataDirectory = 'E:\BJTU-data'
 | `friend_messages`  | 私聊消息（messageId、正文、时间、会话游标）    | messageId 唯一；id 自增作游标       |
 | `friend_reads`     | 每个会话的已读游标                             | (pairKey, user) 主键；游标只增不减  |
 
-表定义在 `server/Database/schema.sql`，当前 `user_version=2`（v2 起包含好友与私聊，见 `docs/friends.md`）。快照使用游戏存档 schema 3，包含仓库、图鉴、章节、进行中的探索、已结算局 ID 和最近结算。数据库启用 WAL 和外键，以事务、参数化 SQL、账号会话、版本比较和租约保护写入；同一保存请求丢失响应后重试不会重复递增版本。
+表定义在 `server/Database/schema.sql`，当前 `user_version=3`，包含好友、私聊和排行榜。账号快照使用游戏存档 schema 4，包含仓库、邮箱、交子、时装、图鉴、章节、进行中的探索、已结算局 ID 和最近结算。存档模块兼容带邮箱的 main 旧档和带时装的 map 旧档，读取时补齐缺失字段。数据库启用 WAL 和外键，以事务、参数化 SQL、账号会话、版本比较和租约保护写入。同一保存请求丢失响应后重试不会重复递增版本。
 
 `accounts.json` 首次迁移保留原账号 ID、盐与密码哈希，原文件不删除。同目录有无效记录或冲突时整批迁移回滚，服务停止启动，需检查原数据后重试。不要删除迁移标记来强制重导入。
 
 浏览器账号旧存档仅在云端无存档时自动上传；云端已有数据时优先远端。添加登录前的共享存档在游戏内手动确认迁移。HTTP 写入仅从当前会话确定账号，不接受客户端指定其他账号。服务校验快照结构、来源和基本一致性，但当前不负责权威战斗与掉落计算。
+
+## 排行榜数据（R16）
+
+当前数据库 schema 为 `user_version=3`，新增 `raid_results`、`leaderboard_snapshots` 和 `leaderboard_snapshot_entries`。每局成绩由服务端在新结算云存档事务中追加一次，快照保存 24 小时，旧库启动时幂等建表。详细窗口、排序、分页与客户端成绩可信度边界见[排行榜说明](leaderboards.md)。
 
 ## 备份与恢复
 

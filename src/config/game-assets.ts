@@ -1,3 +1,4 @@
+import { CHEST_TIERS } from './chest-config';
 import { MONSTER_FRAME_SIZE, MONSTER_SPRITE_SHEETS } from './monster-sprites';
 
 export interface SpriteSheetAsset {
@@ -18,12 +19,12 @@ const PLAYER_FRAME = { width: 128, height: 160 };
 const PLAYER_ATTACK_FRAME = { width: 314, height: 167 };
 
 const CHARACTER_SHEETS: readonly SpriteSheetAsset[] = [
-  {
-    key: 'treasure-chest',
-    path: 'assets/props/treasure-chest.png',
+  ...Object.values(CHEST_TIERS).map(({ texture }) => ({
+    key: texture,
+    path: `assets/props/${texture}.png`,
     frameWidth: 256,
     frameHeight: 256,
-  },
+  })),
   ...(['idle', 'walk', 'hurt', 'death'] as const).map((state) => ({
     key: `player-${state}`,
     path: `assets/characters/player/player-${state}.png`,

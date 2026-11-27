@@ -1,0 +1,68 @@
+{
+  "kind": "reference-reconstruction",
+  "permission": "用户已授权网站资源复用，并指定此截图区域建模。",
+  "references": [
+    "district-user.png",
+    "district-names-user.png"
+  ],
+  "previousSource": "../siyuan/reference/sources.json",
+  "reconstruction": "本项目 Blender 新建与复用已建思源楼、校门几何体，不是官网原始三维数据。",
+  "assumptions": [
+    "建筑身份与分离关系依用户标注；遮挡背侧、楼高、路宽为估算。",
+    "保留截图内建筑、湖、道路、院落的相对位置；不声称测绘精度。"
+  ],
+  "teaching9Refinement": {
+    "references": [
+      "teaching9-map.png",
+      "teaching9-front.png",
+      "teaching9-side.png"
+    ],
+    "features": "平顶高低楼体、两处院落与横向低体、中央石材门廊和玻璃、侧面底层通道、长窗、空调与屋顶构架。",
+    "limitations": "依据照片和斜视图估算比例；未复制照片中的文字标语、浮雕图案或真实室内。"
+  },
+  "forecourtRefinement": {
+    "retrievedAt": "2026-11-20",
+    "website": "https://map.bjtu.edu.cn/",
+    "tilePattern": "mapdata/zoom2/{column}_{row}.jpg?v=20260624",
+    "columns": [
+      24,
+      29
+    ],
+    "rows": [
+      23,
+      26
+    ],
+    "panoramas": [
+      "qj/bjdzx90/index.html",
+      "qj/bjdzx93/index.html",
+      "qj/bjdzx101/index.html",
+      "qj/bjdzx97/index.html"
+    ],
+    "findings": "完整大草坪位于思源楼正前方，路在草坪两侧；南端饮水思源碑，南侧横路、岛状绿地与小广场树阵，之后是停车带和南门。",
+    "limits": "现场全景与地图美术的年代、树木生长状态不同；按地图恢复边界，以全景核对景观身份与朝向。"
+  },
+  "landmarkRefinement": {
+    "date": "2026-11-20",
+    "references": [
+      "basketball-overlap.png",
+      "tianyou-front.png",
+      "ming-lake-map.png",
+      "library-map.png",
+      "library-front.png"
+    ],
+    "features": "球场退让道路；会堂深檐玻璃与格栅；五星红旗标准排布；圆润湖岸、近岸重檐亭及弧形浅水边；图书馆分层多边形阅览翼与蓝玻璃中庭。",
+    "limits": "按用户提供官网截图及现场照片重建；未提供的背面、尺寸和细节为估算。"
+  },
+  "layoutCorrection20261121": {
+    "references": [
+      "dormitory2-overlap.png",
+      "fanghua-reference.png",
+      "tianyou-east-front-before.png",
+      "teaching7-reference.png",
+      "mao-century-clock-reference.png",
+      "teaching9-remove-annex.png"
+    ],
+    "changes": "2号公寓保持在广场西侧并缩短东端；东侧环路绕芳华园东缘；会堂东面改正立面并加竖排金字；删除第九楼右侧小红房；精修第七楼，前庭加入毛主席像及其前方世纪钟。",
+    "limits": "平面关系依据用户官网截图校正；背面和尺寸为估算，雕像为低模轮廓表达。"
+  }
+}

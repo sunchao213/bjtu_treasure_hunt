@@ -93,7 +93,7 @@ sealed class RoomDirectory
         }
     }
 
-    public RoomAction Start(Client client)
+    public RoomAction Start(Client client, Func<string, string> getEquippedSkin)
     {
         lock (Gate)
         {
@@ -104,15 +104,20 @@ sealed class RoomDirectory
             // 暂时允许未完成剧情的成员进入联机房间。
             if (room.Clients.Values.Any(peer => peer.Id != room.HostId && !peer.Ready))
                 return new("NOT_ALL_READY", "还有队友未准备，请等待所有成员准备。");
+            var loot = new RoomLoot();
+            var skins = room.Clients.Values.ToDictionary(peer => peer.Id, peer => getEquippedSkin(peer.AccountId));
             room.Started = true;
             room.RoundId = Guid.NewGuid().ToString("N");
-            room.Loot = new RoomLoot();
+            room.Loot = loot;
             var seat = 0;
             foreach (var peer in room.Clients.Values)
             {
                 peer.Finished = false;
+                peer.Dead = false;
+                peer.SkinId = skins[peer.Id];
                 peer.Position = CampusWorld.Spawn(seat++);
                 peer.Aim = -MathF.PI / 2;
+                peer.Camera = null;
                 peer.LastInputAt = Environment.TickCount64;
             }
             return new(client.RoomId, room);
@@ -132,7 +137,24 @@ sealed class RoomDirectory
         }
     }
 
-    public Room? Move(Client client, string roundId, long sequence, float dx, float dy, float aim, bool interacting)
+    public RoomAction Die(Client client, string roundId, IReadOnlyList<string> items)
+    {
+        lock (Gate)
+        {
+            if (client.RoomId is null || !rooms.TryGetValue(client.RoomId, out var room)) return NotInRoom();
+            if (!room.Started || room.RoundId != roundId || room.Loot is null)
+                return new("INVALID_ROUND", "本局状态已变化。");
+            if (client.Dead) return new(client.RoomId, room);
+            if (client.Finished) return new("INVALID_ROUND", "本局已结算。");
+            client.Dead = client.Finished = true;
+            room.Loot.Leave(client);
+            room.Loot.DropRelics(client, items);
+            ResetFinishedRound(room);
+            return new(client.RoomId, room);
+        }
+    }
+
+    public Room? Move(Client client, string roundId, long sequence, float dx, float dy, float aim, bool interacting, RoomCamera? camera)
     {
         lock (Gate)
         {
@@ -145,6 +167,7 @@ sealed class RoomDirectory
             client.LastSequence = sequence;
             client.Position = CampusWorld.Move(client.Position ?? CampusWorld.Spawn(0), dx, dy, elapsed);
             client.Aim = Math.Clamp(aim, -MathF.PI, MathF.PI);
+            client.Camera = camera;
             if (MathF.Abs(dx) + MathF.Abs(dy) > 0.1f || !interacting) room.Loot?.Cancel(client);
             return room;
         }
@@ -192,6 +215,8 @@ sealed class RoomDirectory
 
     private static RoomAction NotInRoom() => new("NOT_IN_ROOM", "请先创建或加入房间。");
 }
+
+sealed record RoomCamera(float Distance, float Yaw, float Pitch, bool Overview, bool Flashlight);
 
 sealed record RoomAction
 {

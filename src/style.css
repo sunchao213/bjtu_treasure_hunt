@@ -76,52 +76,6 @@ dialog {
   font-size: 12px;
   line-height: 1.5;
 }
-.v19-room-dialog {
-  width: min(520px, 92vw);
-  padding: 22px;
-}
-.v19-room-dialog .room-input {
-  width: 100%;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 1px solid #566359;
-  background: #111313;
-  color: #e5e7e6;
-  font-size: 18px;
-  letter-spacing: 0.12em;
-}
-.v19-room-status {
-  min-height: 24px;
-  color: #c4d9c3;
-}
-.v19-room-consent {
-  margin-top: 16px;
-}
-.v19-room-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-.v19-room-actions button {
-  flex: 1 1 140px;
-  min-height: 44px;
-}
-.v19-room-members {
-  margin-top: 16px;
-  padding: 10px;
-  border: 1px solid #3f4a42;
-  background: #151917;
-}
-.v19-room-member {
-  margin: 0;
-  padding: 8px 0;
-  border-bottom: 1px solid #303a33;
-  color: #d9e3d8;
-}
-.v19-room-member:last-child {
-  border-bottom: 0;
-}
 @media (max-width: 600px) {
   .player-profile-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -239,6 +193,13 @@ dialog {
   width: auto;
   min-height: auto;
   flex-shrink: 0;
+}
+.room-page .v19-risk-consent {
+  position: static;
+  width: auto;
+  height: auto;
+  margin-top: 16px;
+  color: #fff4dc;
 }
 .room-page .side-card {
   min-width: 0;
@@ -1157,7 +1118,7 @@ html:not([data-touch='true']) #app:not([data-phase='preparing']) #notice {
 #app[data-phase='preparing'] .play-layout {
   display: none;
 }
-#app[data-phase='preparing'] main {
+#app[data-phase='preparing'] #game-page main {
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
@@ -1175,7 +1136,7 @@ html:not([data-touch='true']) #app:not([data-phase='preparing']) #notice {
    被上面的 overflow:hidden 裁掉且整页无滚动路径 → 「开始探索」点不到。
    这里只给桌面端放开主区纵向滚动兜底（触屏端由 mobile-layout.css 的 #app 滚动负责），
    内容放得下时不产生滚动条，常规尺寸的观感不变。 */
-html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
+html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] #game-page main {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1328,32 +1289,6 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
   max-width: 100%;
   min-height: 0;
 }
-.shop-panel .lobby-panel-heading {
-  margin-top: 14px;
-  padding-bottom: 14px;
-  border-color: #78562f;
-}
-.shop-panel .lobby-panel-heading h2 {
-  color: #f5dba1;
-  letter-spacing: 0.12em;
-}
-.shop-panel .lobby-panel-intro {
-  max-width: 88ch;
-  margin: 12px 0 8px;
-  color: #bba98e;
-}
-.shop-wallet {
-  display: inline-flex;
-  align-items: center;
-  gap: 18px;
-  padding: 8px 18px;
-  border: 1px solid #8e6838;
-  background: #160f0c;
-  box-shadow: inset 0 0 0 3px #2d2016;
-  color: #d1ad6a;
-  font-size: 13px;
-  white-space: nowrap;
-}
 .currency-display {
   display: inline-flex;
   align-items: center;
@@ -1373,205 +1308,6 @@ html.lobby-open:not([data-touch='true']) #app[data-phase='preparing'] main {
 .currency-display b {
   font-size: 18px;
   font-weight: 600;
-}
-.shop-wallet b {
-  font-size: 24px;
-}
-.shop-status {
-  min-height: 24px;
-  margin: 0;
-  color: #c4ac85;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.shop-status[data-state='error'] {
-  color: #eeab91;
-}
-.shop-status[data-state='success'] {
-  color: #97d7b2;
-}
-.shop-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 16px;
-  margin: 14px 0 18px;
-}
-.shop-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 20px;
-  border: 1px solid #98703d;
-  border-radius: 2px;
-  background:
-    repeating-linear-gradient(0deg, #0000000a 0 1px, transparent 1px 4px),
-    linear-gradient(150deg, #35271c, #211712 65%);
-  box-shadow:
-    inset 0 0 0 3px #19110c,
-    inset 0 0 0 4px #5d442a,
-    0 6px 14px #0004;
-}
-.shop-card::after {
-  position: absolute;
-  inset: -1px;
-  content: '';
-  pointer-events: none;
-  background:
-    linear-gradient(#e2b76c, #e2b76c) left top / 20px 2px no-repeat,
-    linear-gradient(#e2b76c, #e2b76c) left top / 2px 20px no-repeat,
-    linear-gradient(#e2b76c, #e2b76c) right bottom / 20px 2px no-repeat,
-    linear-gradient(#e2b76c, #e2b76c) right bottom / 2px 20px no-repeat;
-}
-.shop-card:hover,
-.shop-card:focus-within {
-  border-color: #e2b76c;
-}
-.shop-card-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.shop-category,
-.shop-slots,
-.shop-stock {
-  color: #bca585;
-  font-size: 12px;
-}
-.shop-category {
-  color: #e1bf83;
-}
-.shop-item-art {
-  position: relative;
-  display: grid;
-  place-items: center;
-  height: 142px;
-  margin: 14px 0 0;
-  border: 1px solid #6b4b2b;
-  background:
-    radial-gradient(ellipse at 50% 80%, #9e743225, transparent 65%),
-    repeating-linear-gradient(0deg, #00000012 0 1px, transparent 1px 4px), #19120f;
-  box-shadow: inset 0 0 0 3px #241a12;
-}
-.shop-item-art::after {
-  position: absolute;
-  right: 22%;
-  bottom: 10px;
-  left: 22%;
-  height: 1px;
-  content: '';
-  background: linear-gradient(90deg, transparent, #9c733c, transparent);
-}
-.shop-item-art img {
-  display: block;
-  width: 128px;
-  height: 128px;
-  max-width: 100%;
-  object-fit: contain;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 6px 3px #0005);
-}
-.shop-card h3 {
-  margin: 16px 0 8px;
-  color: #f4dfb5;
-  font-size: 20px;
-  letter-spacing: 0.06em;
-}
-.shop-card p {
-  flex: 1;
-  margin: 0 0 16px;
-  color: #c6b69b;
-  font-size: 13px;
-  line-height: 1.7;
-}
-.shop-stock b {
-  color: #edd2a0;
-  font-variant-numeric: tabular-nums;
-}
-.shop-card-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid #73532f;
-}
-.shop-card-footer strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #f0ce86;
-  font-size: 23px;
-  font-variant-numeric: tabular-nums;
-}
-.shop-price img {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-  image-rendering: pixelated;
-}
-.shop-card-footer small {
-  font-size: 12px;
-  font-weight: 400;
-}
-.shop-card .primary {
-  width: auto;
-  min-width: 136px;
-  min-height: 42px;
-  border: 1px solid #c0914b;
-  border-radius: 2px;
-  background: linear-gradient(#642c22, #421b16);
-  box-shadow:
-    inset 0 0 0 2px #2c1410,
-    inset 0 0 0 3px #8b5032;
-  color: #ffe3aa;
-  font-family: inherit;
-  font-size: 14px;
-}
-.shop-card .primary:hover:enabled {
-  border-color: #f0c477;
-  background: linear-gradient(#79382a, #54231a);
-}
-.shop-card .primary:disabled {
-  border-color: #6d5136;
-  background: #30231c;
-  box-shadow: inset 0 0 0 2px #201710;
-  color: #bfa98a;
-  opacity: 1;
-}
-.shop-panel #shop-prepare {
-  min-height: 42px;
-  margin-top: 0;
-  font-family: inherit;
-  font-size: 13px;
-}
-html[data-touch='true'] .shop-panel {
-  width: var(--game-width);
-  height: var(--game-height);
-  min-height: 0;
-  padding: 16px 20px;
-  overscroll-behavior: contain;
-}
-html[data-touch='true'] .shop-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-html[data-touch='true'] .shop-card {
-  padding: 14px;
-}
-html[data-touch='true'] .shop-item-art {
-  height: 112px;
-}
-html[data-touch='true'] .shop-item-art img {
-  width: 96px;
-  height: 96px;
-}
-html[data-touch='true'] .shop-card .primary {
-  width: 100%;
-  min-width: 0;
 }
 .lobby-commandbar {
   display: flex;
@@ -2138,7 +1874,7 @@ html:not([data-touch='true']) .prep-warning {
 }
 /* Touch devices share one landscape layout, including CSS-rotated phones. */
 @media (pointer: coarse) {
-  #app[data-phase='preparing'] main {
+  #app[data-phase='preparing'] #game-page main {
     display: block;
     height: auto;
     padding: 0 12px 12px;
@@ -2252,7 +1988,7 @@ h1 span {
 }
 .play-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 20px;
 }
@@ -3826,7 +3562,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
 #app[data-phase='preparing'] .masthead {
   display: none;
 }
-#app[data-phase='preparing'] main {
+#app[data-phase='preparing'] #game-page main {
   display: block;
   width: 0;
   height: 0;
@@ -3835,7 +3571,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   padding: 0;
   overflow: visible;
 }
-#app[data-phase='preparing'] main > :not(#prep-view) {
+#app[data-phase='preparing'] #game-page main > :not(#prep-view) {
   display: none !important;
 }
 #app[data-phase='preparing'] .v19-prep-page {
@@ -4501,7 +4237,10 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   border-radius: 2px;
   background: #2a1a10;
   color: #ffe4a0;
-  font: 13px/1.2 'Zpix', 'Microsoft YaHei', sans-serif;
+  font:
+    13px/1.2 'Zpix',
+    'Microsoft YaHei',
+    sans-serif;
   cursor: pointer;
 }
 .mail-claim:hover:not(:disabled) {

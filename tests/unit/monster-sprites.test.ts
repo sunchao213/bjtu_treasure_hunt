@@ -82,8 +82,23 @@ describe('monster sprite manifest', () => {
       expect(monsterAnimationFor(makeEnemy({ species, state: 'dead' }), false)).toBe(
         `${species}-death`,
       );
-      expect(monsterScaleFor(makeEnemy({ species }))).toBe(0.4);
+      expect(monsterScaleFor(makeEnemy({ species }))).toBe(species === 'cat' ? 0.26 : 0.4);
     }
+  });
+
+  it('maps amplifier states and exposes the standalone sound wave animation', () => {
+    const amplifier = makeEnemy({ kind: 'amplifier' });
+    expect(monsterAnimationFor(amplifier, false)).toBe('amplifier-idle');
+    expect(monsterAnimationFor(amplifier, true)).toBe('amplifier-walk');
+    expect(monsterAnimationFor({ ...amplifier, state: 'windup' }, false)).toBe('amplifier-attack');
+    expect(monsterAnimationFor({ ...amplifier, state: 'recovery' }, false)).toBe('amplifier-idle');
+    expect(monsterAnimationFor({ ...amplifier, state: 'stunned' }, false)).toBe('amplifier-idle');
+    expect(monsterAnimationFor({ ...amplifier, state: 'dead' }, false)).toBe('amplifier-death');
+    expect(monsterScaleFor(amplifier)).toBe(0.44);
+    expect(MONSTER_ANIMATIONS['amplifier-wave']).toMatchObject({
+      texture: 'amplifier-wave',
+      repeat: -1,
+    });
   });
 
   it('keeps the reduced relative scale for each visual variant', () => {

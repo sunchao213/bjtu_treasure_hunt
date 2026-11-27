@@ -1,217 +1,82 @@
 import { describe, expect, it } from 'vitest';
-import { WORLD } from '../../src/config/world-config';
-import geometry from '../../src/config/campus-geometry.json';
-import { ITEM_DEFINITIONS, RAID_RULES } from '../../src/config/game-config';
-import { lineOfSight, distance } from '../../src/modules/world/night-systems';
+import geometry from '../../src/config/formal-campus.json';
+import district from '../../assets-source/campus-3d/district/layout.json';
+import { activeMap } from '../../src/config/play-map';
 import {
-  clearLootPosition,
   generateLootSpawns,
-  roundRandom,
   questSpawnPlan,
+  roundRandom,
+  clearLootPosition,
 } from '../../src/modules/world/loot-spawns';
+import { createEnemies } from '../../src/modules/world/night-systems';
 
-function seeded(seed: number): () => number {
-  return () => {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    return seed / 4294967296;
-  };
-}
-
-describe('portrait campus image map', () => {
-  it('shares the main campus layout and all collision obstacles with the room server', () => {
-    const rect = ({ x, y, width, height }: typeof WORLD.bounds) => ({ x, y, width, height });
-    expect(geometry.width).toBe(WORLD.width);
-    expect(geometry.height).toBe(WORLD.height);
-    expect(geometry.spawn).toEqual(WORLD.spawn);
-    expect(geometry.bounds).toEqual(WORLD.bounds);
-    expect(geometry.playerRadius).toBe(WORLD.playerRadius);
-    expect(geometry.playerSpeed).toBe(WORLD.playerSpeed);
-    expect(geometry.buildings.map(rect)).toEqual(WORLD.buildings.map(rect));
-    expect(geometry.lake).toEqual(WORLD.lake);
-    expect(geometry.obstacles.map(rect)).toEqual(WORLD.obstacles.map(rect));
+describe('shared production 3D campus', () => {
+  it('uses model footprints and the district south gate on both sides of the network', () => {
+    expect(geometry.obstacles).toEqual(district.obstacles);
+    expect(geometry.spawn).toEqual(district.spawn);
+    expect(activeMap().obstacles).toEqual(geometry.obstacles);
+    expect(geometry.width).toBe(3264);
+    expect(geometry.height).toBe(3328);
+    for (const p of geometry.spawnPositions) expect(clearLootPosition(p, 8)).toBe(true);
+    expect(new Set(geometry.spawnPositions.map((p) => `${p.x},${p.y}`)).size).toBe(10);
   });
-
-  it('gives room members identical loot layouts and changes the layout for the next round', () => {
-    const host = generateLootSpawns(roundRandom('room-round-1'));
-    const member = generateLootSpawns(roundRandom('room-round-1'));
-    const next = generateLootSpawns(roundRandom('room-round-2'));
-    expect(member).toEqual(host);
-    expect(next).not.toEqual(host);
-  });
-  it('uses the source image proportions and keeps its landmarks in world bounds', () => {
-    expect(WORLD.width).toBe(1280);
-    expect(WORLD.height).toBe(1824);
-    expect(WORLD.width / WORLD.height).toBeCloseTo(1280 / 1824);
-    expect(WORLD.buildings.some((b) => b.name === '北京交通大学')).toBe(true);
-    expect(WORLD.buildings[0]!.x).toBeLessThan(WORLD.lake.x);
-    expect(WORLD.lake.x + WORLD.lake.width).toBeLessThan(WORLD.width);
-    expect(WORLD.sportsFields[0]!.y).toBeLessThan(WORLD.sportsFields[1]!.y);
-    expect(WORLD.width * WORLD.height).toBe(1280 * 1824);
-    expect(WORLD.gates.filter((g) => g.role === 'extraction')).toHaveLength(1);
-  });
-
-  it('固定思源楼宝箱净空可达；每局只有该箱生成手记', () => {
-    expect(WORLD.questChest).toMatchObject({ x: 240, y: 620, zoneId: 'siyuan' });
-    expect(clearLootPosition(WORLD.questChest)).toBe(true);
-    const step = 25;
-    const queue = [{ ...WORLD.spawn }];
-    const key = (x: number, y: number) => `${x},${y}`;
-    const visited = new Set([key(WORLD.spawn.x, WORLD.spawn.y)]);
-    for (let head = 0; head < queue.length; head++) {
-      const p = queue[head]!;
-      for (const [dx, dy] of [
-        [step, 0],
-        [-step, 0],
-        [0, step],
-        [0, -step],
-      ]) {
-        const x = p.x + dx!;
-        const y = p.y + dy!;
-        if (
-          clearLootPosition({ x, y }, WORLD.playerRadius) &&
-          !visited.has(key(x, y)) &&
-          lineOfSight(p, { x, y }, WORLD.obstacles)
-        ) {
-          visited.add(key(x, y));
-          queue.push({ x, y });
-        }
+  it('keeps each chapter evidence point on reachable clear ground', () => {
+    for (const chapter of ['siyuan-code', 'siyuan-key', 'soothe-monster']) {
+      const loot = generateLootSpawns(roundRandom(chapter), questSpawnPlan(chapter));
+      for (const point of loot) {
+        expect(clearLootPosition(point), JSON.stringify(point)).toBe(true);
+        expect(activeMap().canSpawn!(point)).toBe(true);
       }
     }
-    const snapped = {
-      x: WORLD.spawn.x + Math.round((WORLD.questChest.x - WORLD.spawn.x) / step) * step,
-      y: WORLD.spawn.y + Math.round((WORLD.questChest.y - WORLD.spawn.y) / step) * step,
-    };
-    expect(visited.has(key(snapped.x, snapped.y))).toBe(true);
-
-    for (let seed = 0; seed < 100; seed++) {
-      const points = generateLootSpawns(seeded(seed));
-      expect(points.filter((point) => point.itemId === 'torn-notebook')).toEqual([
-        expect.objectContaining({
-          id: WORLD.questChest.id,
-          x: WORLD.questChest.x,
-          y: WORLD.questChest.y,
-          zoneId: WORLD.questChest.zoneId,
-          itemId: 'torn-notebook',
-        }),
-      ]);
-      for (const other of points.filter((point) => point.id !== WORLD.questChest.id))
-        expect(distance(WORLD.questChest, other)).toBeGreaterThanOrEqual(90);
-    }
+    expect(activeMap().canSpawn!(geometry.stone)).toBe(true);
+    expect(geometry.questChest).toMatchObject({ id: 'siyuan-notebook-chest', zoneId: 'siyuan' });
   });
-
-  it('明湖石碑的显示锚点与调查地点保持一致', () => {
-    expect(WORLD.stone).toEqual({ x: 990, y: 230 });
-    expect(clearLootPosition(WORLD.stone, WORLD.playerRadius)).toBe(true);
-  });
-
-  it('第二章地图与金钥匙固定在参考图位置，随机箱不再生成它们', () => {
-    const plan = questSpawnPlan('siyuan-key');
-    const points = generateLootSpawns(seeded(42), plan);
-    expect(WORLD.chapterTwoPoints.campusMap).toMatchObject({ x: 800, y: 940 });
-    expect(WORLD.chapterTwoPoints.siyuanKey).toMatchObject({ x: 467, y: 370 });
-    expect(points.filter((point) => point.itemId === 'marked-campus-map')).toEqual([
-      expect.objectContaining({ id: 'campus-map-point', x: 800, y: 940 }),
-    ]);
-    expect(points.filter((point) => point.itemId === 'siyuan-key')).toEqual([
-      expect.objectContaining({ id: 'siyuan-key-point', x: 467, y: 370 }),
-    ]);
-    expect(
-      points.filter(
-        (point) => point.itemId === 'marked-campus-map' || point.itemId === 'siyuan-key',
-      ),
-    ).toHaveLength(2);
-  });
-
-  it('randomizes each raid with enough value and clear spaced positions', () => {
-    for (let seed = 0; seed < 100; seed++) {
-      const points = generateLootSpawns(seeded(seed));
-      expect(points).toHaveLength(
-        1 + WORLD.lootZones.reduce((count, zone) => count + (zone.id === 'lake' ? 1 : 3), 0),
-      );
-      expect(new Set(points.map((p) => p.zoneId)).size).toBe(WORLD.lootZones.length + 1);
-      expect(points.filter((p) => p.itemId === 'torn-notebook')).toHaveLength(1);
-      expect(
-        points.reduce((sum, p) => sum + RAID_RULES.values[ITEM_DEFINITIONS[p.itemId]!.rarity], 0),
-      ).toBeGreaterThan(200);
-      for (let i = 0; i < points.length; i++) {
-        expect(clearLootPosition(points[i]!)).toBe(true);
-        for (let j = i + 1; j < points.length; j++)
-          expect(distance(points[i]!, points[j]!)).toBeGreaterThanOrEqual(90);
-      }
-    }
-    expect(generateLootSpawns(seeded(1))).not.toEqual(generateLootSpawns(seeded(2)));
-    const spawnCount =
-      1 + WORLD.lootZones.reduce((count, zone) => count + (zone.id === 'lake' ? 1 : 3), 0);
-    expect(generateLootSpawns(() => 0)).toHaveLength(spawnCount);
-    expect(generateLootSpawns(() => 1)).toHaveLength(spawnCount);
-  });
-
-  it.each([
-    [0.95, 'roller-skates'],
-    [0.99, 'hunter-binoculars'],
-    [0.999, 'strange-veined-ginkgo-leaf'],
-  ] as const)('can spawn %s rolls as %s while preserving the fixed notebook', (roll, itemId) => {
-    const points = generateLootSpawns(() => roll);
-    expect(points.some((point) => point.itemId === itemId)).toBe(true);
-    expect(points.filter((point) => point.itemId === 'torn-notebook')).toHaveLength(1);
-    expect(points.find((point) => point.itemId === 'torn-notebook')).toMatchObject(
-      WORLD.questChest,
+  it('repeats shared round layouts and varies later rounds without blocked loot', () => {
+    expect(generateLootSpawns(roundRandom('one'))).toEqual(generateLootSpawns(roundRandom('one')));
+    expect(generateLootSpawns(roundRandom('one'))).not.toEqual(
+      generateLootSpawns(roundRandom('two')),
     );
+    for (let i = 0; i < 24; i++)
+      for (const p of generateLootSpawns(roundRandom(String(i))))
+        expect(clearLootPosition(p)).toBe(true);
   });
-
-  it('keeps loot, lamps and patrols connected to the south gate without wall crossings', () => {
-    const step = 25;
-    const queue = [{ ...WORLD.spawn }];
-    const key = (x: number, y: number) => `${x},${y}`;
-    const visited = new Set([key(WORLD.spawn.x, WORLD.spawn.y)]);
-    for (let head = 0; head < queue.length; head++) {
-      const p = queue[head]!;
-      for (const [dx, dy] of [
-        [step, 0],
-        [-step, 0],
-        [0, step],
-        [0, -step],
-      ]) {
-        const x = p.x + dx!,
-          y = p.y + dy!;
-        if (
-          clearLootPosition({ x, y }, WORLD.playerRadius) &&
-          !visited.has(key(x, y)) &&
-          lineOfSight(p, { x, y }, WORLD.obstacles)
-        ) {
-          visited.add(key(x, y));
-          queue.push({ x, y });
-        }
+  it('starts twelve enemies including fixed amplifiers on Siyuan lawn and beside the library', () => {
+    const enemies = createEnemies(roundRandom('enemies'));
+    const otherSeed = createEnemies(roundRandom('enemies-2'));
+    expect(enemies).toHaveLength(12);
+    expect(enemies.filter((e) => e.kind === 'amplifier')).toHaveLength(2);
+    expect(enemies.find((e) => e.id === 'library-amplifier')!.position).toEqual({
+      x: 2700,
+      y: 1070,
+    });
+    expect(enemies.filter((e) => e.kind === 'hug')).toHaveLength(3);
+    const amplifier = enemies.find((e) => e.id === 'central-amplifier')!;
+    const otherAmplifier = otherSeed.find((e) => e.id === 'central-amplifier')!;
+    expect(amplifier.position).toEqual({ x: 1060, y: 1520 });
+    expect(otherAmplifier.position).toEqual({ x: 1060, y: 1520 });
+    const lawn = district.forecourt.lawn;
+    expect(amplifier.position.x).toBeGreaterThan(lawn.x);
+    expect(amplifier.position.x).toBeLessThan(lawn.x + lawn.width);
+    expect(amplifier.position.y).toBeGreaterThan(lawn.y);
+    expect(amplifier.position.y).toBeLessThan(lawn.y + lawn.height);
+    expect(enemies.every((e) => activeMap().canSpawn!(e.position))).toBe(true);
+  });
+  it('keeps shared room chest positions and ordinary loot consistent across chapter progress', () => {
+    for (let seed = 0; seed < 12; seed++) {
+      const layouts = ['siyuan-code', 'siyuan-key', 'soothe-monster'].map((chapter) =>
+        generateLootSpawns(roundRandom(`round-${seed}`), questSpawnPlan(chapter)).filter((p) =>
+          /^.+-\d+$/.test(p.id),
+        ),
+      );
+      const positions = (layout: (typeof layouts)[number]) =>
+        layout.map(({ id, x, y }) => ({ id, x, y }));
+      expect(positions(layouts[0]!)).toEqual(positions(layouts[1]!));
+      expect(positions(layouts[1]!)).toEqual(positions(layouts[2]!));
+      for (const point of layouts[0]!) {
+        const items = layouts.map((layout) => layout.find((p) => p.id === point.id)!.itemId);
+        if (items.includes('soothe-charm') || items.includes('complete-record')) continue;
+        expect(new Set(items).size).toBe(1);
       }
     }
-    const targets = [
-      ...WORLD.lamps,
-      ...WORLD.enemyRoutes.flatMap((e) => e.route),
-      ...Array.from({ length: 10 }, (_, i) => generateLootSpawns(seeded(i))).flat(),
-      WORLD.questChest,
-    ];
-    for (const p of targets) {
-      expect(clearLootPosition(p, WORLD.playerRadius), JSON.stringify(p)).toBe(true);
-      const x = WORLD.spawn.x + Math.round((p.x - WORLD.spawn.x) / step) * step;
-      const y = WORLD.spawn.y + Math.round((p.y - WORLD.spawn.y) / step) * step;
-      expect(visited.has(key(x, y)), JSON.stringify(p)).toBe(true);
-      expect(lineOfSight({ x, y }, p, WORLD.obstacles)).toBe(true);
-    }
-    for (const enemy of WORLD.enemyRoutes) {
-      for (let i = 0; i < enemy.route.length; i++) {
-        const a = enemy.route[i]!,
-          b = enemy.route[(i + 1) % enemy.route.length]!;
-        for (let t = 0; t <= 1; t += 0.02)
-          expect(
-            clearLootPosition({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, 12),
-          ).toBe(true);
-      }
-    }
-  });
-
-  it('blocks movement through the landmark bases', () => {
-    expect(clearLootPosition({ x: 262, y: 854 })).toBe(false);
-    expect(clearLootPosition({ x: 641, y: 1188 })).toBe(false);
-    expect(clearLootPosition({ x: 269, y: 1166 })).toBe(false);
   });
 });

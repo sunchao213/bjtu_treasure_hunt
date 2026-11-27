@@ -125,3 +125,78 @@
 - 房间聊天接入当前账号认证后的 WebSocket 服务端，服务端只向房间成员广播并使用账号昵称，消息长度上限为 160 字符。
 - 验证：45 个测试文件 / 354 条单元测试通过；lint、数据库冒烟测试和 Vite 生产打包通过。TypeScript 检查因工作区缺少 `@types/node` 未通过；服务端集成测试因未安装 .NET SDK 未运行；未做浏览器实机验收。
 - 限制：当前「补齐队友」只提供玩家可选状态，服务端尚无自动匹配或机器人补位行为。
+
+## 十、2026-11-26 简易探测器局内特效（CHG-39）
+
+- 改动前：正式 Three.js 场景已保存最近未调查物资箱的目标和 8 秒截止时间，但没有显示对应局内方向素材。
+- 改动后：成功消耗简易探测器后，头顶播放一次 1.2 秒开机图集；绿色物资箱箭头围绕人物显示，随人物位置、镜头朝向更新，并在末尾淡出。
+- 目标箱被调查、时间到期、死亡、换局或销毁时隐藏；使用失败不消耗、不重新播放。沿用原目标选择和 8 秒时长，未改团队接口、网络协议、存档或数值。
+- 文件：`src/campus-3d/detector-effect-view.ts`、`src/campus-3d/view.ts`、`src/campus-3d/world-frame.ts`、`src/config/item-effects.ts`、`src/modules/world/formal-world.ts`；原图、导入脚本和来源说明见 `assets-source/item-effects/`、`scripts/prepare_detector_effects.py`、`public/assets/effects/README.md`。
+- 自动验证：新增 6 条回归测试，全量 82 个文件 / 585 条测试、ESLint、TypeScript、数据库 3 条测试及生产构建通过。
+- 完整门禁：已运行 `npm run check`，被 8 个既有文件的 Prettier 格式问题阻断（`mail-panel.ts`、`warehouse-panel.ts`、`style.css` 及 5 个历史探测脚本）；这些文件未在本次改动中修改，其余门禁已单独执行。
+
+- 浏览器验证：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --detector-only` 通过；覆盖桌面 1280×720、1440×900、1024×576 和手机触屏模拟。验证成功使用、最近目标、镜头转向、重复使用、到期、目标调查及无目标拒绝，页面无滚动。证据在 `artifacts/game-flow-1795656156122/`；未在真实手机上验收。
+
+## 十一、2026-11-26 速记卡片局内特效（CHG-40）
+
+- 改动前：速记卡片已有下一次搜索加速逻辑，正式 Three.js 场景缺少使用动画和待用提示。
+- 改动后：成功消耗后，人物头顶播放 1 秒、16 帧书写动画，随后头部旁显示小卡片图标。图标随人物和镜头移动，待用期间持续显示，使用加速搜索时轻微闪动，搜索完成或中断后隐藏。
+- 沿用搜索开始时消耗加速的原规则；充电等非搜索交互保留加速。重复使用失败不消耗、不重播；死亡、换局和销毁后清理。未修改搜索时长算法、玩法数值、共享接口、网络协议或存档结构。
+- 文件：`src/campus-3d/quick-note-effect-view.ts`、`src/campus-3d/view.ts`、`src/campus-3d/world-frame.ts`、`src/config/item-effects.ts`、`src/modules/world/formal-world.ts`、`src/modules/world/search-interaction.ts`；原图与导入脚本见 `assets-source/item-effects/`、`scripts/prepare_quick_note_effects.py`，来源见 `public/assets/effects/README.md`。
+- 自动验证：新增 5 条回归测试，全量 83 个文件 / 590 条测试、ESLint、TypeScript、数据库 3 条测试及生产构建通过。原图与运行时素材字节一致。
+- 完整门禁：已运行 `npm run check`，仍被 8 个既有文件的 Prettier 格式问题阻断（`mail-panel.ts`、`warehouse-panel.ts`、`style.css` 及 5 个历史探测脚本）；未修改这些无关文件，其余检查已单独执行。
+- 浏览器验证：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --quick-note-only` 通过，覆盖桌面 1280×720、1440×900、1024×576 与手机触屏模拟；验证成功使用、使用动画、待用提示、拒绝重复使用、移动与镜头跟随、加速搜索、完成清理、下一次正常搜索及中断清理，桌面页面无滚动。证据在 `artifacts/game-flow-1795656903570/`；未在真实手机上验收。
+
+## 十二、2026-11-26 猫咪怪近距离伏击（CHG-41）
+
+- 改动前：猫咪与鸭子、天鹅共用巡逻和主动追击逻辑，物种字段只选择贴图。
+- 改动后：猫咪使用独立的潜伏 → 扑击预警 → 快速扑击 → 短暂隐身 → 再潜伏流程。优先寻找附近可直达、可行走的树干/建筑碰撞边缘，不再远距离追逐玩家；现有地图未提供独立草丛标记，没有新增草丛判定或地图数据。
+- 猫咪视觉缩为原来的 65%；潜伏时以 18% 不透明度显示，隐藏血条和脚下光圈。玩家进入 115 单位且无遮挡时触发 220ms 预警，以 420 单位/秒沿锁定方向扑出，最多持续 360ms；命中、遇墙或扑空后隐身 1.2 秒，攻击间隔 1.8 秒。侧移可躲避，眩晕可打断，扑击每次最多伤害一次。
+- 生命、伤害、掉落、刷新总量、其他敌人和所有共享端口/网络协议/存档沿用现有规则；仅新增猫咪行为参数，2D 与正式 3D 共用同一状态机。
+- 文件：`src/config/combat-config.ts`、`src/modules/world/night-systems.ts`、`src/config/monster-sprites.ts`、`src/campus-3d/enemy-view.ts`、`src/scenes/world-scene.ts`、`tests/unit/cat-ambush.test.ts`、`tests/unit/monster-sprites.test.ts`、`tests/browser/game-flow-smoke.mjs`。
+- 自动验证：新增 10 条猫咪回归测试；全量 84 个文件 / 600 条测试、ESLint、TypeScript、数据库 3 条测试和生产构建通过。
+- 完整门禁：已运行 `npm run check`，仍被 8 个既有文件的 Prettier 格式问题阻断（mail-panel.ts、warehouse-panel.ts、style.css 及 5 个历史探测脚本）；未修改这些无关文件。
+- 浏览器验证：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --cat-only` 通过。桌面 1280×720、1440×900、1024×576 和手机 390×844 触屏模拟，验证小体型、潜伏时隐藏标记、近距预警、扑击单次伤害、隐身与恢复，页面无滚动，浏览器未捕获异常。证据：`artifacts/game-flow-1795657513677/`；未在真实手机上验收。
+
+## 十三、2026-11-26 折叠铁尺局内特效（CHG-42）
+
+- 需求：将用户提供的双重斩击与火星图集接入正式局内，形成「两段短残影 + 小火星」。
+- 素材：两张 1536×1024 RGBA 原图按字节备份；通过 `scripts/prepare_ruler_effects.py` 统一切成 1024×512、4×2 共 8 帧，固定裁切坐标和等比缩放，清理近乎不可见光晕、移除残影下方第三道亮痕，透明像素 RGB 归零。深浅底放大检查无黑底、无矩形边缘；运行版合计约 100KB。
+- 正式场景：新增 `src/config/weapon-effects.ts` 与 `src/campus-3d/ruler-effect-view.ts`，在 `FormalWorld` 实际获准攻击后记录出手位置、方向和本次实际扣血的可见目标，通过内部 `WorldFrame` 向 `CampusView` 提供表现。残影 160ms，火星 140ms；挥空、隔墙、冷却拒绝不产生假命中，支持多目标和致死命中。保留深度遮挡，复用精灵，随当前镜头投影出手方向；暂停、结算、换局及销毁隐藏或清理。
+- 范围：仅正式 Three.js 局内当前玩家的铁尺特效；保留其他武器表现、已有音效和命中反馈，不修改伤害、范围、冷却、共享端口、存档或网络协议。
+- 验证：新增 7 条专项测试；全量 `npx vitest run --maxWorkers=2` 为 85 文件 / 607 条通过，数据库 3 条通过，ESLint 与 TypeScript、生产构建通过。第一次高并行测试的充电站测试超时，降低并发后全量通过，未修改该测试或其阈值。
+- 浏览器：`DOTNET_ROLL_FORWARD=Major node tests/browser/game-flow-smoke.mjs --ruler-only` 桌面与触屏模拟通过，验证真实攻击伤害、挥空、锁定方向、四方向、过期、暂停与真实键盘/触屏输入。桌面 1280×720、1440×900、1024×576 截图与零滚动检查；手机 390×844 使用现有横屏布局，未在真机验收。证据见 `artifacts/game-flow-1795658666064/`。
+- 门禁限制：已运行 `npm run check`，被本轮未改动的 8 处既有格式问题阻断：`src/modules/ui/mail-panel.ts`、`src/modules/ui/warehouse-panel.ts`、`src/style.css`、`scripts/probe-grid.mjs`、`scripts/probe-lobby-subpages.mjs`、`scripts/probe-warehouse-capacity.mjs`、`scripts/probe-warehouse-top.mjs`、`scripts/shot-warehouse.mjs`。未为通过门禁改动无关文件；本轮改动文件单独格式检查通过。
+- 状态：用户于 2026-11-26 明确要求连同 CHG-43 一起提交到本地 Git，不推送远端。
+
+## 十四、2026-11-26 折叠铁尺残影移到人物头顶（CHG-43）
+
+- 需求：人物前方的残影不够清楚，将铁尺双残影移到人物头顶上方。
+- 改动：双残影从当前人物脚底沿镜头向上方向偏移 1.8 个世界单位，随人物移动和镜头转动保持在头顶；保留本次出手方向。残影关闭深度测试并后绘制，避免被人物遮挡。小火星仍固定在敌人的实际受击点，保留原深度遮挡。
+- 范围：仅调整表现位置与绘制层次；伤害、攻击范围、冷却、动画时长、共享端口、存档和网络协议均未修改。
+- 文件：`src/config/weapon-effects.ts`、`src/campus-3d/ruler-effect-view.ts`、`src/campus-3d/view.ts`、`tests/unit/ruler-effect.test.ts`、`tests/browser/game-flow-smoke.mjs`；素材说明同步至 `public/assets/effects/README.md`。
+- 自动验证：8 条铁尺专项测试、ESLint、TypeScript 和生产构建通过。已运行 `npm run check`，仍被 8 个既有文件的 Prettier 格式问题阻断（`mail-panel.ts`、`warehouse-panel.ts`、`style.css` 及 5 个历史探测脚本）。
+- 浏览器验证：铁尺专项桌面与触屏模拟通过；覆盖桌面 1280×720、1440×900、1024×576 和手机 390×844 横屏布局模拟，检查头顶位置、四个方向、人物及镜头跟随、真实命中与挥空、冷却拒绝、动画结束、暂停及真实攻击输入。桌面无页面滚动，浏览器未捕获异常。最终截图与结果：`artifacts/game-flow-1795659246604/`；未在真实手机上验收。
+- 提交前复核：从暂存内容导出独立副本，84 个测试文件 / 598 条测试、数据库 3 条测试、ESLint、TypeScript 和生产构建全部通过；不包含工作区中的猫咪等其他未提交改动。用户已明确要求本地提交，不推送远端。
+
+## 十五、2026-11-26 初始及动态敌人刷新调整（CHG-44）
+
+- 图书馆入口南侧固定新增 1 只扩音器怪，使用合法可达位置（2700, 1070）；原思源广场中央扩音器（1060, 1520）保留。两点分属不同遭遇分区。
+- 扩音器动态刷新概率由 50% 调至 86%；全图存活上限仍为 2，每个 700×700 遭遇分区上限仍为 1，刷新尝试间隔仍为 45 秒。
+- 普通怪每批刷新上限由 4 调至 6；抱抱怪刷新间隔由 100 秒调至 80 秒，每次最多新增 3 只。仍受全图 22 只存活上限、可用位置和可达地面约束。
+- 新增位置、概率边界、批次、计时、总容量和无空位停止测试；桌面浏览器实测开局两只扩音器、6 只普通怪和 80 秒时 3 只抱抱怪。
+- 验证：全量 Vitest 170 文件 / 1213 条通过（其中包括 artifacts 内既有快照测试副本）；相关生成测试 101 条通过、ESLint、TypeScript、数据库 3 条和生产构建通过；Chrome 1280×720、1440×900、1024×576 无滚动。截图：`artifacts/game-flow-1795674014970/`。
+- 完整 `npm run check` 仍受 8 处既有 Prettier 格式问题影响，本轮范围文件单独格式化。未提交之外文件不会纳入本次提交。
+
+## 十六、2026-11-26 商店复用背包素材及武器上架（CHG-45）
+
+- 商店商品复用仓库稀有度格框、名称栏和物品图标，余额复用交子徽章。砖墙、返回箭头及红色按钮均取自背包与仓库现有素材。
+- 上架训练棍与电击器，新增售价沿用各自现有物品价值，分别为 10 和 25 交子。购买后按原流程存入仓库，可在出发准备时选择带入。
+- 本地试玩验证大厅与背包的商店入口、两件武器购买扣款和仓库入库。桌面 1280×720、1440×900、1024×576 下两排商品与底部操作均可见，页面和商品区均无溢出。
+- Vitest 87 个文件共 620 条通过，ESLint、TypeScript 和生产构建通过。`npm run check` 在 8 个既有 Prettier 问题处停止。单独运行数据库测试时，现有 schema 版本为 2，测试期望 3。
+
+## 十七、2026-11-26 登录、联机大厅与商城时装（CHG-46）
+
+- 登录和房间复用大厅的像素字体、砖墙和按钮。大厅队友位与组队模式使用同一个房间页。
+- 商城增加「时装」分类。大厅时装页可以购买和穿戴，两个入口共用账号余额和拥有状态。
+- 联机观战随存活队友的位置、镜头方向、俯角、缩放、总览与手电开关更新。

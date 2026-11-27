@@ -93,7 +93,7 @@ html[data-touch='true'] #game-canvas {
 html[data-touch='true'] #game-canvas canvas {
   width: 100%;
   height: 100%;
-  touch-action: auto;
+  touch-action: none;
 }
 html[data-touch='true'] #app select {
   min-width: 0;
@@ -291,4 +291,87 @@ html[data-touch='true'] .campus-map-dialog canvas {
   min-width: 0;
   width: 100%;
   height: auto;
+}
+/* Keep the backpack beside the left movement stick, with the inventory above it. */
+html[data-touch='true'] #app .mobile-toolbar {
+  display: none;
+}
+html[data-touch='true'] #app .map-panel {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 44px minmax(0, 1fr) 30px;
+}
+html[data-touch='true'] #app .map-top {
+  display: flex;
+  justify-content: space-between;
+}
+html[data-touch='true'] #app .map-scene {
+  display: none;
+}
+html[data-touch='true'] #app .map-top > span:first-child {
+  font-size: 10px;
+}
+html[data-touch='true'] #app .map-hud-right {
+  gap: 8px;
+  font-size: 10px;
+}
+html[data-touch='true'] #app .raid-value {
+  top: 14px;
+  left: 50%;
+  font-size: 11px;
+}
+html[data-touch='true'] #app .backpack-button {
+  left: 104px;
+  bottom: 12px;
+  width: 46px;
+  height: 46px;
+}
+html[data-touch='true'] #app .backpack-button kbd,
+html[data-touch='true'] #open-raid-settings kbd {
+  display: none;
+}
+html[data-touch='true'] #app .raid-inventory {
+  left: 104px;
+  bottom: 66px;
+  width: 208px;
+  max-height: calc(100% - 72px);
+}
+html[data-touch='true'] #app .inventory-details {
+  padding: 5px 8px;
+}
+html[data-touch='true'] #app .inventory-details .mini {
+  min-height: 44px;
+  padding: 5px 16px;
+}
+html[data-touch='true'] #app .slot-count {
+  font-size: 10px;
+}
+html[data-touch='true'] #app[data-mobile='true'] .campus-map-button {
+  height: clamp(76px, calc(var(--game-height) * 0.24), 112px);
+}
+html[data-touch='true'] #app #open-raid-settings {
+  min-height: 38px;
+  padding: 3px 8px;
+}
+html[data-touch='true'] #app .interaction {
+  padding: 2px 8px;
+}
+html[data-touch='true'] #app .interaction #extract {
+  font-size: 10px;
+}
+html[data-touch='true'] .raid-settings[open] {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+html[data-touch='true'] .raid-settings .rules-content {
+  max-height: none;
+}
+html[data-touch='true'] .raid-settings .settings input {
+  min-height: 36px;
+}
+html[data-touch='true'] #app[data-bag-open='true'] .map-toast {
+  left: 330px;
+  max-width: calc(100% - 520px);
+  transform: none;
+}
+html[data-touch='true'] #app[data-bag-open='true'] .tutorial-card {
+  display: none;
 }

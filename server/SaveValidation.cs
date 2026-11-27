@@ -14,7 +14,10 @@ static class SaveValidation
             || !Strings(data, "settledRaidIds", out var settled)
             || !data.TryGetProperty("activeRaid", out var active) || !data.TryGetProperty("lastResult", out var last)) return false;
         // 硬上限只约束 v4 起的快照：更早的档可能已经超量，前端迁移时会把超出部分折进信箱
-        if (version >= 4 && (warehouse.GetArrayLength() > WarehouseCapacity || !MailboxValid(data, warehouseIds))) return false;
+        if (version == 4 && data.TryGetProperty("mailbox", out _)
+            && (warehouse.GetArrayLength() > WarehouseCapacity || !MailboxValid(data, warehouseIds))) return false;
+        if (version == 4 && !data.TryGetProperty("mailbox", out _) && !data.TryGetProperty("ownedSkinIds", out _)) return false;
+        if (version == 4 && !WardrobeValid(data, active)) return false;
         if (active.ValueKind != JsonValueKind.Null)
         {
             if (!Text(active, "raidId", out var raidId) || settled.Contains(raidId)
@@ -60,6 +63,29 @@ static class SaveValidation
         if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty("body", out var element) || element.ValueKind != JsonValueKind.String) return false;
         value = element.GetString()!;
         return value.Length <= 2_000 && !value.Any(char.IsControl);
+    }
+
+    public static bool IsSkinId(string? skin) =>
+        skin is "school-uniform" or "red-trailblazer" or "lavender-mage" or "navy-adventurer"
+            or "silver-researcher" or "lab-scientist" or "orange-rescuer";
+
+    private static bool WardrobeValid(JsonElement data, JsonElement active)
+    {
+        var hasWardrobe = data.TryGetProperty("ownedSkinIds", out _)
+            || data.TryGetProperty("equippedSkinId", out _)
+            || data.TryGetProperty("activeRaidSkinId", out _);
+        if (!hasWardrobe) return true;
+        if (!Strings(data, "ownedSkinIds", out var ownedSkinIds)
+            || !ownedSkinIds.Contains("school-uniform")
+            || ownedSkinIds.Any(id => !IsSkinId(id))
+            || !Text(data, "equippedSkinId", out var equippedSkinId)
+            || !ownedSkinIds.Contains(equippedSkinId)
+            || !data.TryGetProperty("activeRaidSkinId", out var activeSkin)) return false;
+        return active.ValueKind == JsonValueKind.Null
+            ? activeSkin.ValueKind == JsonValueKind.Null
+            : activeSkin.ValueKind == JsonValueKind.String
+                && IsSkinId(activeSkin.GetString())
+                && ownedSkinIds.Contains(activeSkin.GetString()!);
     }
 
     private static bool Text(JsonElement parent, string key, out string value)

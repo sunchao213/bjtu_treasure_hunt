@@ -228,7 +228,7 @@ try {
   socket.on('data', (chunk) => {
     received = Buffer.concat([received, chunk]);
   });
-  send({ type: 'hello', protocol: 1, sessionId: 'fake', displayName: 'Impersonated Name' });
+  send({ type: 'hello', protocol: 2, sessionId: 'fake', displayName: 'Impersonated Name' });
   send({ type: 'create-room' });
   for (let attempt = 0; attempt < 100 && !received.includes(Buffer.from('room-state')); attempt++)
     await delay(50);
@@ -257,6 +257,10 @@ try {
     warehouse: [],
     mailbox: [],
     codexIds: ['school-badge'],
+    currency: 0,
+    ownedSkinIds: ['school-uniform', 'red-trailblazer'],
+    equippedSkinId: 'red-trailblazer',
+    activeRaidSkinId: null,
     unlockedChapterIds: [],
     activeRaid: null,
     settledRaidIds: [
@@ -284,6 +288,16 @@ try {
     'cloud snapshots larger than the auth request body limit are accepted',
   );
   assert.equal((await saved.json()).revision, 1);
+  for (const invalidFashion of [
+    { ...cloudData, equippedSkinId: 'https://example.invalid/skin.png' },
+    { ...cloudData, equippedSkinId: 'silver-researcher' },
+    { ...cloudData, equippedSkinId: 'school-uniform', activeRaidSkinId: 'red-trailblazer' },
+  ]) {
+    assert.equal(
+      (await cloudPost('', { ...write, revision: 1, data: invalidFashion }, cookie)).status,
+      400,
+    );
+  }
   const selfProfile = await (
     await fetch(`${base}/api/profile/self`, { headers: { Cookie: cookie } })
   ).json();

@@ -5,12 +5,19 @@ import {
   HttpCloudSaveApi,
   type CloudSaveApi,
 } from '../../src/modules/save/cloud-save-api';
-import { FORMAL_SAVE_KEY, type FormalSaveData } from '../../src/modules/save/persistent-save';
+import {
+  DEFAULT_SKIN_ID,
+  FORMAL_SAVE_KEY,
+  type FormalSaveData,
+} from '../../src/modules/save/persistent-save';
 
 const empty = (): FormalSaveData => ({
   schemaVersion: 4,
   warehouse: [],
   currency: 0,
+  ownedSkinIds: [DEFAULT_SKIN_ID],
+  equippedSkinId: DEFAULT_SKIN_ID,
+  activeRaidSkinId: null,
   codexIds: [],
   unlockedChapterIds: [],
   activeRaid: null,
@@ -50,6 +57,25 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('cloud progress transactions', () => {
+  it('validates reserved starter weapon slots before committing a loadout', async () => {
+    const warehouse: FormalSaveData['warehouse'] = Array.from({ length: 3 }, (_, i) => ({
+      instanceId: `purchase:bike-${i}`,
+      itemId: 'yellow-bike',
+      origin: { kind: 'carry-in', source: 'purchase' },
+    }));
+    const api = endpoint({ ...empty(), warehouse });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    await expect(
+      save.beginRaid(
+        'overflow',
+        warehouse.map((item) => item.instanceId),
+        1,
+      ),
+    ).rejects.toThrow('capacity');
+    expect(api.write).not.toHaveBeenCalled();
+    expect(save.view().activeRaid).toBeNull();
+    save.close();
+  });
   it('commits a purchase to the cloud before changing the wallet or warehouse, and rolls back a failed save', async () => {
     const api = endpoint({ ...empty(), currency: 60 });
     const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
@@ -82,6 +108,24 @@ describe('cloud progress transactions', () => {
     expect(save.view().currency).toBe(0);
     expect(save.view().warehouse).toHaveLength(1);
     expect(api.write).toHaveBeenCalledTimes(1);
+    save.close();
+  });
+
+  it('persists fashion purchases once and restores the selected appearance before departure', async () => {
+    const api = endpoint({ ...empty(), currency: 928 });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    expect(await save.purchaseSkin('lavender-mage')).toEqual({ ok: true, owned: true });
+    expect(save.view()).toMatchObject({ currency: 240, equippedSkinId: DEFAULT_SKIN_ID });
+    expect(await save.purchaseSkin('lavender-mage')).toEqual({ ok: true, owned: true });
+    expect(save.view().currency).toBe(240);
+    expect(await save.equipSkin('lavender-mage')).toBe(true);
+    expect(save.view().equippedSkinId).toBe('lavender-mage');
+    expect(await save.equipSkin('silver-researcher')).toBe(false);
+    await save.beginRaid('fashion-locked-at-launch', []);
+    expect(save.view().activeRaidSkinId).toBe('lavender-mage');
+    expect(await save.equipSkin(DEFAULT_SKIN_ID)).toBe(false);
+    expect(await save.purchaseSkin('silver-researcher')).toEqual({ ok: false, owned: false });
+    expect(save.view().activeRaidSkinId).toBe('lavender-mage');
     save.close();
   });
 
@@ -183,7 +227,11 @@ describe('cloud progress transactions', () => {
   });
 
   it('recovers an interrupted raid on the server before exposing the recovered progress', async () => {
-    const api = endpoint({ ...empty(), activeRaid: { raidId: 'interrupted', loadout: [] } });
+    const api = endpoint({
+      ...empty(),
+      activeRaid: { raidId: 'interrupted', loadout: [] },
+      activeRaidSkinId: DEFAULT_SKIN_ID,
+    });
     const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
     expect(await save.recoverInterrupted()).toBe(true);
     expect(save.view().lastResult?.reason).toBe('interrupted');

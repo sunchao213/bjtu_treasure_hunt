@@ -1,4 +1,4 @@
-export const NETWORK_PROTOCOL_VERSION = 1 as const;
+export const NETWORK_PROTOCOL_VERSION = 2 as const;
 export const ROOM_CAPACITY = 10;
 export const ROOM_CHAT_LIMIT = 160;
 export const isRoomCode = (value: unknown): value is string =>
@@ -9,15 +9,31 @@ export interface NetworkPoint {
   readonly y: number;
 }
 
+export interface RoomCameraSnapshot {
+  readonly distance: number;
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly overview: boolean;
+  readonly flashlight: boolean;
+}
+
 export interface PlayerSnapshot {
   readonly playerId: string;
   readonly displayName: string;
+  readonly skinId?: string;
   readonly position: NetworkPoint;
   readonly aim: number;
   readonly health: number;
   readonly connected: boolean;
   readonly ready: boolean;
   readonly finished: boolean;
+  readonly dead?: boolean;
+  readonly camera?: RoomCameraSnapshot | null;
+}
+
+export interface RelicChestSnapshot extends NetworkPoint {
+  readonly ownerId: string;
+  readonly slots: readonly Pick<RoomChestSnapshot, 'id' | 'itemId' | 'claimedBy'>[];
 }
 
 export interface RoomChestSnapshot extends NetworkPoint {
@@ -41,6 +57,7 @@ export type ClientMessage =
   | { readonly type: 'transfer-host'; readonly playerId: string }
   | { readonly type: 'start-game' }
   | { readonly type: 'finish-game'; readonly roundId: string }
+  | { readonly type: 'player-death'; readonly roundId: string; readonly items: readonly string[] }
   | { readonly type: 'leave-room' }
   | { readonly type: 'room-chat'; readonly text: string }
   | {
@@ -48,7 +65,7 @@ export type ClientMessage =
       readonly roundId: string;
       readonly requestId: string;
       readonly chestId: string;
-      readonly stage: 'hold' | 'claim' | 'cancel';
+      readonly stage: 'hold' | 'claim' | 'cancel' | 'take';
     }
   | {
       readonly type: 'loot-ack';
@@ -63,6 +80,7 @@ export type ClientMessage =
       readonly movement: NetworkPoint;
       readonly aim: number;
       readonly actions: readonly ('interact' | 'attack' | 'hug')[];
+      readonly camera?: RoomCameraSnapshot;
     }
   | { readonly type: 'ping'; readonly sentAt: number };
 
@@ -84,6 +102,7 @@ export type ServerMessage =
       readonly roundId: string | null;
       readonly players: readonly PlayerSnapshot[];
       readonly chests?: readonly RoomChestSnapshot[];
+      readonly relics?: readonly RelicChestSnapshot[];
     }
   | {
       readonly type: 'loot-result';
@@ -110,6 +129,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isPoint = (value: unknown): value is NetworkPoint =>
   isRecord(value) && Number.isFinite(value.x) && Number.isFinite(value.y);
 const nonEmpty = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+const isCamera = (value: unknown): value is RoomCameraSnapshot =>
+  isRecord(value) &&
+  Number.isFinite(value.distance) &&
+  Number(value.distance) >= 5 &&
+  Number(value.distance) <= 48 &&
+  Number.isFinite(value.yaw) &&
+  Math.abs(Number(value.yaw)) <= 3.142 &&
+  Number.isFinite(value.pitch) &&
+  Math.abs(Number(value.pitch)) <= 1.571 &&
+  typeof value.overview === 'boolean' &&
+  typeof value.flashlight === 'boolean';
 
 export function isClientMessage(value: unknown): value is ClientMessage {
   if (!isRecord(value) || !nonEmpty(value.type)) return false;
@@ -140,10 +170,17 @@ export function isClientMessage(value: unknown): value is ClientMessage {
         ? typeof value.accepted === 'boolean'
         : nonEmpty(value.chestId) &&
           value.chestId.length <= 64 &&
-          ['hold', 'claim', 'cancel'].includes(String(value.stage)))
+          ['hold', 'claim', 'cancel', 'take'].includes(String(value.stage)))
     );
   }
   if (value.type === 'finish-game') return nonEmpty(value.roundId);
+  if (value.type === 'player-death')
+    return (
+      nonEmpty(value.roundId) &&
+      Array.isArray(value.items) &&
+      value.items.length <= 6 &&
+      value.items.every(nonEmpty)
+    );
   if (value.type === 'leave-room') return true;
   if (value.type === 'room-chat')
     return (
@@ -159,6 +196,7 @@ export function isClientMessage(value: unknown): value is ClientMessage {
     Number.isSafeInteger(value.sequence) &&
     value.sequence >= 0 &&
     isPoint(value.movement) &&
+    (value.camera === undefined || isCamera(value.camera)) &&
     Number.isFinite(value.aim) &&
     Array.isArray(value.actions) &&
     value.actions.every(
@@ -210,6 +248,24 @@ export function isServerMessage(value: unknown): value is ServerMessage {
     (value.admissionOpen === undefined || typeof value.admissionOpen === 'boolean') &&
     typeof value.started === 'boolean' &&
     (value.started ? nonEmpty(value.roundId) : value.roundId === null) &&
+    (value.relics === undefined ||
+      (Array.isArray(value.relics) &&
+        value.relics.length <= ROOM_CAPACITY &&
+        value.relics.every(
+          (relic) =>
+            isPoint(relic) &&
+            isRecord(relic) &&
+            nonEmpty(relic.ownerId) &&
+            Array.isArray(relic.slots) &&
+            relic.slots.length <= 6 &&
+            relic.slots.every(
+              (slot) =>
+                isRecord(slot) &&
+                nonEmpty(slot.id) &&
+                nonEmpty(slot.itemId) &&
+                (slot.claimedBy === null || nonEmpty(slot.claimedBy)),
+            ),
+        ))) &&
     (value.chests === undefined ||
       (Array.isArray(value.chests) &&
         value.chests.length <= 128 &&
@@ -231,11 +287,14 @@ export function isServerMessage(value: unknown): value is ServerMessage {
         isRecord(player) &&
         nonEmpty(player.playerId) &&
         nonEmpty(player.displayName) &&
+        (player.skinId === undefined || typeof player.skinId === 'string') &&
         isPoint(player.position) &&
+        (player.camera === null || player.camera === undefined || isCamera(player.camera)) &&
         Number.isFinite(player.aim) &&
         Number.isFinite(player.health) &&
         typeof player.connected === 'boolean' &&
         typeof player.ready === 'boolean' &&
+        (player.dead === undefined || typeof player.dead === 'boolean') &&
         typeof player.finished === 'boolean',
     )
   );

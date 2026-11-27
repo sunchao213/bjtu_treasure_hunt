@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
 
@@ -24,6 +25,8 @@ var app = builder.Build();
 // R15 好友与私聊：关系、屏蔽、消息与已读游标都由服务端维护。
 var friends = new FriendStore(database);
 SocialApi.Map(app, sessions, friends);
+var leaderboard = new LeaderboardStore(database);
+LeaderboardApi.Map(app, sessions, leaderboard);
 app.UseForwardedHeaders();
 app.UseRateLimiter();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
@@ -161,7 +164,7 @@ IResult WithSocial(HttpContext context, Func<LoginSession, IResult> action)
 
 var rooms = new RoomDirectory();
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-const int protocolVersion = 1;
+const int protocolVersion = 2;
 const int maxMessageBytes = 4096;
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", protocol = protocolVersion }));
@@ -216,6 +219,7 @@ app.Map("/ws", async context =>
                 case "set-ready":
                 case "start-game":
                 case "finish-game":
+                case "player-death":
                 case "room-settings":
                 case "transfer-host":
                     // 章节完成度暂不作为联机入口门槛，保留存档校验供后续重新启用。
@@ -235,14 +239,19 @@ app.Map("/ws", async context =>
                     }
                     try
                     {
+                        if (type is "create-room" or "join-room")
+                            client.SkinId = database.GetEquippedSkinId(session.User.Id);
                         action = type switch
                         {
                             "create-room" => rooms.Create(client),
                             "join-room" => rooms.Join(client, ReadString(root, "roomId", "")),
                             "set-ready" => rooms.Ready(client, root.GetProperty("ready").GetBoolean()),
-                            "start-game" => rooms.Start(client),
+                            "start-game" => rooms.Start(client, database.GetEquippedSkinId),
                             "room-settings" => rooms.Settings(client, root.GetProperty("maxPlayers").GetInt32(), root.GetProperty("admissionOpen").GetBoolean()),
                             "transfer-host" => rooms.TransferHost(client, ReadString(root, "playerId", "")),
+                            "player-death" => ReadRelics(root) is { } relics
+                                ? rooms.Die(client, ReadString(root, "roundId", ""), relics)
+                                : new RoomAction("INVALID_MESSAGE", "遗物箱物品无效。"),
                             _ => rooms.Finish(client, ReadString(root, "roundId", "")),
                         };
                     }
@@ -300,7 +309,8 @@ app.Map("/ws", async context =>
                     var interacting = root.TryGetProperty("actions", out var actions) && actions.ValueKind == JsonValueKind.Array
                         && actions.EnumerateArray().Any(a => a.ValueKind == JsonValueKind.String && a.GetString() == "interact")
                         && !actions.EnumerateArray().Any(a => a.ValueKind == JsonValueKind.String && a.GetString() == "attack");
-                    var inputRoom = rooms.Move(client, ReadString(root, "roundId", ""), sequence, dx, dy, aim, interacting);
+                    var camera = root.TryGetProperty("camera", out var cameraValue) ? ReadCamera(cameraValue) : null;
+                    var inputRoom = rooms.Move(client, ReadString(root, "roundId", ""), sequence, dx, dy, aim, interacting, camera);
                     if (inputRoom is null) break;
                     await BroadcastRoom(joinedRoomId!, inputRoom, rooms, json);
                     break;
@@ -310,7 +320,7 @@ app.Map("/ws", async context =>
                     var requestId = ReadString(root, "requestId", "");
                     var chestId = ReadString(root, "chestId", "");
                     var stage = ReadString(root, "stage", "");
-                    if (requestId.Length is < 1 or > 64 || (type == "loot-search" && (chestId.Length is < 1 or > 64 || stage is not ("hold" or "claim" or "cancel")))
+                    if (requestId.Length is < 1 or > 64 || (type == "loot-search" && (chestId.Length is < 1 or > 64 || stage is not ("hold" or "claim" or "cancel" or "take")))
                         || (type == "loot-ack" && (!root.TryGetProperty("accepted", out var acceptedValue) || acceptedValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False))))
                     {
                         await SendError(client, "INVALID_MESSAGE", "搜索请求无效。", json);
@@ -368,11 +378,15 @@ if (Directory.Exists(frontendPath))
 {
     var files = new PhysicalFileProvider(frontendPath);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
+    var contentTypes = new FileExtensionContentTypeProvider();
+    contentTypes.Mappings[".glb"] = "model/gltf-binary";
+    contentTypes.Mappings[".gltf"] = "model/gltf+json";
     // public/ 资产同名换图时 URL 不变，浏览器 heuristic 缓存会顶掉新图（2026-11-26 右上角交子徽章）。
     // no-cache 只要求每次 revalidate：内容没变走 304，带宽几乎为零，但永远拿得到最新字节。
     app.UseStaticFiles(new StaticFileOptions
     {
         FileProvider = files,
+        ContentTypeProvider = contentTypes,
         OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache",
     });
 }
@@ -402,8 +416,43 @@ static string ReadString(JsonElement root, string name, string fallback) =>
         ? value.GetString() ?? fallback
         : fallback;
 
+static string[]? ReadRelics(JsonElement root)
+{
+    if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() > 6)
+        return null;
+    var result = new List<string>();
+    var slots = 0;
+    foreach (var item in items.EnumerateArray())
+    {
+        if (item.ValueKind != JsonValueKind.String || item.GetString() is not { } id || !RelicItems.Allowed.Contains(id))
+            return null;
+        slots += id == "yellow-bike" ? 2 : 1;
+        if (slots > 6) return null;
+        result.Add(id);
+    }
+    return result.ToArray();
+}
+
 static float ReadFiniteProperty(JsonElement root, string name) =>
     root.TryGetProperty(name, out var value) ? ReadFiniteNumber(value) : 0;
+
+static RoomCamera? ReadCamera(JsonElement value)
+{
+    if (value.ValueKind != JsonValueKind.Object
+        || !ReadBounded("distance", 48, out var distance) || distance < 5
+        || !ReadBounded("yaw", 3.142f, out var yaw) || !ReadBounded("pitch", 1.571f, out var pitch)
+        || !value.TryGetProperty("overview", out var overview) || overview.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+        || !value.TryGetProperty("flashlight", out var flashlight) || flashlight.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        return null;
+    return new(distance, yaw, pitch, overview.GetBoolean(), flashlight.GetBoolean());
+
+    bool ReadBounded(string name, float limit, out float number)
+    {
+        number = 0;
+        return value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.Number
+            && property.TryGetSingle(out number) && float.IsFinite(number) && MathF.Abs(number) <= limit;
+    }
+}
 
 static float ReadFiniteNumber(JsonElement value) =>
     value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out var number) && float.IsFinite(number) ? Math.Clamp(number, -10, 10) : 0;
@@ -444,16 +493,24 @@ static async Task BroadcastRoom(string roomId, Room room, RoomDirectory rooms, J
             started = room.Started,
             roundId = room.RoundId,
             chests = room.Loot?.Chests.Select(chest => new { chest.Id, chest.X, chest.Y, chest.ZoneId, chest.ItemId, chest.ClaimedBy }).ToArray() ?? [],
+            relics = room.Loot?.Relics.Select(relic => new
+            {
+                relic.OwnerId, relic.X, relic.Y,
+                slots = relic.Slots.Select(slot => new { slot.Id, slot.ItemId, slot.ClaimedBy }).ToArray(),
+            }).ToArray() ?? [],
             players = clients.Select(client => new
             {
                 playerId = client.Id,
                 displayName = client.DisplayName,
                 position = client.Position ?? CampusWorld.Spawn(0),
                 aim = client.Aim,
-                health = 100,
+                camera = client.Camera,
+                health = client.Dead ? 0 : 100,
+                skinId = client.SkinId,
                 connected = client.Socket.State == WebSocketState.Open,
                 ready = client.Ready,
                 finished = client.Finished,
+                dead = client.Dead,
             }).ToArray(),
         };
     }
@@ -490,6 +547,20 @@ sealed class Point(float x, float y)
     public float Y { get; } = y;
 }
 
+static class RelicItems
+{
+    public static readonly HashSet<string> Allowed = new(StringComparer.Ordinal)
+    {
+        "scratch-paper", "half-eraser", "portable-medkit", "torn-notebook", "window-seat", "morning-coffee",
+        "school-badge", "anomalous-feather", "gpa-charm", "library-reward-ticket", "siyuan-key",
+        "strange-veined-ginkgo-leaf", "hunter-binoculars", "roller-skates", "quick-note-card", "simple-detector",
+        "star-compass", "silent-cloak", "reflective-filter", "marked-campus-map", "soothe-charm",
+        "complete-record", "electric-bike-helmet", "david-head-statue", "silver-watch", "training-bat",
+        "stun-baton", "folding-ruler", "long-broom", "window-breaker", "night-watch-spear", "bandage",
+        "yellow-bike", "thick-down-jacket",
+    };
+}
+
 sealed class Client(WebSocket socket, string id)
 {
     public WebSocket Socket { get; } = socket;
@@ -498,11 +569,14 @@ sealed class Client(WebSocket socket, string id)
     public string AccountId { get; set; } = "";
     public Point? Position { get; set; }
     public float Aim { get; set; }
+    public RoomCamera? Camera { get; set; }
     public long LastSequence { get; set; } = -1;
     public long LastInputAt { get; set; }
     public string? RoomId { get; set; }
     public bool Ready { get; set; }
     public bool Finished { get; set; }
+    public bool Dead { get; set; }
+    public string SkinId { get; set; } = "school-uniform";
     public SemaphoreSlim SendGate { get; } = new(1, 1);
 }
 

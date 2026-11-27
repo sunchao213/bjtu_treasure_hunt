@@ -8,6 +8,8 @@ export interface ScreenBox {
 }
 
 export interface RaidHudLayout {
+  readonly interaction: ScreenBox;
+  readonly hotbar: ScreenBox;
   readonly searchPrompt: ScreenBox | null;
   readonly dangerToast: ScreenBox;
   readonly minimap: ScreenBox;
@@ -17,7 +19,7 @@ export interface RaidHudLayout {
 const PROMPT_WIDTH = 96;
 /** 圆键 84 + 间距 6 + 文案，再留出呼吸缩放。 */
 const PROMPT_HEIGHT = 118;
-const PROMPT_BOTTOM = 28;
+const PROMPT_BOTTOM = 182;
 const TOAST_HEIGHT = 44;
 const TOAST_GAP = 12;
 const CONTROL_INSET = 10;
@@ -38,11 +40,11 @@ export function raidHudLayout(options: {
   readonly compact: boolean;
   readonly viewHeight: number;
 }): RaidHudLayout {
-  const { canvasWidth, canvasHeight, touch, compact, viewHeight } = options;
+  const { canvasWidth, canvasHeight, touch, viewHeight } = options;
   const minimapSize = touch ? clamp(viewHeight * 0.24, 76, 112) : 164;
   const minimap = {
-    x: canvasWidth - (touch ? 6 : 12) - minimapSize,
-    y: touch ? 4 : 12,
+    x: canvasWidth - (touch ? 8 : 16) - minimapSize,
+    y: touch ? 54 : 80,
     width: minimapSize,
     height: minimapSize,
   };
@@ -56,16 +58,10 @@ export function raidHudLayout(options: {
       };
   const stick = clamp(viewHeight * 0.2, 64, 84);
   const controlsTop = canvasHeight - CONTROL_INSET - Math.max(stick, CONTROL_BLOCK);
-  const toastBottom = touch
-    ? canvasHeight - controlsTop + TOAST_GAP
-    : PROMPT_BOTTOM + PROMPT_HEIGHT + TOAST_GAP;
-  const toastWidth = touch
-    ? compact
-      ? Math.min(220, canvasWidth * 0.42)
-      : Math.min(560, canvasWidth - 20)
-    : Math.min(560, canvasWidth - 32);
+  const toastBottom = touch ? 180 : PROMPT_BOTTOM + PROMPT_HEIGHT + TOAST_GAP;
+  const toastWidth = touch ? Math.min(350, canvasWidth - 540) : Math.min(560, canvasWidth - 32);
   const dangerToast = {
-    x: touch && compact ? 8 : (canvasWidth - toastWidth) / 2,
+    x: (canvasWidth - toastWidth) / 2,
     y: canvasHeight - toastBottom - TOAST_HEIGHT,
     width: toastWidth,
     height: TOAST_HEIGHT,
@@ -78,11 +74,28 @@ export function raidHudLayout(options: {
         height: CONTROL_BLOCK,
       }
     : null;
-  return { searchPrompt, dangerToast, minimap, touchSearch };
+  const interactionWidth = touch ? canvasWidth - 540 : Math.min(640, canvasWidth - 200);
+  const interaction = {
+    x: (canvasWidth - interactionWidth) / 2,
+    y: canvasHeight - (touch ? 112 : 128) - (touch ? 52 : 44),
+    width: interactionWidth,
+    height: touch ? 52 : 44,
+  };
+  const hotbarWidth = touch ? 194 : 280;
+  const hotbarHeight = touch ? 68 : 94;
+  const hotbar = {
+    x: (canvasWidth - hotbarWidth) / 2,
+    y: canvasHeight - (touch ? 12 : 20) - hotbarHeight,
+    width: hotbarWidth,
+    height: hotbarHeight,
+  };
+  return { interaction, hotbar, searchPrompt, dangerToast, minimap, touchSearch };
 }
 
 export function hudLeavesSearchAndWarningsClear(layout: RaidHudLayout): boolean {
   const boxes = [
+    layout.interaction,
+    layout.hotbar,
     layout.dangerToast,
     layout.minimap,
     layout.searchPrompt,
@@ -104,6 +117,8 @@ export function hudFitsCanvas(
   canvasHeight: number,
 ): boolean {
   const boxes = [
+    layout.interaction,
+    layout.hotbar,
     layout.dangerToast,
     layout.minimap,
     layout.searchPrompt,

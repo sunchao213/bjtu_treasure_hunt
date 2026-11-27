@@ -1,0 +1,36 @@
+{
+  "blenderVersion": "5.2.3 LTS",
+  "sourceKind": "reference-reconstruction",
+  "runtimeMeshCount": 28,
+  "triangles": 49134,
+  "materials": [
+    "blue_curtain_wall",
+    "blue_grey_metal_roof",
+    "entrance_lettering",
+    "flat_roof",
+    "granite_base",
+    "ivory_stone",
+    "light_cornice",
+    "recessed_blue_windows",
+    "university_lettering",
+    "window_mullions"
+  ],
+  "textures": [],
+  "glbBytes": 1832104,
+  "unitsPerMetre": 32,
+  "footprints": "assets-source/campus-3d/siyuan/layout.json",
+  "optimization": {
+    "tool": "glTF Transform 4.2.1",
+    "operations": [
+      "dedup",
+      "prune"
+    ],
+    "beforeBytes": 1910336,
+    "afterBytes": 1832104
+  },
+  "validation": {
+    "tool": "Khronos glTF Validator",
+    "errors": 0,
+    "warnings": 0
+  }
+}

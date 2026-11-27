@@ -3,16 +3,17 @@ import {
   NightCombat,
   NightLighting,
   LAMPS,
+  encounterRegionKey,
   findEnemySpawnPosition,
   lineOfSight,
   shouldDropPatrolLoot,
 } from '../../src/modules/world/night-systems';
 import { COMBAT_RULES } from '../../src/config/combat-config';
-import { WORLD } from '../../src/config/world-config';
+import WORLD from '../../src/config/formal-campus.json';
 
 const bounds = { x: 0, y: 0, width: 3600, height: 2400 };
 // Behavior tests control position and isolate one enemy; spawning has separate tests.
-function isolatedCombat(kind: 'patrol' | 'hug' = 'patrol'): NightCombat {
+function isolatedCombat(kind: 'patrol' | 'hug' | 'amplifier' = 'patrol'): NightCombat {
   const combat = new NightCombat(() => 0.5);
   const enemy = combat.enemies.find((entry) => entry.kind === kind)!;
   enemy.position = { x: 1000, y: 1000 };
@@ -56,7 +57,7 @@ describe('night lighting', () => {
     expect(light.flashlightReveals({ x: 130, y: 100 }, player, 0, [])).toBe(false);
   });
   it('clips visibility at walls and distinguishes ambient visibility from search light', () => {
-    const light = new NightLighting();
+    const light = new NightLighting(LAMPS);
     const player = { x: 100, y: 100 };
     const wall = [{ x: 130, y: 50, width: 20, height: 100 }];
     expect(light.visible({ x: 200, y: 100 }, player, 0, [])).toBe(true);
@@ -135,7 +136,7 @@ describe('night combat', () => {
       expect(enemy.position.x).toBeLessThanOrEqual(WORLD.width - 45 - 18);
       expect(enemy.position.y).toBeGreaterThanOrEqual(50 + 18);
       expect(enemy.position.y).toBeLessThanOrEqual(WORLD.height - 50 - 18);
-      expect(enemy.wanders).toBe(enemy.kind === 'patrol');
+      expect(enemy.wanders).toBe(enemy.kind === 'patrol' || enemy.kind === 'amplifier');
     }
     for (let i = 0; i < firstRaid.enemies.length; i++) {
       for (let j = i + 1; j < firstRaid.enemies.length; j++) {
@@ -168,7 +169,14 @@ describe('night combat', () => {
     const firstWave = combat.updateSpawns(1, findPosition);
     expect(firstWave).toHaveLength(COMBAT_RULES.spawning.spawnCount);
     expect(firstWave.every((enemy) => enemy.kind === 'patrol')).toBe(true);
-    expect(firstWave.map((enemy) => enemy.species)).toEqual(['duck', 'cat', 'swan', 'duck']);
+    expect(firstWave.map((enemy) => enemy.species)).toEqual([
+      'duck',
+      'cat',
+      'swan',
+      'duck',
+      'cat',
+      'swan',
+    ]);
     expect(new Set(firstWave.map((enemy) => enemy.health))).toEqual(
       new Set([COMBAT_RULES.enemy.patrol.health]),
     );
@@ -202,11 +210,24 @@ describe('night combat', () => {
 
     const availableSlots = COMBAT_RULES.spawning.maxAlive - combat.enemies.length;
     const expectedPatrols = Math.min(COMBAT_RULES.spawning.spawnCount, availableSlots);
-    const expectedHugs = Math.min(1, availableSlots - expectedPatrols);
+    const expectedHugs = Math.min(
+      COMBAT_RULES.spawning.hugSpawnCount,
+      availableSlots - expectedPatrols,
+    );
+    const aliveAmplifiers = combat.enemies.filter(
+      (enemy) => enemy.kind === 'amplifier' && enemy.state !== 'dead',
+    ).length;
+    const expectedAmplifiers = Math.min(
+      Math.max(0, COMBAT_RULES.enemy.amplifier.maxAlive - aliveAmplifiers),
+      Math.max(0, availableSlots - expectedPatrols - expectedHugs),
+    );
     const secondWave = combat.updateSpawns(COMBAT_RULES.spawning.hugSpawnIntervalMs, findPosition);
-    expect(secondWave).toHaveLength(expectedPatrols + expectedHugs);
+    expect(secondWave).toHaveLength(expectedPatrols + expectedHugs + expectedAmplifiers);
     expect(secondWave.filter((enemy) => enemy.kind === 'patrol')).toHaveLength(expectedPatrols);
     expect(secondWave.filter((enemy) => enemy.kind === 'hug')).toHaveLength(expectedHugs);
+    expect(secondWave.filter((enemy) => enemy.kind === 'amplifier')).toHaveLength(
+      expectedAmplifiers,
+    );
     expect(combat.enemies.filter((enemy) => enemy.state !== 'dead')).toHaveLength(
       WORLD.enemyRoutes.length + firstWave.length + secondWave.length,
     );
@@ -220,14 +241,17 @@ describe('night combat', () => {
     for (let elapsed = 0; elapsed < rules.hugSpawnIntervalMs - 1;) {
       const step = Math.min(rules.intervalMinMs, rules.hugSpawnIntervalMs - 1 - elapsed);
       expect(
-        combat.updateSpawns(step, findPosition).every((enemy) => enemy.kind === 'patrol'),
+        combat
+          .updateSpawns(step, findPosition)
+          .every((enemy) => enemy.kind === 'patrol' || enemy.kind === 'amplifier'),
       ).toBe(true);
+      combat.enemies = [];
       elapsed += step;
     }
     const spawned = combat.updateSpawns(1, findPosition);
-    expect(spawned).toHaveLength(1);
-    expect(spawned[0]!.kind).toBe('hug');
-    expect(combat.enemies.filter((enemy) => enemy.kind === 'hug')).toHaveLength(1);
+    expect(spawned).toHaveLength(3);
+    expect(spawned.every((enemy) => enemy.kind === 'hug')).toBe(true);
+    expect(combat.enemies.filter((enemy) => enemy.kind === 'hug')).toHaveLength(3);
     expect(combat.updateSpawns(0, findPosition)).toHaveLength(0);
   });
 
@@ -383,6 +407,28 @@ describe('night combat', () => {
     combat.attack(player, 0, [], damage, weaponId);
     expect(enemy.health).toBe(70 - damage);
     expect(combat.currentWeaponId).toBe(weaponId);
+  });
+  it('preserves baton durability across weapon switches and restores it for a new raid', () => {
+    const combat = isolatedCombat();
+    combat.enemies = [];
+    const player = { x: 1000, y: 1000 };
+    expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(15);
+    for (let i = 0; i < 15; i++) {
+      combat.tick(1200);
+      combat.attack(player, 0, [], 15, 'stun-baton');
+      expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(14 - i);
+      combat.tick(1200);
+      combat.attack(player, 0, [], 35, 'training-bat');
+      expect(combat.getWeaponUsesRemaining('training-bat')).toBeNull();
+      expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(14 - i);
+    }
+    combat.tick(1200);
+    combat.attack(player, 0, [], 15, 'stun-baton');
+    expect(combat.weaponUsesRemaining).toBe(0);
+    expect(combat.swingMs).toBe(0);
+    expect(combat.attackCooldown).toBe(0);
+    combat.reset();
+    expect(combat.getWeaponUsesRemaining('stun-baton')).toBe(15);
   });
   it('stuns mutated enemies for 600ms and respects the 75-unit attack range', () => {
     const combat = isolatedCombat('hug');
@@ -556,5 +602,333 @@ describe('night combat', () => {
   it('slows and enlarges a mutated hug monster compared with its previous mutated settings', () => {
     expect(COMBAT_RULES.hug.mutatedSpeed).toBeLessThan(COMBAT_RULES.enemy.mutated.speed);
     expect(COMBAT_RULES.hug.mutatedCollisionRadius).toBeGreaterThan(12);
+  });
+});
+
+describe('amplifier monster', () => {
+  const ampRules = COMBAT_RULES.enemy.amplifier;
+  const stepUpdate = (
+    combat: NightCombat,
+    player: { x: number; y: number },
+    totalMs: number,
+    options: {
+      lightOn?: boolean;
+      walls?: readonly { x: number; y: number; width: number; height: number }[];
+      invulnerable?: boolean;
+    } = {},
+  ) => {
+    let damage = 0;
+    let soundWaveHit = false;
+    const amplifierWindups: string[] = [];
+    for (let remaining = totalMs; remaining > 0;) {
+      const step = Math.min(50, remaining);
+      const res = combat.update(
+        step,
+        player,
+        options.lightOn ?? true,
+        false,
+        true,
+        options.walls ?? [],
+        bounds,
+        options.invulnerable ?? false,
+      );
+      damage += res.damage;
+      soundWaveHit = soundWaveHit || res.soundWaveHit;
+      for (const enemy of res.amplifierWindups) amplifierWindups.push(enemy.id);
+      remaining -= step;
+    }
+    return { damage, soundWaveHit, amplifierWindups };
+  };
+
+  it('has 85 health and dies in exactly 3 training-bat hits', () => {
+    const combat = isolatedCombat('amplifier');
+    const amp = combat.enemies[0]!;
+    expect(amp.health).toBe(85);
+    const inFront = () => ({ x: amp.position.x - 50, y: amp.position.y });
+
+    expect(combat.attack(inFront(), 0, [], 35, 'training-bat')).toHaveLength(0);
+    expect(amp.health).toBe(50);
+    combat.tick(COMBAT_RULES.player.attack.cooldownMs);
+    expect(combat.attack(inFront(), 0, [], 35, 'training-bat')).toHaveLength(0);
+    expect(amp.health).toBe(15);
+    combat.tick(COMBAT_RULES.player.attack.cooldownMs);
+    const third = combat.attack(inFront(), 0, [], 35, 'training-bat');
+    expect(third).toHaveLength(1);
+    expect(amp.state).toBe('dead');
+  });
+
+  it('detects at 380 lit / 160 dark and remembers the player for 5 seconds after losing sight', () => {
+    const combat = isolatedCombat('amplifier');
+    const amp = combat.enemies[0]!;
+    // 暗处 170 单位不会发现，150 单位会发现
+    stepUpdate(combat, { x: amp.position.x + 170, y: amp.position.y }, 100, { lightOn: false });
+    expect(amp.state).toBe('patrol');
+    // 明处 390 单位不会发现，370 单位会发现
+    stepUpdate(combat, { x: amp.position.x + 390, y: amp.position.y }, 100, { lightOn: true });
+    expect(amp.state).toBe('patrol');
+    stepUpdate(combat, { x: amp.position.x + 370, y: amp.position.y }, 100, { lightOn: true });
+    expect(amp.state).toBe('chase');
+
+    // 墙体遮挡视线后，记忆维持 5 秒，超过 5 秒返回巡逻
+    const wall = { x: amp.position.x + 120, y: amp.position.y - 80, width: 30, height: 160 };
+    stepUpdate(combat, { x: amp.position.x + 260, y: amp.position.y }, 4_800, {
+      lightOn: true,
+      walls: [wall],
+    });
+    expect(amp.state).toBe('chase');
+    stepUpdate(combat, { x: amp.position.x + 260, y: amp.position.y }, 400, {
+      lightOn: true,
+      walls: [wall],
+    });
+    expect(amp.state).toBe('patrol');
+  });
+
+  it('retreats at 70 units/s when player is within 100 units, or attacks in place when cornered', () => {
+    const combat = isolatedCombat('amplifier');
+    const amp = combat.enemies[0]!;
+    const player = { x: amp.position.x + 70, y: amp.position.y };
+    const startX = amp.position.x;
+    stepUpdate(combat, player, 200);
+    expect(amp.state).toBe('chase');
+    // 200ms * 70 = 14 单位向左后退
+    expect(startX - amp.position.x).toBeCloseTo(14, 1);
+
+    // 背后放一堵紧贴的墙挡住退路，怪应原地进入蓄力作战
+    const combatCornered = isolatedCombat('amplifier');
+    const cornered = combatCornered.enemies[0]!;
+    const backWall = {
+      x: cornered.position.x - 45,
+      y: cornered.position.y - 100,
+      width: 30,
+      height: 200,
+    };
+    const res = stepUpdate(
+      combatCornered,
+      { x: cornered.position.x + 70, y: cornered.position.y },
+      100,
+      { walls: [backWall] },
+    );
+    expect(cornered.state).toBe('windup');
+    expect(res.amplifierWindups).toContain(cornered.id);
+  });
+
+  it('tracks during first 0.6s windup, locks aim in final 0.3s, fires wave, recovers 1s, and enforces 4.5s interval', () => {
+    const combat = isolatedCombat('amplifier');
+    const amp = combat.enemies[0]!;
+    const player = { x: amp.position.x + 220, y: amp.position.y };
+
+    // 进入 0.9s 蓄力，触发电流预警并记录 4.5s 冷却
+    const start = combat.update(100, player, true, false, true, [], bounds);
+    expect(amp.state).toBe('windup');
+    expect(amp.windupLocked).toBe(false);
+    expect(start.amplifierWindups.map((enemy) => enemy.id)).toEqual([amp.id]);
+
+    // 前 0.6s 内玩家横向移动，方向仍会跟随更新
+    const shifted = { x: amp.position.x + 220, y: amp.position.y + 80 };
+    stepUpdate(combat, shifted, 400);
+    expect(amp.windupLocked).toBe(false);
+    expect(amp.attackAngle).toBeCloseTo(Math.atan2(80, 220), 2);
+
+    // 进入最后 0.3s 锁定方向，之后玩家大角度跑开不再转头
+    stepUpdate(combat, shifted, 200);
+    expect(amp.windupLocked).toBe(true);
+    const lockedAngle = amp.attackAngle!;
+    stepUpdate(combat, { x: amp.position.x, y: amp.position.y - 220 }, 150);
+    expect(amp.attackAngle).toBe(lockedAngle);
+
+    // 蓄力结束发射 1 道声波，同时怪物进入 1s recovery 原地停顿
+    stepUpdate(combat, { x: amp.position.x, y: amp.position.y - 220 }, 150);
+    expect(combat.soundWaves).toHaveLength(1);
+    expect(combat.soundWaves[0]!.angle).toBe(lockedAngle);
+    expect(amp.state).toBe('recovery');
+    const recoveryPos = { ...amp.position };
+    stepUpdate(combat, player, 500);
+    expect(amp.state).toBe('recovery');
+    expect(amp.position).toEqual(recoveryPos);
+
+    // 1s 后摇结束恢复追击，但距离上次蓄力开始不足 4.5s 时不能再次蓄力
+    stepUpdate(combat, player, 500);
+    expect(amp.state).toBe('chase');
+    stepUpdate(combat, player, 2_400);
+    expect(amp.state).not.toBe('windup');
+
+    // 满足 4.5s 后才能再次蓄力
+    stepUpdate(combat, player, 400);
+    expect(amp.state).toBe('windup');
+  });
+
+  it('flies at 300 u/s up to 320 units, hits once within 96 width for 10 dmg, and is blocked by walls', () => {
+    const combat = isolatedCombat('amplifier');
+    const amp = combat.enemies[0]!;
+    // 1) 命中测试：发射后声波沿 +X 飞行，玩家在 y+40（半宽 48 以内）应恰好命中 1 次
+    combat.soundWaves.push({
+      id: 'w-hit',
+      position: { x: 1000, y: 1000 },
+      angle: 0,
+      travelled: 0,
+      hitPlayer: false,
+    });
+    // 让怪远离避免干扰
+    amp.position = { x: 100, y: 100 };
+    const hit1 = stepUpdate(combat, { x: 1150, y: 1040 }, 500, { lightOn: false });
+    expect(hit1.damage).toBe(10);
+    expect(hit1.soundWaveHit).toBe(true);
+    // 同波继续飞过同一玩家不二次结算（且先清掉无敌帧以单独验证单波去重）
+    combat.invulnerability = 0;
+    const hit2 = stepUpdate(combat, { x: 1165, y: 1040 }, 50, { lightOn: false });
+    expect(hit2.damage).toBe(0);
+    expect(hit2.soundWaveHit).toBe(false);
+
+    // 飞满 320 单位后自动消失
+    stepUpdate(combat, { x: 2500, y: 2500 }, 700, { lightOn: false });
+    expect(combat.soundWaves).toHaveLength(0);
+
+    // 2) 横向超出 48 半径（y+60）不命中
+    combat.invulnerability = 0;
+    combat.soundWaves.push({
+      id: 'w-miss',
+      position: { x: 1000, y: 1000 },
+      angle: 0,
+      travelled: 0,
+      hitPlayer: false,
+    });
+    const miss = stepUpdate(combat, { x: 1150, y: 1060 }, 500, { lightOn: false });
+    expect(miss.damage).toBe(0);
+    expect(miss.soundWaveHit).toBe(false);
+
+    // 3) 遇实体障碍立即消失，不穿墙伤人
+    combat.soundWaves.length = 0;
+    combat.soundWaves.push({
+      id: 'w-wall',
+      position: { x: 1000, y: 1000 },
+      angle: 0,
+      travelled: 0,
+      hitPlayer: false,
+    });
+    const wall = { x: 1080, y: 940, width: 30, height: 120 };
+    const blocked = stepUpdate(combat, { x: 1150, y: 1000 }, 500, {
+      lightOn: false,
+      walls: [wall],
+    });
+    expect(blocked.damage).toBe(0);
+    expect(blocked.soundWaveHit).toBe(false);
+    expect(combat.soundWaves).toHaveLength(0);
+  });
+
+  it('does not apply damage or debuff when blocked by hurt or item invulnerability', () => {
+    const combat = isolatedCombat('amplifier');
+    const amp = combat.enemies[0]!;
+    amp.position = { x: 100, y: 100 };
+
+    // 0.8s 受伤无敌期
+    combat.invulnerability = COMBAT_RULES.player.invulnerabilityMs;
+    combat.soundWaves.push({
+      id: 'w-invuln-1',
+      position: { x: 1000, y: 1000 },
+      angle: 0,
+      travelled: 0,
+      hitPlayer: false,
+    });
+    const r1 = stepUpdate(combat, { x: 1030, y: 1000 }, 100, {
+      lightOn: false,
+      invulnerable: false,
+    });
+    expect(r1.damage).toBe(0);
+    expect(r1.soundWaveHit).toBe(false);
+
+    // 道具无敌期（playerInvulnerable = true）
+    combat.invulnerability = 0;
+    combat.soundWaves.length = 0;
+    combat.soundWaves.push({
+      id: 'w-invuln-2',
+      position: { x: 1000, y: 1000 },
+      angle: 0,
+      travelled: 0,
+      hitPlayer: false,
+    });
+    const r2 = stepUpdate(combat, { x: 1030, y: 1000 }, 100, {
+      lightOn: false,
+      invulnerable: true,
+    });
+    expect(r2.damage).toBe(0);
+    expect(r2.soundWaveHit).toBe(false);
+  });
+
+  it('interrupts windup on stun-baton shock with 1.5s lockout, while training-bat does not interrupt', () => {
+    const combat = isolatedCombat('amplifier');
+    const amp = combat.enemies[0]!;
+    // 进入蓄力
+    combat.update(
+      100,
+      { x: amp.position.x + 200, y: amp.position.y },
+      true,
+      false,
+      true,
+      [],
+      bounds,
+    );
+    expect(amp.state).toBe('windup');
+
+    // 训练棍打中蓄力中的扩音器怪：仅扣血，不打断蓄力
+    combat.attack({ x: amp.position.x - 50, y: amp.position.y }, 0, [], 35, 'training-bat');
+    expect(amp.health).toBe(50);
+    expect(amp.state).toBe('windup');
+
+    // 冷却后再用电击器眩晕：立刻打断蓄力进入 stunned，且至少等待 1.5s 才允许重新蓄力
+    combat.attackCooldown = 0;
+    combat.attack({ x: amp.position.x - 40, y: amp.position.y }, 0, [], 15, 'stun-baton');
+    expect(amp.state).toBe('stunned');
+    expect(amp.cooldown).toBeGreaterThanOrEqual(ampRules.interruptCooldownMs);
+    expect(combat.soundWaves).toHaveLength(0);
+
+    // 经过 1.2s 眩晕恢复，但距打断不足 1.5s，仍不能重新蓄力
+    const midRange = { x: amp.position.x + 210, y: amp.position.y };
+    stepUpdate(combat, midRange, 1_200);
+    expect(amp.state).toBe('chase');
+    stepUpdate(combat, midRange, 200);
+    expect(amp.state).not.toBe('windup');
+
+    // 满 1.5s 后恢复蓄力能力
+    stepUpdate(combat, midRange, 200);
+    expect(amp.state).toBe('windup');
+  });
+
+  it('enforces max 1 amplifier per encounter region and max 2 amplifiers on the map', () => {
+    const combat = new NightCombat(() => 0);
+    combat.enemies = [];
+    // Isolate amplifier limits from the independently tested shared spawn cap.
+    Reflect.set(combat, 'spawnTimer', Infinity);
+    Reflect.set(combat, 'hugSpawnTimer', Infinity);
+    // 第一次刷新到 (200, 200) -> 成功
+    const wave1 = combat.updateSpawns(ampRules.spawnIntervalMs, () => ({
+      x: 200,
+      y: 200,
+    }));
+    expect(wave1.filter((e) => e.kind === 'amplifier')).toHaveLength(1);
+
+    // 同一遭遇区域 (250, 250) 尝试再刷第 2 只 -> 被同区域上限拦截
+    expect(encounterRegionKey({ x: 200, y: 200 })).toBe(encounterRegionKey({ x: 250, y: 250 }));
+    const wave2 = combat.updateSpawns(ampRules.spawnIntervalMs, () => ({
+      x: 250,
+      y: 250,
+    }));
+    expect(wave2.filter((e) => e.kind === 'amplifier')).toHaveLength(0);
+
+    // 不同遭遇区域 (1600, 1600) -> 成功刷出第 2 只
+    const wave3 = combat.updateSpawns(ampRules.spawnIntervalMs, () => ({
+      x: 1600,
+      y: 1600,
+    }));
+    expect(wave3.filter((e) => e.kind === 'amplifier')).toHaveLength(1);
+    expect(combat.enemies.filter((e) => e.kind === 'amplifier' && e.state !== 'dead')).toHaveLength(
+      2,
+    );
+
+    // 第 3 个不同区域 (2600, 2600) -> 被全图上限 2 拦截
+    const wave4 = combat.updateSpawns(ampRules.spawnIntervalMs, () => ({
+      x: 2600,
+      y: 2600,
+    }));
+    expect(wave4.filter((e) => e.kind === 'amplifier')).toHaveLength(0);
   });
 });

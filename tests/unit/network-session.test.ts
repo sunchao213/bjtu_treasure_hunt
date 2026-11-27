@@ -99,7 +99,7 @@ describe('network session transport', () => {
       second.open();
       first.onclose?.();
       first.message(
-        JSON.stringify({ type: 'welcome', protocol: 1, playerId: 'stale', serverTime: now }),
+        JSON.stringify({ type: 'welcome', protocol: 2, playerId: 'stale', serverTime: now }),
       );
       expect(session.getStatus()).toBe('connected');
       expect(session.getPlayerId()).toBeNull();
@@ -174,7 +174,7 @@ describe('network session transport', () => {
     session.connect();
     socket.open();
     socket.message(
-      JSON.stringify({ type: 'welcome', protocol: 1, playerId: 'p1', serverTime: 10 }),
+      JSON.stringify({ type: 'welcome', protocol: 2, playerId: 'p1', serverTime: 10 }),
     );
     session.createRoom();
     socket.message(roomState(1, true));
@@ -243,7 +243,7 @@ describe('network session transport', () => {
     session.connect();
     socket.open();
     socket.message(
-      JSON.stringify({ type: 'welcome', protocol: 1, playerId: 'p1', serverTime: 10 }),
+      JSON.stringify({ type: 'welcome', protocol: 2, playerId: 'p1', serverTime: 10 }),
     );
     socket.message(JSON.stringify({ type: 'unknown' }));
     expect(session.getPlayerId()).toBe('p1');

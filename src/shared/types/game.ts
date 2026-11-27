@@ -82,6 +82,14 @@ export interface RaidResult {
   readonly questComplete?: boolean;
 }
 
+export interface PlayerStatusEffects {
+  readonly slowRemainingMs: number;
+  readonly slowMultiplier: number;
+  readonly slowImmuneRemainingMs: number;
+  readonly tinnitusRemainingMs: number;
+  readonly sonicPulseRemainingMs: number;
+}
+
 export interface RaidView {
   readonly raidId: string | null;
   readonly phase: RaidPhase;
@@ -94,6 +102,7 @@ export interface RaidView {
   readonly isBusy: boolean;
   readonly saveError: boolean;
   readonly steleInvestigated: boolean;
+  readonly statusEffects?: PlayerStatusEffects;
   readonly result: RaidResult | null;
 }
 
@@ -113,6 +122,14 @@ export interface RaidControllerPort {
   activateSpeedBoost(multiplier: number, durationMs: number): boolean;
   activateShield(amount: number, durationMs: number): boolean;
   activateInvulnerability(durationMs: number): boolean;
+  isInvulnerable?(): boolean;
+  applySlow?(
+    multiplier: number,
+    durationMs: number,
+    options?: { readonly source?: string; readonly immunityMs?: number },
+  ): boolean;
+  applyTinnitus?(durationMs: number): boolean;
+  applySoundWaveEffect?(): { readonly slowed: boolean; readonly tinnitus: boolean };
   applyDamage(amount: number): void;
   cancelExtraction(): void;
   setExtractionPresence(isInside: boolean): void;
@@ -145,7 +162,11 @@ export interface InventoryPort {
 
 /** Persist begin before play, and acknowledge settlement before reporting success. */
 export interface SavePort {
-  beginRaid(raidId: string, loadoutIds: readonly string[]): Promise<readonly ItemInstance[]>;
+  beginRaid(
+    raidId: string,
+    loadoutIds: readonly string[],
+    reservedSlots?: number,
+  ): Promise<readonly ItemInstance[]>;
   finalizeRaid(result: RaidResult): Promise<void>;
   unlockChapter(chapterId: string): Promise<void>;
   purchaseItem?(itemId: string): ActionResult<ItemInstance> | Promise<ActionResult<ItemInstance>>;
