@@ -3584,7 +3584,7 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   width: 1280px;
   height: 720px;
   overflow: hidden;
-  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261127i') center / 1280px 720px
+  background: #170e0d url('/assets/ui/lobby-v19-background.png?v=20261127j') center / 1280px 720px
     no-repeat;
   color: #fff0c2;
   font-family: 'Zpix', 'Microsoft YaHei', sans-serif;
@@ -3654,12 +3654,6 @@ html:not([data-touch='true']) #stage .campus-map-dialog {
   outline-offset: 1px;
   /* 只染底色，不能用 background 简写，否则会把闭麦/关听筒的斜杠一起重置掉 */
   background-color: #ffdc8020;
-}
-.v19-nav-shop {
-  left: 712px;
-  top: 14px;
-  width: 69px;
-  height: 93px;
 }
 .v19-nav-archive {
   left: 786px;

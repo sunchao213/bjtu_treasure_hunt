@@ -30,7 +30,6 @@ export function prepViewMarkup(): string {
               <span id="lobby-player-avatar" class="v19-sr-only"></span>
               <span id="lobby-player-name" class="v19-player-name"></span>
 
-              <button class="v19-hotspot v19-nav-shop" type="button" data-lobby-tab="mall" aria-label="商城"></button>
               <button class="v19-hotspot v19-nav-archive" type="button" data-lobby-tab="profile" aria-label="玩家档案"></button>
               <button class="v19-hotspot v19-nav-friends" type="button" data-lobby-tab="friends" aria-label="好友"></button>
               <button class="v19-hotspot v19-nav-codex" type="button" data-lobby-tab="warehouse" aria-label="图鉴与仓库"></button>

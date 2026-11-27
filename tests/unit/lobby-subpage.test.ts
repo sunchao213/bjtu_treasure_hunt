@@ -6,8 +6,7 @@ import { mountShell } from '../../src/modules/ui/reference-shell';
 
 /**
  * 两个容易回退的点：
- *   1. 顶部「商城」和图鉴/档案一样是**独立子页**，以前误接到道具商店（shop），
- *      点商城出来的却是补给商店；现在必须落到自己的 mall 面板。
+ *   1. 顶部导航不再提供「商城」入口（按钮已从大厅移除），底部商店仍是道具商店。
  *   2. 子页曾经拿大厅背景图当底，等于半透明地叠在大厅上，设置/商店看着像浮层。
  */
 const shell = { innerHTML: '' } as unknown as HTMLElement;
@@ -23,9 +22,9 @@ const buttonOf = (needle: string): string => {
 };
 
 describe('大厅子页 · 商城入口与实底', () => {
-  it('顶部商城进的是 mall 面板，不是道具商店', () => {
-    expect(buttonOf('v19-nav-shop')).toContain('data-lobby-tab="mall"');
-    expect(html).toContain('data-lobby-panel="mall"');
+  it('顶部不再有商城入口', () => {
+    expect(html).not.toContain('v19-nav-shop');
+    expect(html).not.toContain('data-lobby-tab="mall"');
   });
 
   it('底部商店仍然是道具商店', () => {
