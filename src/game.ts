@@ -28,7 +28,14 @@ import {
 } from './config/game-config';
 import { COMBAT_RULES } from './config/combat-config';
 import { isCombatWeaponId } from './modules/world/night-systems';
-import { bindShopCategories, renderShop, renderWardrobe, SHOP_EFFECTS } from './modules/ui/shop';
+import {
+  bindShopCategories,
+  bindShopModes,
+  renderShop,
+  renderWardrobe,
+  SHOP_EFFECTS,
+} from './modules/ui/shop';
+import { bindShopSale } from './modules/ui/shop-sale';
 import { renderMailPanel } from './modules/ui/mail-panel';
 import { createFriendsPanel } from './modules/ui/friends-panel';
 import { SocialClient } from './modules/social/social-client';
@@ -573,6 +580,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let interacted = '';
     let searchProgress = 0;
     let buyingItem: string | null = null;
+    let selling = false;
     let changingSkin = false;
     /** 信箱领取：busy 期间禁用按钮，status 是给玩家看的结果文案 */
     let claimingMail = false;
@@ -580,6 +588,13 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     let mailSignature = '';
     /** 带入装备的唯一真源：仓库面板和旧「行前准备」勾选列表都读写这一份 instanceId 集合 */
     const carriedInstances = new Set<string>();
+    const shopEntry = document.querySelector<HTMLButtonElement>('[data-lobby-tab="shop"]')!;
+    const selectShopMode = bindShopModes(element('prep-view'));
+    shopEntry.addEventListener('click', () => selectShopMode('buy'));
+    const shopSale = bindShopSale(
+      element('prep-view'),
+      (ids, proceeds) => void sellItems(ids, proceeds),
+    );
     // F02：记录读条开始时的状态，用来判断读条为什么被取消。
     let extractionSnapshot: ExtractionSnapshot | null = null;
     let enteredExtractionZone = false;
@@ -660,6 +675,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         onlineUnlockProgress(save.view().unlockedChapterIds).unlocked &&
         sceneReady &&
         buyingItem === null &&
+        !selling &&
         !changingSkin &&
         controller.getView().phase === 'preparing' &&
         !controller.getView().isBusy &&
@@ -1338,12 +1354,14 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     bagRoot.querySelector<HTMLButtonElement>('[data-bp-repair]')?.addEventListener('click', () => {
       notify('当前不提供武器维修，可前往商店重新购买。');
     });
-    // 左侧竖排导航：背包是当前页；商店/购买/出售都进入道具商店（商城占位页已移除）
     for (const nav of bagRoot.querySelectorAll<HTMLButtonElement>('[data-bp-nav]')) {
       nav.addEventListener('click', () => {
         if (nav.dataset.bpNav === 'bag') return;
         element<HTMLDialogElement>('v19-loadout-dialog').close();
-        document.querySelector<HTMLButtonElement>('[data-lobby-tab="shop"]')?.click();
+        shopEntry.click();
+        const mode = nav.dataset.bpNav === 'sell' ? 'sell' : 'buy';
+        selectShopMode(mode);
+        document.querySelector<HTMLButtonElement>(`[data-shop-mode="${mode}"]`)?.focus();
       });
     }
     element('v19-mission-open').onclick = () =>
@@ -1686,7 +1704,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         !!watched || !['settling', 'success', 'failed'].includes(view.phase);
       renderRelics();
       element<HTMLButtonElement>('start').disabled = !canStartRaid({
-        busy: view.isBusy || !sceneReady || buyingItem !== null || changingSkin,
+        busy: view.isBusy || !sceneReady || buyingItem !== null || changingSkin || selling,
         consented: lobby.isJoined() || element<HTMLInputElement>('risk-consent').checked,
       });
       element('start').textContent = !sceneReady
@@ -1820,6 +1838,11 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       element('warehouse-count').textContent = `${supplies.length} 件功能道具`;
       element('warehouse-item-count').textContent = `${archive.warehouse.length} 件物品`;
       element('warehouse-currency').textContent = String(archive.currency);
+      shopSale.render(
+        archive.warehouse,
+        view.phase === 'preparing' && !view.isBusy && !lobby.isLocked(),
+        selling,
+      );
       renderShop(
         element('prep-view'),
         archive.warehouse,
@@ -2190,6 +2213,41 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
     element('shop-prepare').onclick = () =>
       document.querySelector<HTMLButtonElement>('[data-lobby-tab="prepare"]')!.click();
     bindShopCategories(element('prep-view'));
+    async function sellItems(instanceIds: readonly string[], proceeds: number): Promise<void> {
+      const canSell = () => {
+        const view = controller.getView();
+        return view.phase === 'preparing' && !view.isBusy && !lobby.isLocked();
+      };
+      if (selling || !canSell()) return;
+      selling = true;
+      const status = element('shop-sell-status');
+      status.textContent = '';
+      render();
+      try {
+        const confirmed = await confirmDialog.ask({
+          title: '出售仓库物品',
+          message: `出售所选 ${instanceIds.length} 件物品，可获得 ${proceeds} 交子。`,
+          confirmText: '出售',
+        });
+        if (!confirmed) return;
+        if (!canSell()) {
+          status.textContent = '请在出发准备阶段出售物品。';
+          return;
+        }
+        status.textContent = '正在保存出售结果…';
+        const result = await save.sellWarehouseItems(instanceIds);
+        status.textContent = result.ok
+          ? `已出售 ${result.value.count} 件，获得 ${result.value.proceeds} 交子。`
+          : '本次未出售，请检查选中的物品后重试。';
+        status.dataset.state = result.ok ? 'success' : 'error';
+      } catch {
+        status.textContent = '出售结果未确认。请检查网络和仓库后重试。';
+        status.dataset.state = 'error';
+      } finally {
+        selling = false;
+        render();
+      }
+    }
     element('prep-view').addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-shop-buy]');
       if (!button || button.disabled || buyingItem !== null || changingSkin) return;
@@ -2232,6 +2290,7 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
         !element<HTMLInputElement>('risk-consent').checked ||
         controller.getView().isBusy ||
         buyingItem !== null ||
+        selling ||
         changingSkin
       )
         return false;

@@ -74,6 +74,11 @@ export function itemValueFor(
   return definition.value === null ? null : (definition.value ?? values[definition.rarity]);
 }
 
+export function warehouseSalePrice(itemId: string): number | null {
+  const item = ITEM_DEFINITIONS[itemId];
+  return item && item.kind !== 'weapon' ? (itemValueFor(item) ?? 0) : null;
+}
+
 /** Exploration discoveries that can be permanently recorded in the gallery. */
 export const ITEM_CATALOG_IDS = [
   'scratch-paper',

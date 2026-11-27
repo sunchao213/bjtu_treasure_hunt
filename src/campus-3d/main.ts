@@ -540,7 +540,7 @@ async function bootstrap(): Promise<void> {
           ? `带着收获，回到${EXTRACTION_NAME}。`
           : '这次探索，暂告一段落。';
         element('result-message').textContent = successful
-          ? '物资已经带回。重复收藏会按现有规则兑换为交子。'
+          ? '本局带回的物资已保存。'
           : current.result?.reason === 'death'
             ? '生命归零，本局携带物资已失去。'
             : current.result?.reason === 'timeout'

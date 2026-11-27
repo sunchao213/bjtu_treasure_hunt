@@ -68,6 +68,7 @@ const quickNoteOnly = process.argv.includes('--quick-note-only');
 const rulerOnly = process.argv.includes('--ruler-only');
 const catOnly = process.argv.includes('--cat-only');
 const spawningOnly = process.argv.includes('--spawning-only');
+const mallOnly = process.argv.includes('--mall-only');
 
 function command(method, params = {}, sessionId) {
   const id = ++nextId;
@@ -354,7 +355,7 @@ async function searchEvidence(page, itemId, screenshotName) {
 }
 async function newPage(
   name,
-  { mobile = false, failAsset = false, legacyCache = false, currency = 0 } = {},
+  { mobile = false, failAsset = false, legacyCache = false, currency = 0, warehouse = [] } = {},
 ) {
   const { browserContextId } = await command('Target.createBrowserContext', {
     disposeOnDetach: true,
@@ -415,7 +416,7 @@ async function newPage(
     }
     await screenshot(page, '36-login');
   }
-  if (currency === 0) await click(page, '#tab-register');
+  if (currency === 0 && !warehouse.length) await click(page, '#tab-register');
   else {
     await evaluate(
       page,
@@ -431,7 +432,7 @@ async function newPage(
       await post('/api/auth/register', ${JSON.stringify({ username, displayName, password })});
       const { leaseToken, revision } = await post('/api/save/open', { clientId: crypto.randomUUID() });
       await post('/api/save', { leaseToken, revision, data: {
-        schemaVersion: 4, currency: ${currency}, warehouse: [], mailbox: [], codexIds: [],
+        schemaVersion: 4, currency: ${currency}, warehouse: ${JSON.stringify(warehouse)}, mailbox: [], codexIds: [],
         unlockedChapterIds: [], settledRaidIds: [], activeRaid: null, lastResult: null,
       } });
       await post('/api/auth/logout', {});
@@ -2418,7 +2419,147 @@ try {
     }
   });
 
-  if (spawningOnly) {
+  if (mallOnly) {
+    const item = (instanceId, itemId) => ({
+      instanceId,
+      itemId,
+      origin: { kind: 'raid-loot', obtainedInRaidId: 'test-extraction' },
+    });
+    const page = await newPage('mall', {
+      warehouse: [
+        item('badge-a', 'school-badge'),
+        item('badge-b', 'school-badge'),
+        item('medkit', 'portable-medkit'),
+        item('bat', 'training-bat'),
+      ],
+    });
+    await consent(page);
+    await click(page, '#start');
+    await until(page, 'document.querySelector("#app").dataset.phase === "active"');
+    await evaluate(page, 'document.querySelector("#tutorial-skip").click()');
+    await attachScene(page);
+    await standAt(page, geometry.spawn, 0);
+    await evaluate(
+      page,
+      `(() => {
+      const { inventory, controller } = testScene.services;
+      const raidId = controller.getView().raidId;
+      for (let index = 0; index < 4; index++) {
+        const result = inventory.addLoot({
+          instanceId: 'extracted-charm-' + index,
+          itemId: 'gpa-charm',
+          origin: { kind: 'raid-loot', obtainedInRaidId: raidId },
+        });
+        if (!result.ok) throw new Error('Unable to add extraction test loot');
+      }
+    })()`,
+    );
+    await interact(page);
+    await until(page, 'document.querySelector("#app").dataset.phase === "success"');
+    await click(page, '#next');
+    await click(page, '.v19-shop-bottom');
+    await until(page, 'document.querySelector("#shop-buy-panel").checkVisibility()');
+    await click(page, '[data-shop-mode="sell"]');
+    await until(page, 'document.querySelector("#shop-sell-panel").checkVisibility()');
+    assert.equal(
+      await evaluate(page, 'document.querySelector("#shop-buy-panel").checkVisibility()'),
+      false,
+    );
+    assert.equal(
+      await evaluate(page, 'document.querySelectorAll("#shop-sell-list input").length'),
+      7,
+    );
+    await click(page, '.shop-sell-card:has(input[value="badge-a"])');
+    await click(page, '.shop-sell-card:has(input[value="medkit"])');
+    assert.equal(
+      await evaluate(page, 'document.querySelectorAll(".shop-sell-card input:checked").length'),
+      2,
+    );
+    assert.equal(
+      await evaluate(page, 'document.querySelectorAll(".shop-sell-card .shop-effect").length'),
+      0,
+    );
+    await click(page, '#shop-sell');
+    await until(page, 'document.querySelector("#confirm-message").textContent.includes("40 交子")');
+    await click(page, '#confirm-cancel');
+    await until(page, '!document.querySelector("#shop-sell").disabled');
+    assert.equal(await evaluate(page, 'document.querySelector("#shop-balance").textContent'), '0');
+    for (const [width, height] of [
+      [1280, 720],
+      [1440, 900],
+      [1024, 576],
+    ]) {
+      await command(
+        'Emulation.setDeviceMetricsOverride',
+        { width, height, deviceScaleFactor: 1, mobile: false },
+        page.id,
+      );
+      await evaluate(
+        page,
+        'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))',
+      );
+      const layout = await evaluate(
+        page,
+        `(() => {
+        const box = document.querySelector('#shop-sell').getBoundingClientRect();
+        const card = document.querySelector('.shop-sell-card').getBoundingClientRect();
+        const root = document.documentElement;
+        return {
+          width: innerWidth, height: innerHeight, button: box.toJSON(), card: card.toJSON(),
+          fits: box.left >= -1 && box.top >= -1 && box.right <= innerWidth + 1 && box.bottom <= innerHeight + 1,
+          scroll: [root.scrollWidth, root.scrollHeight], client: [root.clientWidth, root.clientHeight],
+        };
+      })()`,
+      );
+      assert(layout.fits, JSON.stringify(layout));
+      assert(Math.abs(layout.card.width - layout.card.height) <= 1, JSON.stringify(layout));
+      assert.deepEqual(layout.scroll, layout.client, JSON.stringify(layout));
+      if (width === 1280) await screenshot(page, 'shop-sell-1280');
+    }
+    await click(page, '#shop-sell');
+    await click(page, '#confirm-ok');
+    await until(
+      page,
+      'document.querySelector("#shop-sell-status").dataset.state === "success" && document.querySelector("#shop-balance").textContent === "40"',
+    );
+    assert.deepEqual(
+      await evaluate(
+        page,
+        '[...document.querySelectorAll("#shop-sell-list input")].map(input => input.value)',
+      ),
+      [
+        'badge-b',
+        'extracted-charm-0',
+        'extracted-charm-1',
+        'extracted-charm-2',
+        'extracted-charm-3',
+      ],
+    );
+    await command('Page.reload', {}, page.id);
+    await until(page, 'document.querySelector("#game-load-status")?.dataset.state === "ready"');
+    if (await evaluate(page, 'document.querySelector("#prologue-skip")?.checkVisibility()'))
+      await click(page, '#prologue-skip');
+    await click(page, '#v19-loadout-open');
+    await click(page, '[data-bp-nav="sell"]');
+    await until(page, 'document.querySelector("#shop-sell-panel").checkVisibility()');
+    await until(page, 'document.querySelector("#shop-balance").textContent === "40"');
+    assert.deepEqual(
+      await evaluate(
+        page,
+        '[...document.querySelectorAll("#shop-sell-list input")].map(input => input.value)',
+      ),
+      [
+        'badge-b',
+        'extracted-charm-0',
+        'extracted-charm-1',
+        'extracted-charm-2',
+        'extracted-charm-3',
+      ],
+    );
+    pass(
+      'Extraction retains every instance without payout, shop and backpack sale entries work, sale filters weapons, cancels, persists and fits three desktop viewports',
+    );
+  } else if (spawningOnly) {
     await verifySpawningFlow();
   } else if (rulerOnly) {
     await verifyRulerEffectFlow();
@@ -2894,13 +3035,30 @@ try {
         'All three chapters: notebook/stele → map/key → charm/record → extraction → ending-gated cloud unlock and archive replay',
       );
 
-      await click(storyPage, '[data-lobby-tab="shop"]');
+      await click(storyPage, '.v19-shop-bottom');
+      await click(storyPage, '[data-shop-mode="sell"]');
+      assert.equal(
+        await evaluate(storyPage, 'document.querySelector("#shop-balance").textContent'),
+        '0',
+        'settlement never adds currency',
+      );
+      const charms = await evaluate(
+        storyPage,
+        '[...document.querySelectorAll("#shop-sell-list label")].filter(row => row.textContent.includes("GPA 4.0 护符")).map(row => row.querySelector("input").value)',
+      );
+      assert.equal(charms.length, 6, 'all duplicate loot instances were stored');
+      for (const id of charms.slice(0, 4))
+        await click(storyPage, `#shop-sell-list input[value=${JSON.stringify(id)}]`);
+      await click(storyPage, '#shop-sell');
+      await click(storyPage, '#confirm-ok');
+      await until(storyPage, 'document.querySelector("#shop-balance").textContent === "200"');
+      await click(storyPage, '[data-shop-mode="buy"]');
       await click(storyPage, '[data-shop-category="support"]');
       const initialBalance = await evaluate(
         storyPage,
         'Number(document.querySelector("#shop-balance").textContent)',
       );
-      assert(initialBalance >= 170, 'duplicate collectibles funded the shop through settlement');
+      assert.equal(initialBalance, 200, 'manual sale funded the shop');
       for (const itemId of ['bandage', 'yellow-bike', 'thick-down-jacket']) {
         await click(storyPage, `[data-shop-buy="${itemId}"]`);
         await until(

@@ -3,6 +3,7 @@ import type { ItemInstance } from '../../shared/types/game';
 import { assetUrl } from '../../app/asset-url';
 import { COMBAT_RULES } from '../../config/combat-config';
 import { warehouseItemIconAssetPath } from './warehouse-items';
+import { shopSaleMarkup } from './shop-sale';
 import { DEFAULT_SKIN_ID, SKIN_DEFINITIONS, type SkinId } from '../save/persistent-save';
 
 export function wardrobeMarkup(inShop = false): string {
@@ -109,23 +110,43 @@ export function shopMarkup(): string {
     <div class="shop-frame">
       <header class="shop-heading">
         <button class="shop-back" type="button" data-lobby-tab="prepare" aria-label="返回大厅" title="返回大厅"></button>
-        <h2 id="shop-title">商城</h2>
+        <h2 id="shop-title">商店</h2>
         <span class="shop-wallet"><span class="sr-only">交子余额</span><b id="shop-balance">0</b></span>
       </header>
-      <nav class="shop-categories" aria-label="商城分类">
-        <button type="button" data-shop-category="weapons" aria-pressed="true" aria-controls="shop-weapons">武器</button>
-        <button type="button" data-shop-category="support" aria-pressed="false" aria-controls="shop-support">辅助</button>
-        <button type="button" data-shop-category="skins" aria-pressed="false" aria-controls="shop-skins">时装</button>
+      <nav class="shop-mode" aria-label="商店操作">
+        <button type="button" data-shop-mode="buy" aria-pressed="true" aria-controls="shop-buy-panel">购买</button>
+        <button type="button" data-shop-mode="sell" aria-pressed="false" aria-controls="shop-sell-panel">出售</button>
       </nav>
-      <div id="shop-weapons" class="shop-grid" data-shop-section="weapons">${SHOP_WEAPON_ITEM_IDS.map(shopItemMarkup).join('')}</div>
-      <div id="shop-support" class="shop-grid" data-shop-section="support" hidden>${SHOP_SUPPORT_ITEM_IDS.map(shopItemMarkup).join('')}</div>
-      <section id="shop-skins" class="shop-skins" data-shop-section="skins" aria-label="时装商品" hidden>${wardrobeMarkup(true)}</section>
-      <footer class="shop-footer">
-        <p id="shop-status" class="shop-status" role="status" aria-live="polite"></p>
-        <button id="shop-prepare" type="button" class="shop-action">前往出发准备</button>
-      </footer>
+      <section id="shop-buy-panel" class="shop-content" data-shop-view="buy" aria-label="购买商品">
+        <nav class="shop-categories" aria-label="购买分类">
+          <button type="button" data-shop-category="weapons" aria-pressed="true" aria-controls="shop-weapons">武器</button>
+          <button type="button" data-shop-category="support" aria-pressed="false" aria-controls="shop-support">辅助</button>
+          <button type="button" data-shop-category="skins" aria-pressed="false" aria-controls="shop-skins">时装</button>
+        </nav>
+        <div id="shop-weapons" class="shop-grid" data-shop-section="weapons">${SHOP_WEAPON_ITEM_IDS.map(shopItemMarkup).join('')}</div>
+        <div id="shop-support" class="shop-grid" data-shop-section="support" hidden>${SHOP_SUPPORT_ITEM_IDS.map(shopItemMarkup).join('')}</div>
+        <section id="shop-skins" class="shop-skins" data-shop-section="skins" aria-label="时装商品" hidden>${wardrobeMarkup(true)}</section>
+        <footer class="shop-footer">
+          <p id="shop-status" class="shop-status" role="status" aria-live="polite"></p>
+          <button id="shop-prepare" type="button" class="shop-action">前往出发准备</button>
+        </footer>
+      </section>
+      ${shopSaleMarkup()}
     </div>
   </section>`;
+}
+
+export function bindShopModes(root: HTMLElement): (mode: 'buy' | 'sell') => void {
+  const buttons = root.querySelectorAll<HTMLButtonElement>('[data-shop-mode]');
+  const views = root.querySelectorAll<HTMLElement>('[data-shop-view]');
+  function selectMode(mode: 'buy' | 'sell'): void {
+    for (const button of buttons)
+      button.setAttribute('aria-pressed', String(button.dataset.shopMode === mode));
+    for (const view of views) view.hidden = view.dataset.shopView !== mode;
+  }
+  for (const button of buttons)
+    button.onclick = () => selectMode(button.dataset.shopMode === 'sell' ? 'sell' : 'buy');
+  return selectMode;
 }
 
 export function bindShopCategories(root: HTMLElement): void {

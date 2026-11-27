@@ -164,8 +164,8 @@ describe('formal persistence and migration', () => {
     expect(storage.getItem(SAVE_KEY)).toBe(legacyRaw);
     expect(storage.getItem(FORMAL_SAVE_KEY)).not.toBeNull();
     expect(formal.view().schemaVersion).toBe(4);
-    expect(formal.view().warehouse).toEqual([result('legacy').items[3]]);
-    expect(formal.view().currency).toBe(3 * RAID_RULES.values.uncommon);
+    expect(formal.view().warehouse).toEqual(result('legacy').items);
+    expect(formal.view().currency).toBe(0);
     expect(new PersistentSave(storage).view().codexIds).toEqual(['school-badge']);
   });
 
@@ -363,8 +363,8 @@ describe('formal persistence and migration', () => {
     storage.fail = false;
     await save.finalizeRaid(result('raid'));
     await save.finalizeRaid(result('raid'));
-    expect(save.view().warehouse).toEqual([result('raid').items[3]]);
-    expect(save.view().currency).toBe(3 * RAID_RULES.values.uncommon);
+    expect(save.view().warehouse).toEqual(result('raid').items);
+    expect(save.view().currency).toBe(0);
     expect(save.view().settledRaidIds).toEqual(['raid']);
   });
 
@@ -437,8 +437,13 @@ describe('formal persistence and migration', () => {
     await Promise.resolve();
 
     expect(controller.getView().phase).toBe('success');
-    expect(save.view().warehouse.map((item) => item.instanceId)).toEqual(['formal-raid:3']);
-    expect(save.view().currency).toBe(3 * RAID_RULES.values.uncommon);
+    expect(save.view().warehouse.map((item) => item.instanceId)).toEqual([
+      'formal-raid:0',
+      'formal-raid:1',
+      'formal-raid:2',
+      'formal-raid:3',
+    ]);
+    expect(save.view().currency).toBe(0);
     expect(save.view().settledRaidIds).toEqual(['formal-raid']);
     expect(save.view().lastResult?.raidId).toBe('formal-raid');
     expect(new PersistentSave(storage).view()).toEqual(save.view());
@@ -481,8 +486,8 @@ describe('formal persistence and migration', () => {
     expect(controller.getView().phase).toBe('success');
     expect(controller.getView().value).toBe(100);
     expect(controller.getView().result).toEqual(frozen);
-    expect(save.view().warehouse).toHaveLength(5);
-    expect(save.view().currency).toBe(3 * RAID_RULES.values.uncommon);
+    expect(save.view().warehouse).toHaveLength(8);
+    expect(save.view().currency).toBe(0);
     expect(save.view().warehouse.filter((item) => item.instanceId === 'seed-0')).toHaveLength(1);
     expect(save.view().warehouse.some((item) => item.instanceId.includes(':starter:'))).toBe(false);
     await save.finalizeRaid(frozen!);
@@ -492,7 +497,7 @@ describe('formal persistence and migration', () => {
     controller.abandon();
     await Promise.resolve();
     expect(controller.getView().phase).toBe('failed');
-    expect(save.view().warehouse).toHaveLength(4);
+    expect(save.view().warehouse).toHaveLength(7);
     controller.dispose();
   });
 

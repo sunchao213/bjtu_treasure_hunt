@@ -7,7 +7,6 @@ import {
   ITEM_DEFINITIONS,
   RAID_RULES,
 } from '../../config/game-config';
-import { retainSettlementItems } from './settlement-retention';
 import { migrateRetiredItems } from './retired-items';
 import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
 
@@ -269,15 +268,7 @@ export class ReferenceSave implements SavePort {
           next.codexIds.push(item.itemId);
         }
       }
-      const retained = retainSettlementItems(
-        next.warehouse,
-        result.items,
-        next.currency,
-        ITEM_DEFINITIONS,
-        RAID_RULES.values,
-      );
-      next.warehouse = retained.warehouse;
-      next.currency = retained.currency;
+      next.warehouse.push(...structuredClone(result.items));
     }
     next.activeRaid = null;
     next.settledRaidIds.push(result.raidId);

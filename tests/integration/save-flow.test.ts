@@ -170,8 +170,8 @@ describe('A to B reference persistence integration', () => {
     await save.finalizeRaid(result('1'));
     await save.finalizeRaid(result('1'));
     const reloaded = new ReferenceSave(storage);
-    expect(reloaded.view().warehouse).toEqual([result('1').items[3]]);
-    expect(reloaded.view().currency).toBe(3 * RAID_RULES.values.uncommon);
+    expect(reloaded.view().warehouse).toEqual(result('1').items);
+    expect(reloaded.view().currency).toBe(0);
     expect(reloaded.view().codexIds).toEqual(['school-badge']);
     expect(reloaded.view().activeRaid).toBeNull();
   });
@@ -305,8 +305,8 @@ describe('A to B reference persistence integration', () => {
     controller.tick();
     await Promise.resolve();
     expect(controller.getView().phase).toBe('success');
-    expect(save.view().warehouse).toEqual([result('integrated').items[3]]);
-    expect(save.view().currency).toBe(3 * RAID_RULES.values.uncommon);
+    expect(save.view().warehouse).toEqual(result('integrated').items);
+    expect(save.view().currency).toBe(0);
     expect(controller.prepareNext()).toBe(true);
     expect(inventory.getCarriedItems()).toHaveLength(0);
   });

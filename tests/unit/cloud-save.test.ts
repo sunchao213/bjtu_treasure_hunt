@@ -111,6 +111,69 @@ describe('cloud progress transactions', () => {
     save.close();
   });
 
+  it('commits sales once, rejects weapons and leaves the warehouse intact on write failure', async () => {
+    const warehouse: FormalSaveData['warehouse'] = [
+      {
+        instanceId: 'map',
+        itemId: 'marked-campus-map',
+        origin: { kind: 'raid-loot', obtainedInRaidId: 'run' },
+      },
+      {
+        instanceId: 'badge-1',
+        itemId: 'school-badge',
+        origin: { kind: 'raid-loot', obtainedInRaidId: 'run' },
+      },
+      {
+        instanceId: 'badge-2',
+        itemId: 'school-badge',
+        origin: { kind: 'raid-loot', obtainedInRaidId: 'run' },
+      },
+      {
+        instanceId: 'bat',
+        itemId: 'training-bat',
+        origin: { kind: 'carry-in', source: 'purchase' },
+      },
+    ];
+    const api = endpoint({ ...empty(), warehouse, currency: 7, codexIds: ['school-badge'] });
+    const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });
+    const initial = save.view();
+
+    expect(await save.sellWarehouseItems(['map', 'bat'])).toEqual({
+      ok: false,
+      error: 'NOT_SELLABLE',
+    });
+    expect(await save.sellWarehouseItems(['badge-1', 'badge-1'])).toEqual({
+      ok: false,
+      error: 'INVALID_STATE',
+    });
+    expect(api.write).not.toHaveBeenCalled();
+    api.write.mockRejectedValueOnce(new CloudSaveError('unavailable', 503));
+    await expect(save.sellWarehouseItems(['map', 'badge-1'])).rejects.toThrow('unavailable');
+    expect(save.view()).toEqual(initial);
+
+    const results = await Promise.all([
+      save.sellWarehouseItems(['map', 'badge-1']),
+      save.sellWarehouseItems(['badge-1', 'badge-2']),
+    ]);
+    expect(results).toEqual([
+      { ok: true, value: { count: 2, proceeds: 35 } },
+      { ok: false, error: 'ITEM_NOT_FOUND' },
+    ]);
+    expect(save.view()).toMatchObject({
+      currency: 42,
+      warehouse: [warehouse[2], warehouse[3]],
+      codexIds: ['school-badge'],
+    });
+    expect(api.write).toHaveBeenCalledTimes(2);
+    expect(api.write.mock.calls[1]?.[2]).toEqual(save.view());
+    await save.beginRaid('next-run', []);
+    expect(await save.sellWarehouseItems(['badge-2'])).toEqual({
+      ok: false,
+      error: 'INVALID_STATE',
+    });
+    save.close();
+  });
+
   it('persists fashion purchases once and restores the selected appearance before departure', async () => {
     const api = endpoint({ ...empty(), currency: 928 });
     const save = await CloudSave.connect(storage(), api, { onLost: vi.fn() });

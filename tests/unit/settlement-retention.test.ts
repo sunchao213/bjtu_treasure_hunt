@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { ITEM_DEFINITIONS, RAID_RULES } from '../../src/config/game-config';
-import { retainSettlementItems } from '../../src/modules/save/settlement-retention';
 import { PersistentSave } from '../../src/modules/save/persistent-save';
 import { ReferenceSave, type StoragePort } from '../../src/modules/save/reference-save';
 import type { ItemInstance } from '../../src/shared/types/game';
@@ -49,7 +47,7 @@ describe.each([ReferenceSave, PersistentSave])('%s settlement persistence', (Sav
     expect(restored.lastResult?.value).toBe(20);
   });
 
-  it('converts duplicates atomically and exactly once across raids, retries and reloads', async () => {
+  it('retains duplicate loot once across raids, retries and reloads without crediting currency', async () => {
     const data = new Map<string, string>();
     let fail = false;
     const storage: StoragePort = {
@@ -95,34 +93,12 @@ describe.each([ReferenceSave, PersistentSave])('%s settlement persistence', (Sav
     const reloaded = new Save(storage);
     await reloaded.finalizeRaid(settlement);
     expect(reloaded.view()).toEqual(save.view());
-    expect(reloaded.view().warehouse).toEqual([loot('second', 'newest')]);
-    expect(reloaded.view().currency).toBe(2 * RAID_RULES.values.uncommon);
+    expect(reloaded.view().warehouse).toEqual([
+      loot('first', 'old'),
+      loot('second', 'new'),
+      loot('second', 'newest'),
+    ]);
+    expect(reloaded.view().currency).toBe(0);
     expect(reloaded.view().settledRaidIds).toEqual(['first', 'second']);
-  });
-});
-
-describe('settlement retention', () => {
-  it('keeps the newest value-only item and converts duplicates to 交子', () => {
-    const retained = retainSettlementItems(
-      [item('old', 'school-badge')],
-      [item('new', 'school-badge')],
-      7,
-      ITEM_DEFINITIONS,
-      RAID_RULES.values,
-    );
-    expect(retained.warehouse.map((entry) => entry.instanceId)).toEqual(['new']);
-    expect(retained.currency).toBe(7 + RAID_RULES.values.uncommon);
-  });
-
-  it('keeps functional items as separate instances', () => {
-    const retained = retainSettlementItems(
-      [item('old', 'morning-coffee')],
-      [item('new', 'morning-coffee')],
-      0,
-      ITEM_DEFINITIONS,
-      RAID_RULES.values,
-    );
-    expect(retained.warehouse.map((entry) => entry.instanceId)).toEqual(['old', 'new']);
-    expect(retained.currency).toBe(0);
   });
 });

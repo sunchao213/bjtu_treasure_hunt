@@ -51,9 +51,9 @@ describe('操作确认弹窗 · 源码里不再用原生 confirm', () => {
     expect(withoutComments).not.toMatch(/(^|[^.\w])(?:window\.)?alert\s*\(/);
   });
 
-  it('游戏入口的四类破坏性操作都改走 ask()', () => {
+  it('游戏入口的破坏性操作都走 ask()', () => {
     const main = sources.find((source) => source.file === 'game.ts')!.code;
-    // 清损坏存档、迁移旧存档、退出登录、丢任务物品、放弃探索、清云端存档
-    expect(main.match(/confirmDialog\s*\n?\s*\.ask\(/g)?.length).toBe(6);
+    // 清损坏存档、迁移旧存档、退出登录、丢任务物品、出售、放弃探索、清云端存档
+    expect(main.match(/confirmDialog\s*\n?\s*\.ask\(/g)?.length).toBe(7);
   });
 });

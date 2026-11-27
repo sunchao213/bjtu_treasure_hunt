@@ -13,7 +13,7 @@
 }
 .shop-frame {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 8px;
   width: 100%;
   min-width: 0;
@@ -28,6 +28,71 @@
     0 8px 18px #070403,
     inset 0 0 0 3px #100907,
     inset 0 0 0 4px #563b25;
+}
+.shop-content {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: inherit;
+  min-height: 0;
+}
+.shop-sale-hint {
+  margin: 0;
+  color: #e7d5bb;
+  font-size: 13px;
+}
+.shop-card.shop-sell-card {
+  position: relative;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+.shop-card.shop-sell-card .shop-item-art {
+  width: min(72%, 108px);
+  pointer-events: none;
+}
+.shop-sell-card:has(input:enabled):hover {
+  border-color: #a87c46;
+}
+.shop-sell-card:has(input:checked) {
+  border-color: #e3ab62;
+  background: #4a291b;
+  box-shadow: inset 0 0 0 2px #a36f39;
+}
+.shop-sell-card:has(input:focus-visible) {
+  outline: 2px solid #ffe3a3;
+  outline-offset: 1px;
+}
+.shop-sell-card:has(input:disabled) {
+  cursor: default;
+}
+.shop-sell-card input {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #e3ab62;
+}
+.shop-sell-controls output {
+  color: #ffe1a1;
+}
+.shop-sell-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 13px;
+}
+.shop-sale-footer {
+  flex-wrap: wrap;
+}
+.shop-sale-empty {
+  grid-column: 1 / -1;
+  margin: 12px 4px;
 }
 .shop-heading {
   display: grid;
@@ -80,11 +145,13 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.shop-mode,
 .shop-categories {
   display: flex;
   justify-content: center;
   gap: 8px;
 }
+.shop-mode button,
 .shop-categories button {
   min-width: 94px;
   min-height: 36px;
@@ -93,6 +160,7 @@
   color: #e8c99a;
   font-family: 'Zpix', 'Microsoft YaHei', sans-serif;
 }
+.shop-mode button[aria-pressed='true'],
 .shop-categories button[aria-pressed='true'] {
   border-color: #e3ab62;
   background: #633321;
@@ -143,6 +211,12 @@
 .shop-card .wh-slot-name {
   margin: 0;
   font-size: 13px;
+}
+.shop-sell-card .wh-slot-name {
+  font-size: 12px;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .shop-card-meta {
   display: flex;
@@ -255,6 +329,12 @@ html[data-touch='true'] .shop-frame {
 html[data-touch='true'] .shop-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+html[data-touch='true'] .shop-sell-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr));
+}
+html[data-touch='true'] .shop-sell-card .wh-slot-name {
+  font-size: 9px;
 }
 html[data-touch='true'] .shop-heading h2 {
   padding: 5px 12px;

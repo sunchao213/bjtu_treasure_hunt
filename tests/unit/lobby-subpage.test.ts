@@ -31,6 +31,15 @@ describe('大厅子页 · 商城入口与实底', () => {
     expect(buttonOf('v19-shop-bottom')).toContain('data-lobby-tab="shop"');
   });
 
+  it('购买和出售共用商店页面', () => {
+    expect(html).not.toContain('data-lobby-panel="mall"');
+    const shop = html.slice(html.indexOf('data-lobby-panel="shop"'));
+    expect(shop).toContain('data-shop-mode="buy" aria-pressed="true"');
+    expect(shop).toContain('data-shop-mode="sell" aria-pressed="false"');
+    expect(shop).toContain('data-shop-view="sell" hidden');
+    expect(buttonOf('data-bp-nav="sell"')).toContain('aria-label="出售"');
+  });
+
   it('子页用实色底，不再复用大厅背景图', () => {
     const block = css.match(/\.v19-subpage\s*\{[^}]*\}/)?.[0] ?? '';
     expect(block).not.toBe('');

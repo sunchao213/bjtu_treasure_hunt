@@ -88,13 +88,23 @@ describe('warehouse capacity 100', () => {
     });
   });
 
-  it('routes extraction overflow into the mailbox instead of growing the warehouse', async () => {
-    const save = new PersistentSave(seed(WAREHOUSE_CAPACITY - 2));
+  it('routes duplicate collectibles that exceed capacity to the mailbox without paying currency', async () => {
+    const save = new PersistentSave(seed(WAREHOUSE_CAPACITY - 2, 38));
     await save.beginRaid('overflow-raid', []);
-    await save.finalizeRaid(success('overflow-raid', 5));
+    const extraction = success('overflow-raid', 5);
+    await save.finalizeRaid({
+      ...extraction,
+      items: extraction.items.map((entry) => ({ ...entry, itemId: 'school-badge' })),
+      value: 125,
+    });
 
     const view = save.view();
     expect(view.warehouse).toHaveLength(WAREHOUSE_CAPACITY);
+    expect(view.currency).toBe(38);
+    expect(view.warehouse.slice(-2).map((entry) => entry.itemId)).toEqual([
+      'school-badge',
+      'school-badge',
+    ]);
     expect(view.mailbox).toHaveLength(1);
     const mail = view.mailbox[0]!;
     expect(mail.attachments).toHaveLength(3);

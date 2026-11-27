@@ -116,6 +116,11 @@ export class CloudSave implements SavePort {
       return next.purchaseItem(itemId);
     }, true);
   }
+  sellWarehouseItems(instanceIds: readonly string[]) {
+    const ids = [...instanceIds];
+    return this.update((next) => next.sellWarehouseItems(ids), true);
+  }
+
   purchaseSkin(skinId: SkinId): Promise<{ ok: boolean; owned: boolean }> {
     return this.update((next) => {
       if (next.view().activeRaid) return { ok: false, owned: false };

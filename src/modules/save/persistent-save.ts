@@ -5,6 +5,7 @@ import {
   ITEM_DEFINITIONS,
   RAID_RULES,
   WAREHOUSE_CAPACITY,
+  warehouseSalePrice,
 } from '../../config/game-config';
 import type {
   ItemInstance,
@@ -15,7 +16,6 @@ import type {
 } from '../../shared/types/game';
 import { SAVE_KEY, type SaveData, type StoragePort } from './reference-save';
 import { activeQuestChapter, chapterUnlockGranted } from '../quests/quest-service';
-import { retainSettlementItems } from './settlement-retention';
 import { migrateRetiredItems } from './retired-items';
 
 // Keep the storage key stable so existing browsers can migrate in place.
@@ -515,7 +515,11 @@ export class PersistentSave implements SavePort {
     }
     const next = this.view();
     if (result.outcome === 'success') {
-      const warehouseIds = new Set(next.warehouse.map((item) => item.instanceId));
+      const warehouseIds = new Set(
+        [...next.warehouse, ...next.mailbox.flatMap((mail) => mail.attachments)].map(
+          (item) => item.instanceId,
+        ),
+      );
       for (const item of result.items) {
         if (warehouseIds.has(item.instanceId)) {
           throw new Error('Duplicate instance in settlement');
@@ -525,19 +529,10 @@ export class PersistentSave implements SavePort {
           next.codexIds.push(item.itemId);
         }
       }
-      const retained = retainSettlementItems(
-        next.warehouse,
-        result.items,
-        next.currency,
-        ITEM_DEFINITIONS,
-        RAID_RULES.values,
-      );
-      // 重复收藏已在 retain 里折成交子，真正进仓的是 retained.warehouse 的尾部增量。
-      // 超出 100 格的那部分原样进信箱，玩家腾出格子后自己领。
-      const overflow = retained.warehouse.slice(WAREHOUSE_CAPACITY);
-      retained.warehouse.length = Math.min(retained.warehouse.length, WAREHOUSE_CAPACITY);
-      next.warehouse = retained.warehouse;
-      next.currency = retained.currency;
+      const incoming = structuredClone(result.items);
+      const freeSlots = WAREHOUSE_CAPACITY - next.warehouse.length;
+      next.warehouse.push(...incoming.slice(0, freeSlots));
+      const overflow = incoming.slice(freeSlots);
       if (overflow.length > 0) next.mailbox.push(overflowMail(overflow, result.raidId));
     }
     next.activeRaid = null;
@@ -592,6 +587,34 @@ export class PersistentSave implements SavePort {
     next.warehouse.push(item);
     this.commit(next);
     return { ok: true, value: structuredClone(item) };
+  }
+
+  sellWarehouseItems(
+    instanceIds: readonly string[],
+  ):
+    | { ok: true; value: { count: number; proceeds: number } }
+    | { ok: false; error: 'INVALID_STATE' | 'ITEM_NOT_FOUND' | 'NOT_SELLABLE' } {
+    const ids = new Set(instanceIds);
+    if (this.data.activeRaid || !ids.size || ids.size !== instanceIds.length) {
+      return { ok: false, error: 'INVALID_STATE' };
+    }
+    const items = this.data.warehouse.filter((item) => ids.has(item.instanceId));
+    if (items.length !== ids.size) return { ok: false, error: 'ITEM_NOT_FOUND' };
+
+    let proceeds = 0;
+    for (const item of items) {
+      const price = warehouseSalePrice(item.itemId);
+      if (price === null) return { ok: false, error: 'NOT_SELLABLE' };
+      proceeds += price;
+    }
+    if (!Number.isSafeInteger(this.data.currency + proceeds)) {
+      return { ok: false, error: 'INVALID_STATE' };
+    }
+    const next = this.view();
+    next.warehouse = next.warehouse.filter((item) => !ids.has(item.instanceId));
+    next.currency += proceeds;
+    this.commit(next);
+    return { ok: true, value: { count: ids.size, proceeds } };
   }
 
   purchaseSkin(skinId: string): { ok: boolean; owned: boolean } {
