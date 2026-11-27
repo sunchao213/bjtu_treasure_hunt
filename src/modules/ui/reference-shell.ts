@@ -97,7 +97,6 @@ export function prepViewMarkup(): string {
                   <div class="bp-bag-grid" data-bp-bag-grid role="group" aria-label="随身背包"></div>
                   <button class="bp-hot bp-hot-put-all" data-bp-put-all type="button" aria-label="一键放入仓库"></button>
                   <button class="bp-hot bp-hot-repair" data-bp-repair type="button" aria-label="维修全部"></button>
-                  <button class="bp-prep-link" data-wh-prep type="button">出发准备</button>
                 </div>
                 <div id="warehouse-panel" class="bp-wh">${warehousePanelMarkup()}</div>
               </div>

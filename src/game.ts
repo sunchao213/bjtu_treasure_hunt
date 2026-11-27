@@ -1324,12 +1324,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       // 旧那套「初始武器 + 勾选带入」完整保留，入口挪到左面板底部
       onOpenPrepare: () => element<HTMLDialogElement>('v19-prepare-dialog').showModal(),
     });
-    // 「出发准备」入口在左面板，不在 .wh-panel 里，事件委托够不到，单独绑
-    const prepLink =
-      element('v19-loadout-dialog').querySelector<HTMLButtonElement>('[data-wh-prep]');
-    if (prepLink) {
-      prepLink.onclick = () => element<HTMLDialogElement>('v19-prepare-dialog').showModal();
-    }
     const bagRoot = element('v19-loadout-dialog');
     // 一键放入：把随身背包里的装备全部退回避难所仓库
     bagRoot.querySelector<HTMLButtonElement>('[data-bp-put-all]')?.addEventListener('click', () => {
@@ -1522,11 +1516,6 @@ export async function startGame(user: AccountUser, logout: () => Promise<void>):
       const prepTarget =
         roomOpen && lobby.isJoined() ? element('room-preparation-slot') : preparationHome;
       if (preparation.parentElement !== prepTarget) prepTarget.append(preparation);
-      // 联机时准备区被搬进房间页，子弹窗里没有内容可放，先禁用入口
-      // 入口在左面板，不在 warehouse-panel 内，改从整个弹窗里找
-      const prepEntry =
-        element('v19-loadout-dialog').querySelector<HTMLButtonElement>('[data-wh-prep]');
-      if (prepEntry) prepEntry.disabled = roomOpen && lobby.isJoined();
       if (roomOpen && lobby.isJoined()) {
         const consentSlot = element('room-consent-slot');
         if (riskConsentLabel.parentElement !== consentSlot) consentSlot.prepend(riskConsentLabel);
