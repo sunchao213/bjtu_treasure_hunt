@@ -111,7 +111,8 @@ function renderMail(mail: MailItem, warehouseCount: number): HTMLElement {
   button.className = 'mail-claim';
   button.dataset.mailClaim = mail.mailId;
   button.disabled = room === 0;
-  button.textContent = room === 0 ? '仓库已满' : `领取 ${Math.min(room, mail.attachments.length)} 件`;
+  button.textContent =
+    room === 0 ? '仓库已满' : `领取 ${Math.min(room, mail.attachments.length)} 件`;
   footer.append(hint, button);
 
   item.append(head, body, chips, footer);

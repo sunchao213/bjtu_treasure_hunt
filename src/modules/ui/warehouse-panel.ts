@@ -247,11 +247,7 @@ let dragState: DragState | null = null;
 let suppressClick = false;
 
 function mountDrag(panel: HTMLElement, root: HTMLElement, options: WarehousePanelOptions): void {
-  const beginDrag = (
-    event: PointerEvent,
-    slot: HTMLElement,
-    source: 'warehouse' | 'bag',
-  ): void => {
+  const beginDrag = (event: PointerEvent, slot: HTMLElement, source: 'warehouse' | 'bag'): void => {
     const fromId = source === 'warehouse' ? slot.dataset.item : slot.dataset.bpInstance;
     if (event.button !== 0 || !fromId) return;
     dragState = {
@@ -376,7 +372,10 @@ function dropTargetAt(
   x: number,
   y: number,
   drag: DragState,
-): { el: HTMLElement; kind: 'warehouse-slot' | 'bag-slot' | 'bag-grid' | 'warehouse-panel' } | null {
+): {
+  el: HTMLElement;
+  kind: 'warehouse-slot' | 'bag-slot' | 'bag-grid' | 'warehouse-panel';
+} | null {
   const node = document.elementFromPoint(x, y) as HTMLElement | null;
   if (!node) return null;
   if (drag.source === 'warehouse') {
@@ -729,7 +728,9 @@ function paint(panel: HTMLElement): void {
     // 一格一件：容量就是在库件数（带入背包的物品不在库里，不计入）
     capacity.textContent = String(entries.length);
     // 满仓给个红字提示：此时买不了东西，撤离多出来的走信箱
-    capacity.closest('.wh-capacity')?.setAttribute('data-full', String(entries.length >= WAREHOUSE_CAPACITY));
+    capacity
+      .closest('.wh-capacity')
+      ?.setAttribute('data-full', String(entries.length >= WAREHOUSE_CAPACITY));
   }
 
   const total = panel.querySelector<HTMLElement>('[data-wh-value]');

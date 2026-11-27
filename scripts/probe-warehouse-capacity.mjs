@@ -45,7 +45,11 @@ function command(method, params = {}, session = sessionId) {
   });
 }
 async function evaluate(expression) {
-  const reply = await command('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  const reply = await command('Runtime.evaluate', {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+  });
   if (reply.exceptionDetails) throw new Error(JSON.stringify(reply.exceptionDetails));
   return reply.result.value;
 }
@@ -113,7 +117,12 @@ try {
   sessionId = (await command('Target.attachToTarget', { targetId, flatten: true })).sessionId;
   await command('Page.enable');
   await command('Runtime.enable');
-  await command('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await command('Emulation.setDeviceMetricsOverride', {
+    width: 1600,
+    height: 1000,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
 
   // ── 场景 A：满仓 100 件 + 1 封 3 件补发邮件
   await boot('?warehouse=full');
@@ -127,7 +136,11 @@ try {
     `(() => { const b = document.querySelector('#mail-claim-all'); b.disabled = false; b.click(); return true; })()`,
   );
   await delay(600);
-  console.log('claim with full warehouse →', JSON.stringify(await mailState().then((s) => ({ status: s.status, letters: s.letters }))), blocked ? '' : '');
+  console.log(
+    'claim with full warehouse →',
+    JSON.stringify(await mailState().then((s) => ({ status: s.status, letters: s.letters }))),
+    blocked ? '' : '',
+  );
   await shot('02-mail-claim-blocked');
 
   await evaluate(`document.querySelector('[data-lobby-tab="shop"]').click()`);
@@ -167,7 +180,9 @@ try {
   })()`);
   console.log('WAREHOUSE at full:', JSON.stringify(cap));
   await shot('05-warehouse-full');
-  await evaluate(`document.querySelector('[data-wh-close]')?.click() ?? document.querySelector('#v19-loadout-dialog')?.close()`);
+  await evaluate(
+    `document.querySelector('[data-wh-close]')?.click() ?? document.querySelector('#v19-loadout-dialog')?.close()`,
+  );
   await delay(400);
 
   // ── 场景 B：90 格 + 1 封 3 件邮件 → 全部领取

@@ -49,7 +49,11 @@ function command(method, params = {}, session = sessionId) {
   });
 }
 async function evaluate(expression) {
-  const reply = await command('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  const reply = await command('Runtime.evaluate', {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+  });
   if (reply.exceptionDetails) throw new Error(JSON.stringify(reply.exceptionDetails));
   return reply.result.value;
 }

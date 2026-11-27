@@ -45,7 +45,11 @@ function command(method, params = {}, session = sessionId) {
   });
 }
 async function evaluate(expression) {
-  const reply = await command('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  const reply = await command('Runtime.evaluate', {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+  });
   if (reply.exceptionDetails) throw new Error(JSON.stringify(reply.exceptionDetails));
   return reply.result.value;
 }
@@ -133,13 +137,23 @@ try {
   const pb = await evaluate(
     `(() => { const r = document.querySelector('.wh-panel').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })()`,
   );
-  await shot('top', { x: Math.round(pb.x + 240 * (pb.w / 790)), y: Math.round(pb.y + 45 * (pb.w / 790)), width: Math.round(490 * (pb.w / 790)), height: Math.round(90 * (pb.w / 790)) });
+  await shot('top', {
+    x: Math.round(pb.x + 240 * (pb.w / 790)),
+    y: Math.round(pb.y + 45 * (pb.w / 790)),
+    width: Math.round(490 * (pb.w / 790)),
+    height: Math.round(90 * (pb.w / 790)),
+  });
   // 最坏情况：容量满格 + 五位数总价值，看会不会溢出或被裁
   await evaluate(
     `(() => { document.querySelector('[data-wh-capacity]').textContent = '100'; document.querySelector('[data-wh-value]').textContent = '10240'; })()`,
   );
   await delay(200);
-  await shot('top-max', { x: Math.round(pb.x + 240 * (pb.w / 790)), y: Math.round(pb.y + 45 * (pb.w / 790)), width: Math.round(490 * (pb.w / 790)), height: Math.round(90 * (pb.w / 790)) });
+  await shot('top-max', {
+    x: Math.round(pb.x + 240 * (pb.w / 790)),
+    y: Math.round(pb.y + 45 * (pb.w / 790)),
+    width: Math.round(490 * (pb.w / 790)),
+    height: Math.round(90 * (pb.w / 790)),
+  });
   const over = await evaluate(
     `(() => {
       const panel = document.querySelector('.wh-panel').getBoundingClientRect();

@@ -79,7 +79,8 @@ try {
     if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') {
       failures.push(message.params.entry.text.slice(0, 120));
     }
-    if (message.method === 'Network.loadingFailed') failures.push(`net: ${message.params.errorText}`);
+    if (message.method === 'Network.loadingFailed')
+      failures.push(`net: ${message.params.errorText}`);
     if (message.id && pending.has(message.id)) {
       const { done, reject, timer } = pending.get(message.id);
       clearTimeout(timer);
@@ -112,9 +113,7 @@ try {
   await delay(800);
 
   const openSubpage = async (tab, shotName) => {
-    await evaluate(
-      `document.querySelector('[data-lobby-tab="${tab}"]')?.click()`,
-    );
+    await evaluate(`document.querySelector('[data-lobby-tab="${tab}"]')?.click()`);
     await delay(1200);
     const state = await evaluate(`(() => {
       const panel = document.querySelector('[data-lobby-panel="${tab}"]');
@@ -143,7 +142,9 @@ try {
     console.log(`${tab}:`, JSON.stringify(state, null, 1));
     await shot(shotName);
     // 通过「返回大厅」按钮关闭子页
-    await evaluate(`document.querySelector('[data-lobby-panel="${tab}"] .v19-back-button')?.click()`);
+    await evaluate(
+      `document.querySelector('[data-lobby-panel="${tab}"] .v19-back-button')?.click()`,
+    );
     await delay(300);
     return state;
   };

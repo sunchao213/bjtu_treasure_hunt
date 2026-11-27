@@ -277,7 +277,10 @@ try {
     console.log('drag ghost appeared:', ghosted);
     console.log('order before:', JSON.stringify(before.slice(0, 4)));
     console.log('order after :', JSON.stringify(afterDrag.slice(0, 4)));
-    console.log('detail after drag (should stay hidden):', await evaluate(`document.querySelector('[data-wh-detail]').hidden`));
+    console.log(
+      'detail after drag (should stay hidden):',
+      await evaluate(`document.querySelector('[data-wh-detail]').hidden`),
+    );
     await shot('10-after-drag', scrollClip);
 
     // 带入装备：同一物品有两件，先带一件、再带一件，看角标从「带」变「带2」
